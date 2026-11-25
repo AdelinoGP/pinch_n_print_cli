@@ -611,9 +611,9 @@ fn link_region_group(
             .map(|path| (index, path))
             .collect::<Vec<_>>();
         let (linked, _) = if group.len() == 1 {
-            link_paths_against(tagged, &boundary, raw, spacing_mm, anchor)
+            link_paths_against(&tagged, &boundary, raw, spacing_mm, anchor, false)
         } else {
-            link_paths_without_offset(tagged, &boundary, spacing_mm, anchor)
+            link_paths_without_offset(&tagged, &boundary, spacing_mm, anchor, false)
         };
         append_paths(&mut buckets[records[index].prior_index], bucket, linked);
     }
@@ -791,11 +791,12 @@ fn link_paths(
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
     link_paths_against(
-        tagged,
+        &tagged,
         offset.polygons_outer(),
         boundary,
         spacing_mm,
         anchor,
+        true,
     )
 }
 
@@ -815,72 +816,90 @@ fn link_paths(
 /// no-fill verdict shared by both stages; PnP's split emit/link stages must
 /// re-admit the scan the emitter already produced.
 fn link_paths_against(
-    tagged: Vec<(usize, ExtrusionPath3D)>,
+    tagged: &[(usize, ExtrusionPath3D)],
     boundary: &[ExPolygon],
     raw_boundary: &[ExPolygon],
     spacing_mm: f32,
     anchor: AnchorParams,
+    collect_source_segments: bool,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
-    let (linked, source_segments) =
-        link_paths_without_offset(tagged.clone(), boundary, spacing_mm, anchor);
+    let (linked, source_segments) = link_paths_without_offset(
+        tagged,
+        boundary,
+        spacing_mm,
+        anchor,
+        collect_source_segments,
+    );
     if !linked.is_empty() {
         return (linked, source_segments);
     }
-    link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
+    link_paths_without_offset(
+        tagged,
+        raw_boundary,
+        spacing_mm,
+        anchor,
+        collect_source_segments,
+    )
 }
 
 fn link_paths_without_offset(
-    tagged: Vec<(usize, ExtrusionPath3D)>,
+    tagged: &[(usize, ExtrusionPath3D)],
     boundary: &[ExPolygon],
     spacing_mm: f32,
     anchor: AnchorParams,
+    collect_source_segments: bool,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let mut clipped = Vec::new();
     let mut source_segments = Vec::new();
-    // Batched clip (wayfinder ticket 65): one engine + one execute per
-    // invocation replaces the per-path engine round trip (12,022 executes per
-    // Benchy slice against one immutable prepared boundary). The batched
-    // result equals the per-path chain subject-for-subject — same spans, same
-    // subject-major order — so every downstream step below (short filtering,
-    // metadata, source segments, connectivity) runs unchanged.
-    let prepared_subjects: Vec<(usize, Vec<Point2>, &ExtrusionPath3D)> = tagged
-        .iter()
-        .map(|(owner, path)| {
-            let polyline = path
-                .points
-                .iter()
-                .map(|point| Point2::from_mm(point.x, point.y))
-                .collect::<Vec<_>>();
-            (*owner, polyline, path)
-        })
-        .filter(|(_, polyline, _)| polyline.len() >= 2)
-        .collect();
-    if let Some(batched) = (!prepared_subjects.is_empty()).then(|| {
-        // Same laziness as the per-path chain: the immutable boundary is
-        // flatten-inflated once, and only when a valid subject exists.
-        let polylines: Vec<Vec<Point2>> = prepared_subjects
+    // Batched clip (wayfinder ticket 65 + 183): one engine + one execute per
+    // invocation replaces the per-path engine round trip, with native
+    // open-subject source_id tagging eliminating post-hoc re-attribution.
+    let mut subject_meta: Vec<(usize, &ExtrusionPath3D)> = Vec::with_capacity(tagged.len());
+    let mut polylines: Vec<Vec<Point2>> = Vec::with_capacity(tagged.len());
+    for (owner, path) in tagged {
+        if path.points.len() < 2 {
+            continue;
+        }
+        let polyline = path
+            .points
             .iter()
-            .map(|(_, polyline, _)| polyline.clone())
-            .collect();
-        PreparedPolylineClip::new(boundary).clip_batched(&polylines)
-    }) {
-        for (subject, (owner, _polyline, path)) in prepared_subjects.iter().enumerate() {
+            .map(|point| Point2::from_mm(point.x, point.y))
+            .collect::<Vec<_>>();
+        subject_meta.push((*owner, path));
+        polylines.push(polyline);
+    }
+    if !polylines.is_empty() {
+        let batched = PreparedPolylineClip::new(boundary).clip_batched(&polylines);
+        for (subject, &(owner, path)) in subject_meta.iter().enumerate() {
+            let uniform_template = uniform_point_metadata(&path.points);
             for points in remove_short_polylines(&batched[subject], spacing_mm) {
-                source_segments.extend(points.windows(2).filter_map(|segment| {
-                    let length = ((segment[1].x - segment[0].x) as f64)
-                        .hypot((segment[1].y - segment[0].y) as f64);
-                    (length > 0.0).then_some(SourceSegment {
-                        owner: *owner,
-                        start: segment[0],
-                        end: segment[1],
-                        length,
-                    })
-                }));
-                let mut clipped_path = (*path).clone();
-                clipped_path.points = points
-                    .into_iter()
-                    .map(|point| point_with_metadata(path, point))
-                    .collect();
+                if collect_source_segments {
+                    source_segments.extend(points.windows(2).filter_map(|segment| {
+                        let length = ((segment[1].x - segment[0].x) as f64)
+                            .hypot((segment[1].y - segment[0].y) as f64);
+                        (length > 0.0).then_some(SourceSegment {
+                            owner,
+                            start: segment[0],
+                            end: segment[1],
+                            length,
+                        })
+                    }));
+                }
+                let mut clipped_path = path.clone();
+                clipped_path.points = if let Some(template) = uniform_template {
+                    points
+                        .into_iter()
+                        .map(|point| {
+                            let (x, y) = point.to_mm();
+                            Point3WithWidth { x, y, ..template }
+                        })
+                        .collect()
+                } else {
+                    points
+                        .into_iter()
+                        .map(|point| point_with_metadata(path, point))
+                        .collect()
+                };
                 clipped.push(clipped_path);
             }
         }
@@ -932,6 +951,46 @@ fn majority_owner(
             .then_with(|| left_index.cmp(right_index))
     });
     lengths[0].0
+}
+
+/// Returns `Some(template)` when every point in `points` shares identical
+/// non-`(x, y)` metadata (compared bitwise on floats so `-0.0`/`+0.0` or NaN
+/// are never conflated), allowing `O(1)` metadata attachment instead of a
+/// per-point nearest-vertex scan. Empty slices return `Some(default)` matching
+/// `point_with_metadata`'s `.unwrap_or_default()`.
+fn uniform_point_metadata(points: &[Point3WithWidth]) -> Option<Point3WithWidth> {
+    let Some(&first) = points.first() else {
+        return Some(Point3WithWidth::default());
+    };
+    let Point3WithWidth {
+        x: _,
+        y: _,
+        z: z0,
+        width: w0,
+        flow_factor: ff0,
+        overhang_quartile: oq0,
+        dist_to_top_mm: dt0,
+        overhang_distance_mm: od0,
+    } = first;
+    let uniform = points[1..].iter().all(|pt| {
+        let Point3WithWidth {
+            x: _,
+            y: _,
+            z,
+            width,
+            flow_factor,
+            overhang_quartile,
+            dist_to_top_mm,
+            overhang_distance_mm,
+        } = *pt;
+        z.to_bits() == z0.to_bits()
+            && width.to_bits() == w0.to_bits()
+            && flow_factor.to_bits() == ff0.to_bits()
+            && overhang_quartile == oq0
+            && dist_to_top_mm.to_bits() == dt0.to_bits()
+            && overhang_distance_mm.map(f32::to_bits) == od0.map(f32::to_bits)
+    });
+    uniform.then_some(first)
 }
 
 fn point_with_metadata(path: &ExtrusionPath3D, point: Point2) -> Point3WithWidth {
@@ -998,4 +1057,128 @@ fn config_float(config: Option<&slicer_ir::ConfigView>, key: &str) -> Option<f32
         Some(ConfigValue::Int(value)) => Some(*value as f32),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use super::*;
+
+    fn pt(
+        x: f32,
+        y: f32,
+        width: f32,
+        flow_factor: f32,
+        overhang_quartile: Option<u8>,
+    ) -> Point3WithWidth {
+        Point3WithWidth {
+            x,
+            y,
+            z: 0.4,
+            width,
+            flow_factor,
+            overhang_quartile,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn uniform_metadata_fast_path_matches_point_with_metadata() {
+        let path = ExtrusionPath3D {
+            points: vec![
+                pt(0.0, 0.0, 0.42, 1.0, Some(1)),
+                pt(5.0, 0.0, 0.42, 1.0, Some(1)),
+                pt(10.0, 0.0, 0.42, 1.0, Some(1)),
+            ],
+            role: ExtrusionRole::SparseInfill,
+            speed_factor: 1.0,
+            tool_index: None,
+            order_lock: None,
+        };
+        let template =
+            uniform_point_metadata(&path.points).expect("uniform points must take O(1) path");
+        for query in [
+            Point2::from_mm(0.5, 0.0),
+            Point2::from_mm(4.9, 0.0),
+            Point2::from_mm(9.5, 0.0),
+        ] {
+            let (x, y) = query.to_mm();
+            let fast = Point3WithWidth { x, y, ..template };
+            let exact = point_with_metadata(&path, query);
+            assert_eq!(fast, exact);
+        }
+    }
+
+    #[test]
+    fn non_uniform_metadata_falls_back_to_exact_nearest_point() {
+        // Varying width, flow_factor, and overhang_quartile along one path MUST
+        // reject the uniform fast path and preserve per-point nearest metadata.
+        let boundary = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(20.0, 0.0),
+                    Point2::from_mm(20.0, 10.0),
+                    Point2::from_mm(0.0, 10.0),
+                ],
+            },
+            holes: Vec::new(),
+        }];
+        let varying_path = ExtrusionPath3D {
+            points: vec![
+                pt(1.0, 5.0, 0.35, 0.9, Some(0)),
+                pt(10.0, 5.0, 0.55, 1.15, Some(2)),
+                pt(19.0, 5.0, 0.65, 1.25, Some(3)),
+            ],
+            role: ExtrusionRole::TopSolidInfill,
+            speed_factor: 1.0,
+            tool_index: None,
+            order_lock: None,
+        };
+        assert!(
+            uniform_point_metadata(&varying_path.points).is_none(),
+            "varying metadata must not take uniform fast path"
+        );
+
+        // Also test each individual metadata axis independently.
+        assert!(uniform_point_metadata(&[
+            pt(0.0, 0.0, 0.4, 1.0, None),
+            pt(1.0, 0.0, 0.45, 1.0, None),
+        ])
+        .is_none());
+        assert!(uniform_point_metadata(&[
+            pt(0.0, 0.0, 0.4, 1.0, None),
+            pt(1.0, 0.0, 0.4, 1.05, None),
+        ])
+        .is_none());
+        assert!(uniform_point_metadata(&[
+            pt(0.0, 0.0, 0.4, 1.0, Some(1)),
+            pt(1.0, 0.0, 0.4, 1.0, Some(2)),
+        ])
+        .is_none());
+
+        // End-to-end through `link_paths_without_offset`: clipped points must match
+        // exact nearest-point metadata from the varying source path.
+        let (linked, segs) = link_paths_without_offset(
+            &[(0, varying_path.clone())],
+            &boundary,
+            0.4,
+            AnchorParams {
+                anchor_length_mm: 0.0,
+                anchor_length_max_mm: 0.0,
+            },
+            false,
+        );
+        assert!(
+            segs.is_empty(),
+            "collect_source_segments=false must skip building source_segments"
+        );
+        assert_eq!(linked.len(), 1);
+        assert_eq!(linked[0].points.len(), 3);
+        for p in &linked[0].points {
+            let expected = point_with_metadata(&varying_path, Point2::from_mm(p.x, p.y));
+            assert_eq!(p.width, expected.width);
+            assert_eq!(p.flow_factor, expected.flow_factor);
+            assert_eq!(p.overhang_quartile, expected.overhang_quartile);
+        }
+    }
 }

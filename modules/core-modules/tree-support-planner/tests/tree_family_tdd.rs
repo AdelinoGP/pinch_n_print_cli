@@ -3121,3 +3121,67 @@ fn coarse_epsilon_group_emits_one_row_per_region_identity() {
         );
     }
 }
+
+/// Ticket 148: emitted roles are carved against the layer's **print plane**
+/// occupancy, the plane the host's exact-Z gate validates.
+///
+/// The control run (no print-plane payload) emits the tree column; the probe run
+/// publishes a print-plane occupancy that swallows the whole plate, and every
+/// role that would have printed must be carved away. Before this wiring the
+/// planner only carved the midpoint payload, so a print-plane-only collision
+/// surfaced as a host rejection of the entire body instead of a carve.
+#[test]
+fn print_plane_occupancy_is_carved_out_of_every_emitted_role() {
+    use slicer_sdk::prepass_types::SupportAnalysisPlaneEntry;
+
+    let object = overhang("plate", 2.0, 2.0, 4.0);
+    let plate_wide = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-1000.0, -1000.0),
+                Point2::from_mm(1000.0, -1000.0),
+                Point2::from_mm(1000.0, 1000.0),
+                Point2::from_mm(-1000.0, 1000.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let analysis_with_print_plane = SupportAnalysisView {
+        family_assignments: tree_assignments("plate", &["0"]),
+        print_plane_occupancy: (0..10)
+            .map(|layer| SupportAnalysisPlaneEntry {
+                global_support_layer_index: layer,
+                object_id: "plate".to_string(),
+                polygons: vec![plate_wide.clone()],
+            })
+            .collect(),
+        ..Default::default()
+    };
+
+    let control = run_planner_with_analysis(
+        true,
+        object.clone(),
+        SupportAnalysisView {
+            family_assignments: tree_assignments("plate", &["0"]),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !control.entries().is_empty(),
+        "control fixture must emit support; an empty plan cannot prove a carve"
+    );
+
+    let carved = run_planner_with_analysis(true, object, analysis_with_print_plane);
+    let remaining: Vec<&ExPolygon> = carved
+        .entries()
+        .iter()
+        .flat_map(|entry| entry.roles.iter())
+        .flat_map(|role| role.regions.iter())
+        .collect();
+    assert!(
+        remaining.is_empty(),
+        "every role is inside the print-plane occupancy, so the carve must \
+         remove all of it; {} region(s) survived",
+        remaining.len()
+    );
+}

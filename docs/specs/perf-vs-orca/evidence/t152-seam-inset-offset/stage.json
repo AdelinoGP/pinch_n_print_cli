@@ -1,0 +1,15 @@
+{
+ "cell": "base-classic-off",
+ "baseline": {
+  "stage_ms": 1779,
+  "module_ms": 1779,
+  "source": "target\\t152\\base-classic-off-baseline.stderr.jsonl"
+ },
+ "candidate": {
+  "stage_ms": 531,
+  "module_ms": 531,
+  "source": "target\\t152\\base-classic-off-candidate.stderr.jsonl"
+ },
+ "offset_saving_ms": 1248,
+ "offset_share_of_baseline_stage_pct": 70.15
+}

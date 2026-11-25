@@ -1,0 +1,1409 @@
+{
+ "note": "ESTIMATE chain, never a ratio of record. Shares are this take's instrumented median over three passes; walls of record are t172's paired candidate medians; the route table is t163's board composed with t169's and t172's measured savings. Shape prices are ceilings from measured operand counts, not gate results.",
+ "cells": [
+  "base-classic-on",
+  "base-arachne-on",
+  "benchy-classic-on",
+  "benchy-arachne-on",
+  "base-classic-off"
+ ],
+ "route": {
+  "base-classic-on": {
+   "t163_ratio": 2.71041,
+   "t169_saving": 0.219135,
+   "t172_saving": 0.148928,
+   "estimated_ratio": 1.80126,
+   "required_cut": 0.444834,
+   "pnp_median_s": 45.116406,
+   "orca_s": 28.607
+  },
+  "base-arachne-on": {
+   "t163_ratio": 2.61794,
+   "t169_saving": 0.224071,
+   "t172_saving": 0.150016,
+   "estimated_ratio": 1.7266,
+   "required_cut": 0.420827,
+   "pnp_median_s": 44.315114,
+   "orca_s": 29.3102
+  },
+  "benchy-classic-on": {
+   "t163_ratio": 2.80183,
+   "t169_saving": 0.152076,
+   "t172_saving": 0.18413,
+   "estimated_ratio": 1.93829,
+   "required_cut": 0.484082,
+   "pnp_median_s": 4.300778,
+   "orca_s": 2.9414
+  },
+  "benchy-arachne-on": {
+   "t163_ratio": 2.82869,
+   "t169_saving": 0.147563,
+   "t172_saving": 0.173739,
+   "estimated_ratio": 1.99235,
+   "required_cut": 0.49808,
+   "pnp_median_s": 4.318749,
+   "orca_s": 2.9234
+  },
+  "base-classic-off": {
+   "t163_ratio": 1.38915,
+   "t169_saving": 0.250817,
+   "t172_saving": 0.214127,
+   "estimated_ratio": 0.81788,
+   "required_cut": -0.222671,
+   "pnp_median_s": 11.233015,
+   "orca_s": 18.2003
+  }
+ },
+ "split": {
+  "base-classic-on": {
+   "slice_complete_ms": 68030,
+   "phase_shares": {
+    "outside": 0.001746,
+    "per_layer": 0.107464,
+    "postpass": 0.042525,
+    "prepass": 0.8411,
+    "validation": 5.9e-05
+   },
+   "stage_ms_instrumented": 42685,
+   "stage_share_of_cell": 0.627444,
+   "stage_wall_estimate_s": 28.308,
+   "stage_share_min": 0.60391,
+   "stage_share_max": 0.630839
+  },
+  "base-arachne-on": {
+   "slice_complete_ms": 65364,
+   "phase_shares": {
+    "outside": 0.001697,
+    "per_layer": 0.115309,
+    "postpass": 0.043563,
+    "prepass": 0.839368,
+    "validation": 4.6e-05
+   },
+   "stage_ms_instrumented": 39957,
+   "stage_share_of_cell": 0.6113,
+   "stage_wall_estimate_s": 27.0898,
+   "stage_share_min": 0.599122,
+   "stage_share_max": 0.614926
+  },
+  "benchy-classic-on": {
+   "slice_complete_ms": 5851,
+   "phase_shares": {
+    "outside": 0.016737,
+    "per_layer": 0.170014,
+    "postpass": 0.085976,
+    "prepass": 0.726568,
+    "validation": 0.000684
+   },
+   "stage_ms_instrumented": 2575,
+   "stage_share_of_cell": 0.440096,
+   "stage_wall_estimate_s": 1.8928,
+   "stage_share_min": 0.428303,
+   "stage_share_max": 0.484533
+  },
+  "benchy-arachne-on": {
+   "slice_complete_ms": 6031,
+   "phase_shares": {
+    "outside": 0.016581,
+    "per_layer": 0.191788,
+    "postpass": 0.092522,
+    "prepass": 0.700879,
+    "validation": 0.000663
+   },
+   "stage_ms_instrumented": 2648,
+   "stage_share_of_cell": 0.439065,
+   "stage_wall_estimate_s": 1.8962,
+   "stage_share_min": 0.430443,
+   "stage_share_max": 0.451335
+  },
+  "base-classic-off": {
+   "slice_complete_ms": 14744,
+   "phase_shares": {
+    "outside": 0.007582,
+    "per_layer": 0.209712,
+    "postpass": 0.066302,
+    "prepass": 0.715325,
+    "validation": 0.000277
+   },
+   "stage_ms_instrumented": 282,
+   "stage_share_of_cell": 0.019126,
+   "stage_wall_estimate_s": 0.2148,
+   "stage_share_min": 0.018991,
+   "stage_share_max": 0.01994
+  }
+ },
+ "census": {
+  "base-classic-on": {
+   "total_probe_thread_ms": 299267.5,
+   "planner_clip_thread_ms": 196612.7,
+   "planner_offset_thread_ms": 11121.0,
+   "planner_clip_wall_ms": 18001.8,
+   "planner_offset_wall_ms": 1004.1,
+   "planner_clip_plus_offset_wall_ms": 19006.0,
+   "all_clip_thread_ms": 230775.5,
+   "all_offset_thread_ms": 68492.0,
+   "all_clip_wall_ms": 18001.8,
+   "serial_clip_wall_ms": 920.6,
+   "planner_share_of_clip_thread": 0.851965,
+   "phases": {
+    "planner::batched_phase1_carve": {
+     "op": "difference",
+     "calls": 68381,
+     "thread_ms": 142680.2,
+     "wall_ms": 12406.9,
+     "fanout": 11.5,
+     "in_points": 433617088,
+     "clip_points": 426868700,
+     "out_points": 6753304,
+     "in_bbox_points": 285368,
+     "near_points": 305236172,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase3_union": {
+     "op": "union",
+     "calls": 480,
+     "thread_ms": 51600.4,
+     "wall_ms": 5210.0,
+     "fanout": 9.904,
+     "in_points": 13499633,
+     "clip_points": 13482900,
+     "out_points": 1222994,
+     "in_bbox_points": 324934,
+     "near_points": 817797,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase5_set_difference": {
+     "op": "difference",
+     "calls": 517,
+     "thread_ms": 1683.7,
+     "wall_ms": 200.4,
+     "fanout": 8.402,
+     "in_points": 4087108,
+     "clip_points": 2860315,
+     "out_points": 1226733,
+     "in_bbox_points": 2146619,
+     "near_points": 2730830,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::ensure_avoidance_union": {
+     "op": "union",
+     "calls": 18810,
+     "thread_ms": 453.0,
+     "wall_ms": 111.1,
+     "fanout": 4.078,
+     "in_points": 2697105,
+     "clip_points": 696271,
+     "out_points": 2033936,
+     "in_bbox_points": 625452,
+     "near_points": 696166,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase6_body_minus_cut": {
+     "op": "difference",
+     "calls": 85,
+     "thread_ms": 78.4,
+     "wall_ms": 24.7,
+     "fanout": 3.18,
+     "in_points": 294131,
+     "clip_points": 12475,
+     "out_points": 282897,
+     "in_bbox_points": 11741,
+     "near_points": 12365,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::union_expolys": {
+     "op": "union",
+     "calls": 1546,
+     "thread_ms": 15.9,
+     "wall_ms": 48.8,
+     "fanout": 0.325,
+     "in_points": 108812,
+     "clip_points": 79917,
+     "out_points": 108800,
+     "in_bbox_points": 4341,
+     "near_points": 53095,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::expolygons_simplify_union": {
+     "op": "union",
+     "calls": 496,
+     "thread_ms": 7.6,
+     "wall_ms": 0.0,
+     "fanout": null,
+     "in_points": 40107,
+     "clip_points": 14178,
+     "out_points": 40107,
+     "in_bbox_points": 546,
+     "near_points": 6792,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::volumes_layer_outlines_below_union": {
+     "op": "offset",
+     "calls": 1,
+     "thread_ms": 0.5,
+     "wall_ms": 1.6,
+     "fanout": 0.294,
+     "in_points": 482,
+     "clip_points": 0,
+     "out_points": 0,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 1,
+     "empty_thread_ms": 0.5
+    },
+    "<untagged>": {
+     "op": "offset",
+     "calls": 6,
+     "thread_ms": 0.0,
+     "wall_ms": 1002.5,
+     "fanout": 0.0,
+     "in_points": 30,
+     "clip_points": 0,
+     "out_points": 30,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    }
+   },
+   "batch_rows": [
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase1_carve",
+     "entry": "wit-batch-call",
+     "batches": 286,
+     "requests": 68381,
+     "wall_ns": 12406879800,
+     "max_wall_ns": 97780100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase3_union",
+     "entry": "wit-batch-call",
+     "batches": 37,
+     "requests": 480,
+     "wall_ns": 5210006900,
+     "max_wall_ns": 505519200
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 42,
+     "requests": 3324,
+     "wall_ns": 1002474700,
+     "max_wall_ns": 58500700
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "stage": "PrePass::SeamPlanning",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 496,
+     "wall_ns": 313602400,
+     "max_wall_ns": 313602400
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase5_set_difference",
+     "entry": "wit-batch-call",
+     "batches": 37,
+     "requests": 517,
+     "wall_ns": 200381500,
+     "max_wall_ns": 12999000
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::ensure_avoidance_union",
+     "entry": "wit-batch-call",
+     "batches": 30,
+     "requests": 14408,
+     "wall_ns": 111101300,
+     "max_wall_ns": 7226900
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::union_expolys",
+     "entry": "wit-batch-call",
+     "batches": 14,
+     "requests": 6944,
+     "wall_ns": 48812800,
+     "max_wall_ns": 4429500
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase6_body_minus_cut",
+     "entry": "wit-batch-call",
+     "batches": 28,
+     "requests": 85,
+     "wall_ns": 24655800,
+     "max_wall_ns": 2035200
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::volumes_layer_outlines_below_union",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 496,
+     "wall_ns": 1639800,
+     "max_wall_ns": 1639800
+    }
+   ],
+   "profile_wall_scopes": {
+    "polygon_ops::clip_polygons": 232571000000,
+    "polygon_ops::offset": 57645000000,
+    "polygon_ops::offset2_ex": 9307000000,
+    "polygon_ops::closing_ex": 1699000000
+   }
+  },
+  "base-arachne-on": {
+   "total_probe_thread_ms": 276607.1,
+   "planner_clip_thread_ms": 186960.2,
+   "planner_offset_thread_ms": 11127.7,
+   "planner_clip_wall_ms": 17178.9,
+   "planner_offset_wall_ms": 1014.1,
+   "planner_clip_plus_offset_wall_ms": 18193.1,
+   "all_clip_thread_ms": 217385.9,
+   "all_offset_thread_ms": 59221.2,
+   "all_clip_wall_ms": 17178.9,
+   "serial_clip_wall_ms": 919.5,
+   "planner_share_of_clip_thread": 0.860038,
+   "phases": {
+    "planner::batched_phase1_carve": {
+     "op": "difference",
+     "calls": 68381,
+     "thread_ms": 134315.2,
+     "wall_ms": 11676.7,
+     "fanout": 11.503,
+     "in_points": 433617088,
+     "clip_points": 426868700,
+     "out_points": 6753304,
+     "in_bbox_points": 285368,
+     "near_points": 305236172,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase3_union": {
+     "op": "union",
+     "calls": 480,
+     "thread_ms": 50231.8,
+     "wall_ms": 5118.5,
+     "fanout": 9.814,
+     "in_points": 13499633,
+     "clip_points": 13482900,
+     "out_points": 1222994,
+     "in_bbox_points": 324934,
+     "near_points": 817797,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase5_set_difference": {
+     "op": "difference",
+     "calls": 517,
+     "thread_ms": 1683.3,
+     "wall_ms": 196.9,
+     "fanout": 8.547,
+     "in_points": 4087108,
+     "clip_points": 2860315,
+     "out_points": 1226733,
+     "in_bbox_points": 2146619,
+     "near_points": 2730830,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::ensure_avoidance_union": {
+     "op": "union",
+     "calls": 18810,
+     "thread_ms": 496.0,
+     "wall_ms": 113.0,
+     "fanout": 4.388,
+     "in_points": 2697105,
+     "clip_points": 696271,
+     "out_points": 2033936,
+     "in_bbox_points": 625452,
+     "near_points": 696166,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase6_body_minus_cut": {
+     "op": "difference",
+     "calls": 85,
+     "thread_ms": 77.7,
+     "wall_ms": 25.9,
+     "fanout": 3.005,
+     "in_points": 294131,
+     "clip_points": 12475,
+     "out_points": 282897,
+     "in_bbox_points": 11741,
+     "near_points": 12365,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::union_expolys": {
+     "op": "union",
+     "calls": 1546,
+     "thread_ms": 18.3,
+     "wall_ms": 47.9,
+     "fanout": 0.383,
+     "in_points": 108812,
+     "clip_points": 79917,
+     "out_points": 108800,
+     "in_bbox_points": 4341,
+     "near_points": 53095,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::expolygons_simplify_union": {
+     "op": "union",
+     "calls": 496,
+     "thread_ms": 11.1,
+     "wall_ms": 0.0,
+     "fanout": null,
+     "in_points": 40107,
+     "clip_points": 14178,
+     "out_points": 40107,
+     "in_bbox_points": 546,
+     "near_points": 6792,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::volumes_layer_outlines_below_union": {
+     "op": "offset",
+     "calls": 1,
+     "thread_ms": 0.5,
+     "wall_ms": 1.8,
+     "fanout": 0.257,
+     "in_points": 482,
+     "clip_points": 0,
+     "out_points": 0,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 1,
+     "empty_thread_ms": 0.5
+    },
+    "<untagged>": {
+     "op": "offset",
+     "calls": 6,
+     "thread_ms": 0.0,
+     "wall_ms": 1012.3,
+     "fanout": 0.0,
+     "in_points": 30,
+     "clip_points": 0,
+     "out_points": 30,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    }
+   },
+   "batch_rows": [
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase1_carve",
+     "entry": "wit-batch-call",
+     "batches": 286,
+     "requests": 68381,
+     "wall_ns": 11676749400,
+     "max_wall_ns": 89357700
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase3_union",
+     "entry": "wit-batch-call",
+     "batches": 37,
+     "requests": 480,
+     "wall_ns": 5118506200,
+     "max_wall_ns": 506718300
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 42,
+     "requests": 3324,
+     "wall_ns": 1012325100,
+     "max_wall_ns": 59479300
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "stage": "PrePass::SeamPlanning",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 496,
+     "wall_ns": 281160000,
+     "max_wall_ns": 281160000
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase5_set_difference",
+     "entry": "wit-batch-call",
+     "batches": 37,
+     "requests": 517,
+     "wall_ns": 196932700,
+     "max_wall_ns": 12229000
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::ensure_avoidance_union",
+     "entry": "wit-batch-call",
+     "batches": 30,
+     "requests": 14408,
+     "wall_ns": 113034700,
+     "max_wall_ns": 8593600
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::union_expolys",
+     "entry": "wit-batch-call",
+     "batches": 14,
+     "requests": 6944,
+     "wall_ns": 47855500,
+     "max_wall_ns": 4322200
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase6_body_minus_cut",
+     "entry": "wit-batch-call",
+     "batches": 28,
+     "requests": 85,
+     "wall_ns": 25868000,
+     "max_wall_ns": 2705700
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::volumes_layer_outlines_below_union",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 496,
+     "wall_ns": 1811900,
+     "max_wall_ns": 1811900
+    }
+   ],
+   "profile_wall_scopes": {
+    "polygon_ops::clip_polygons": 219035000000,
+    "polygon_ops::offset": 50657000000,
+    "polygon_ops::offset2_ex": 7194700000,
+    "polygon_ops::closing_ex": 1496000000
+   }
+  },
+  "benchy-classic-on": {
+   "total_probe_thread_ms": 13731.6,
+   "planner_clip_thread_ms": 6953.5,
+   "planner_offset_thread_ms": 721.5,
+   "planner_clip_wall_ms": 733.8,
+   "planner_offset_wall_ms": 96.2,
+   "planner_clip_plus_offset_wall_ms": 830.0,
+   "all_clip_thread_ms": 9715.1,
+   "all_offset_thread_ms": 4016.4,
+   "all_clip_wall_ms": 733.8,
+   "serial_clip_wall_ms": 125.6,
+   "planner_share_of_clip_thread": 0.715734,
+   "phases": {
+    "planner::batched_phase1_carve": {
+     "op": "difference",
+     "calls": 10600,
+     "thread_ms": 5135.8,
+     "wall_ms": 500.9,
+     "fanout": 10.254,
+     "in_points": 29278535,
+     "clip_points": 28230127,
+     "out_points": 1047966,
+     "in_bbox_points": 19278,
+     "near_points": 12245200,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase3_union": {
+     "op": "union",
+     "calls": 202,
+     "thread_ms": 1542.1,
+     "wall_ms": 183.6,
+     "fanout": 8.399,
+     "in_points": 2188978,
+     "clip_points": 2177010,
+     "out_points": 351199,
+     "in_bbox_points": 91724,
+     "near_points": 181403,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "<untagged>": {
+     "op": "offset",
+     "calls": 1626,
+     "thread_ms": 443.8,
+     "wall_ms": 82.8,
+     "fanout": 5.357,
+     "in_points": 708569,
+     "clip_points": 0,
+     "out_points": 501051,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase5_set_difference": {
+     "op": "difference",
+     "calls": 206,
+     "thread_ms": 200.8,
+     "wall_ms": 33.3,
+     "fanout": 6.026,
+     "in_points": 807048,
+     "clip_points": 455449,
+     "out_points": 351607,
+     "in_bbox_points": 373585,
+     "near_points": 416589,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::ensure_avoidance_union": {
+     "op": "union",
+     "calls": 4780,
+     "thread_ms": 50.5,
+     "wall_ms": 15.0,
+     "fanout": 3.371,
+     "in_points": 402147,
+     "clip_points": 123759,
+     "out_points": 282398,
+     "in_bbox_points": 105038,
+     "near_points": 123759,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::union_expolys": {
+     "op": "offset",
+     "calls": 541,
+     "thread_ms": 13.4,
+     "wall_ms": 12.8,
+     "fanout": 1.044,
+     "in_points": 35563,
+     "clip_points": 0,
+     "out_points": 16739,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 179,
+     "empty_thread_ms": 10.6
+    },
+    "planner::volumes_layer_outlines_below_union": {
+     "op": "offset",
+     "calls": 240,
+     "thread_ms": 3.6,
+     "wall_ms": 0.5,
+     "fanout": 7.411,
+     "in_points": 9960,
+     "clip_points": 0,
+     "out_points": 9923,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::expolygons_simplify_union": {
+     "op": "union",
+     "calls": 240,
+     "thread_ms": 1.3,
+     "wall_ms": 0.0,
+     "fanout": null,
+     "in_points": 9960,
+     "clip_points": 4851,
+     "out_points": 9960,
+     "in_bbox_points": 413,
+     "near_points": 1867,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase6_body_minus_cut": {
+     "op": "difference",
+     "calls": 6,
+     "thread_ms": 1.2,
+     "wall_ms": 1.0,
+     "fanout": 1.195,
+     "in_points": 10630,
+     "clip_points": 1568,
+     "out_points": 9082,
+     "in_bbox_points": 1524,
+     "near_points": 1568,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    }
+   },
+   "batch_rows": [
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase1_carve",
+     "entry": "wit-batch-call",
+     "batches": 51,
+     "requests": 10600,
+     "wall_ns": 500879900,
+     "max_wall_ns": 19435800
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase3_union",
+     "entry": "wit-batch-call",
+     "batches": 17,
+     "requests": 202,
+     "wall_ns": 183610300,
+     "max_wall_ns": 18530800
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 24,
+     "requests": 1626,
+     "wall_ns": 82847900,
+     "max_wall_ns": 31487800
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase5_set_difference",
+     "entry": "wit-batch-call",
+     "batches": 18,
+     "requests": 206,
+     "wall_ns": 33326000,
+     "max_wall_ns": 4277400
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "stage": "PrePass::SeamPlanning",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 240,
+     "wall_ns": 21068100,
+     "max_wall_ns": 21068100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::ensure_avoidance_union",
+     "entry": "wit-batch-call",
+     "batches": 13,
+     "requests": 2904,
+     "wall_ns": 14987700,
+     "max_wall_ns": 1376100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::union_expolys",
+     "entry": "wit-batch-call",
+     "batches": 13,
+     "requests": 3120,
+     "wall_ns": 12838100,
+     "max_wall_ns": 1442100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase6_body_minus_cut",
+     "entry": "wit-batch-call",
+     "batches": 4,
+     "requests": 6,
+     "wall_ns": 1034100,
+     "max_wall_ns": 370400
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::volumes_layer_outlines_below_union",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 240,
+     "wall_ns": 492500,
+     "max_wall_ns": 492500
+    }
+   ],
+   "profile_wall_scopes": {
+    "polygon_ops::clip_polygons": 9859100000,
+    "polygon_ops::offset": 3269600000,
+    "polygon_ops::offset2_ex": 635500000,
+    "polygon_ops::closing_ex": 162900000
+   }
+  },
+  "benchy-arachne-on": {
+   "total_probe_thread_ms": 14088.0,
+   "planner_clip_thread_ms": 6940.2,
+   "planner_offset_thread_ms": 748.4,
+   "planner_clip_wall_ms": 725.0,
+   "planner_offset_wall_ms": 102.3,
+   "planner_clip_plus_offset_wall_ms": 827.3,
+   "all_clip_thread_ms": 9959.3,
+   "all_offset_thread_ms": 4128.7,
+   "all_clip_wall_ms": 725.0,
+   "serial_clip_wall_ms": 128.2,
+   "planner_share_of_clip_thread": 0.696853,
+   "phases": {
+    "planner::batched_phase1_carve": {
+     "op": "difference",
+     "calls": 10600,
+     "thread_ms": 5124.7,
+     "wall_ms": 487.3,
+     "fanout": 10.516,
+     "in_points": 29278535,
+     "clip_points": 28230127,
+     "out_points": 1047966,
+     "in_bbox_points": 19278,
+     "near_points": 12245200,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase3_union": {
+     "op": "union",
+     "calls": 202,
+     "thread_ms": 1527.9,
+     "wall_ms": 189.0,
+     "fanout": 8.085,
+     "in_points": 2188978,
+     "clip_points": 2177010,
+     "out_points": 351199,
+     "in_bbox_points": 91724,
+     "near_points": 181403,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "<untagged>": {
+     "op": "offset",
+     "calls": 1626,
+     "thread_ms": 463.2,
+     "wall_ms": 88.5,
+     "fanout": 5.236,
+     "in_points": 708569,
+     "clip_points": 0,
+     "out_points": 501051,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase5_set_difference": {
+     "op": "difference",
+     "calls": 206,
+     "thread_ms": 207.0,
+     "wall_ms": 32.9,
+     "fanout": 6.301,
+     "in_points": 807048,
+     "clip_points": 455449,
+     "out_points": 351607,
+     "in_bbox_points": 373585,
+     "near_points": 416589,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::ensure_avoidance_union": {
+     "op": "union",
+     "calls": 4780,
+     "thread_ms": 55.2,
+     "wall_ms": 14.7,
+     "fanout": 3.759,
+     "in_points": 402147,
+     "clip_points": 123759,
+     "out_points": 282398,
+     "in_bbox_points": 105038,
+     "near_points": 123759,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::union_expolys": {
+     "op": "offset",
+     "calls": 541,
+     "thread_ms": 13.7,
+     "wall_ms": 13.4,
+     "fanout": 1.022,
+     "in_points": 35563,
+     "clip_points": 0,
+     "out_points": 16739,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 179,
+     "empty_thread_ms": 10.6
+    },
+    "planner::volumes_layer_outlines_below_union": {
+     "op": "offset",
+     "calls": 240,
+     "thread_ms": 3.7,
+     "wall_ms": 0.5,
+     "fanout": 7.432,
+     "in_points": 9960,
+     "clip_points": 0,
+     "out_points": 9923,
+     "in_bbox_points": 0,
+     "near_points": 0,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::batched_phase6_body_minus_cut": {
+     "op": "difference",
+     "calls": 6,
+     "thread_ms": 1.3,
+     "wall_ms": 1.1,
+     "fanout": 1.193,
+     "in_points": 10630,
+     "clip_points": 1568,
+     "out_points": 9082,
+     "in_bbox_points": 1524,
+     "near_points": 1568,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    },
+    "planner::expolygons_simplify_union": {
+     "op": "union",
+     "calls": 240,
+     "thread_ms": 1.3,
+     "wall_ms": 0.0,
+     "fanout": null,
+     "in_points": 9960,
+     "clip_points": 4851,
+     "out_points": 9960,
+     "in_bbox_points": 413,
+     "near_points": 1867,
+     "empty_calls": 0,
+     "empty_thread_ms": 0.0
+    }
+   },
+   "batch_rows": [
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase1_carve",
+     "entry": "wit-batch-call",
+     "batches": 51,
+     "requests": 10600,
+     "wall_ns": 487322500,
+     "max_wall_ns": 20727200
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase3_union",
+     "entry": "wit-batch-call",
+     "batches": 17,
+     "requests": 202,
+     "wall_ns": 188970400,
+     "max_wall_ns": 20382400
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 24,
+     "requests": 1626,
+     "wall_ns": 88458300,
+     "max_wall_ns": 37544400
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase5_set_difference",
+     "entry": "wit-batch-call",
+     "batches": 18,
+     "requests": 206,
+     "wall_ns": 32851000,
+     "max_wall_ns": 3583800
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "stage": "PrePass::SeamPlanning",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 240,
+     "wall_ns": 22246800,
+     "max_wall_ns": 22246800
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::ensure_avoidance_union",
+     "entry": "wit-batch-call",
+     "batches": 13,
+     "requests": 2904,
+     "wall_ns": 14696900,
+     "max_wall_ns": 1517100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::union_expolys",
+     "entry": "wit-batch-call",
+     "batches": 13,
+     "requests": 3120,
+     "wall_ns": 13392800,
+     "max_wall_ns": 1702100
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::batched_phase6_body_minus_cut",
+     "entry": "wit-batch-call",
+     "batches": 4,
+     "requests": 6,
+     "wall_ns": 1119800,
+     "max_wall_ns": 403700
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "stage": "PrePass::SupportGeometry",
+     "site": "planner::volumes_layer_outlines_below_union",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 240,
+     "wall_ns": 492100,
+     "max_wall_ns": 492100
+    }
+   ],
+   "profile_wall_scopes": {
+    "polygon_ops::clip_polygons": 10123200000,
+    "polygon_ops::offset": 3327000000,
+    "polygon_ops::offset2_ex": 670700000,
+    "polygon_ops::closing_ex": 160000000
+   }
+  },
+  "base-classic-off": {
+   "total_probe_thread_ms": 58399.7,
+   "planner_clip_thread_ms": 0.0,
+   "planner_offset_thread_ms": 0.0,
+   "planner_clip_wall_ms": 0.0,
+   "planner_offset_wall_ms": 0.0,
+   "planner_clip_plus_offset_wall_ms": 0.0,
+   "all_clip_thread_ms": 26912.1,
+   "all_offset_thread_ms": 31487.6,
+   "all_clip_wall_ms": 0.0,
+   "serial_clip_wall_ms": 354.8,
+   "planner_share_of_clip_thread": 0.0,
+   "phases": {},
+   "batch_rows": [
+    {
+     "module": "com.core.seam-planner-default",
+     "stage": "PrePass::SeamPlanning",
+     "site": "<untagged>",
+     "entry": "wit-batch-call",
+     "batches": 1,
+     "requests": 496,
+     "wall_ns": 308346200,
+     "max_wall_ns": 308346200
+    }
+   ],
+   "profile_wall_scopes": {
+    "polygon_ops::offset": 21966000000,
+    "polygon_ops::clip_polygons": 27253000000,
+    "polygon_ops::offset2_ex": 7981000000,
+    "polygon_ops::closing_ex": 1624000000
+   }
+  }
+ },
+ "decomposition": {
+  "base-classic-on": {
+   "stage_wall_estimate_ms": 28308.0,
+   "planner_host_clip_ms": 18001.8,
+   "planner_host_offset_ms": 1004.1,
+   "planner_host_clipper_share_of_stage": 0.6714,
+   "stage_remainder_ms": 9302.0,
+   "planner_fuel": 62308007919,
+   "cell_fuel": 577664602231,
+   "planner_fuel_share": 0.107862,
+   "planner_clip_thread_ms": 196612.7,
+   "planner_offset_thread_ms": 11121.0,
+   "planner_clip_share_of_clipper_thread": 0.946465
+  },
+  "base-arachne-on": {
+   "stage_wall_estimate_ms": 27089.8,
+   "planner_host_clip_ms": 17178.9,
+   "planner_host_offset_ms": 1014.1,
+   "planner_host_clipper_share_of_stage": 0.6716,
+   "stage_remainder_ms": 8896.7,
+   "planner_fuel": 62308008530,
+   "cell_fuel": 566936043073,
+   "planner_fuel_share": 0.109903,
+   "planner_clip_thread_ms": 186960.2,
+   "planner_offset_thread_ms": 11127.7,
+   "planner_clip_share_of_clipper_thread": 0.943824
+  },
+  "benchy-classic-on": {
+   "stage_wall_estimate_ms": 1892.8,
+   "planner_host_clip_ms": 733.8,
+   "planner_host_offset_ms": 96.2,
+   "planner_host_clipper_share_of_stage": 0.4385,
+   "stage_remainder_ms": 1062.8,
+   "planner_fuel": 6688532375,
+   "cell_fuel": 69581600149,
+   "planner_fuel_share": 0.096125,
+   "planner_clip_thread_ms": 6953.5,
+   "planner_offset_thread_ms": 721.5,
+   "planner_clip_share_of_clipper_thread": 0.905993
+  },
+  "benchy-arachne-on": {
+   "stage_wall_estimate_ms": 1896.2,
+   "planner_host_clip_ms": 725.0,
+   "planner_host_offset_ms": 102.3,
+   "planner_host_clipper_share_of_stage": 0.4363,
+   "stage_remainder_ms": 1068.9,
+   "planner_fuel": 6688532418,
+   "cell_fuel": 69784163851,
+   "planner_fuel_share": 0.095846,
+   "planner_clip_thread_ms": 6940.2,
+   "planner_offset_thread_ms": 748.4,
+   "planner_clip_share_of_clipper_thread": 0.902661
+  },
+  "base-classic-off": {
+   "stage_wall_estimate_ms": 214.8,
+   "planner_host_clip_ms": 0.0,
+   "planner_host_offset_ms": 0.0,
+   "planner_host_clipper_share_of_stage": 0.0,
+   "stage_remainder_ms": 214.8,
+   "planner_fuel": 228076767,
+   "cell_fuel": 123274601273,
+   "planner_fuel_share": 0.00185,
+   "planner_clip_thread_ms": 0.0,
+   "planner_offset_thread_ms": 0.0,
+   "planner_clip_share_of_clipper_thread": null
+  }
+ },
+ "combined_window": {
+  "base-classic-on": {
+   "stage_wall_estimate_ms": 28001.7,
+   "planner_host_clip_ms": 20176.7,
+   "planner_host_offset_ms": 1069.7,
+   "planner_host_clipper_share_of_stage": 0.7588,
+   "stage_remainder_ms": 6755.3,
+   "planner_fuel": 62308007919,
+   "cell_fuel": 577664602231,
+   "planner_fuel_share": 0.107862,
+   "planner_clip_thread_ms": 219045.8,
+   "planner_offset_thread_ms": 11816.2,
+   "planner_clip_share_of_clipper_thread": 0.948817
+  },
+  "base-arachne-on": {
+   "stage_wall_estimate_ms": 27484.6,
+   "planner_host_clip_ms": 18240.0,
+   "planner_host_offset_ms": 1063.3,
+   "planner_host_clipper_share_of_stage": 0.7023,
+   "stage_remainder_ms": 8181.3,
+   "planner_fuel": 62308008530,
+   "cell_fuel": 566936043073,
+   "planner_fuel_share": 0.109903,
+   "planner_clip_thread_ms": 198309.7,
+   "planner_offset_thread_ms": 11582.6,
+   "planner_clip_share_of_clipper_thread": 0.944816
+  }
+ },
+ "prices": {
+  "base-classic-on": {
+   "required_cut_s": 20.0693,
+   "pnp_median_s": 45.116406,
+   "orca_s": 28.607,
+   "stage_wall_estimate_s": 28.308,
+   "prices": {
+    "phase1_bbox_window_ceiling": {
+     "thread_ms": 142680.2,
+     "wall_ms": 12406.9,
+     "fanout": 11.5,
+     "clip_points": 426868700,
+     "in_bbox_points": 285368,
+     "in_bbox_share": 0.000668515,
+     "windowed_edge_share": 0.016221123,
+     "saving_thread_ms": 140365.8,
+     "saving_wall_ms": 12205.7,
+     "pct_of_cell_wall": 27.05,
+     "pct_of_required_cut": 60.82,
+     "ratio_after": 1.1504
+    },
+    "phase1_bbox_disjoint_polygon_filter": {
+     "near_share": 0.715059,
+     "saving_wall_ms": 3535.3,
+     "pct_of_required_cut": 17.62,
+     "ratio_after": 1.4535
+    },
+    "phase3_union_free_ceiling": {
+     "thread_ms": 51600.4,
+     "wall_ms": 5210.0,
+     "fanout": 9.904,
+     "pct_of_required_cut": 25.96,
+     "ratio_after": 1.395
+    },
+    "all_planner_clip_free_ceiling": {
+     "wall_ms": 18001.8,
+     "pct_of_required_cut": 89.7,
+     "ratio_after": 0.9478
+    },
+    "all_planner_clip_plus_offset_free_ceiling": {
+     "wall_ms": 19006.0,
+     "pct_of_required_cut": 94.7,
+     "ratio_after": 0.9127
+    }
+   }
+  },
+  "base-arachne-on": {
+   "required_cut_s": 18.649,
+   "pnp_median_s": 44.315114,
+   "orca_s": 29.3102,
+   "stage_wall_estimate_s": 27.0898,
+   "prices": {
+    "phase1_bbox_window_ceiling": {
+     "thread_ms": 134315.2,
+     "wall_ms": 11676.7,
+     "fanout": 11.503,
+     "clip_points": 426868700,
+     "in_bbox_points": 285368,
+     "in_bbox_share": 0.000668515,
+     "windowed_edge_share": 0.016221123,
+     "saving_thread_ms": 132136.5,
+     "saving_wall_ms": 11487.1,
+     "pct_of_cell_wall": 25.92,
+     "pct_of_required_cut": 61.6,
+     "ratio_after": 1.12
+    },
+    "phase1_bbox_disjoint_polygon_filter": {
+     "near_share": 0.715059,
+     "saving_wall_ms": 3327.1,
+     "pct_of_required_cut": 17.84,
+     "ratio_after": 1.3984
+    },
+    "phase3_union_free_ceiling": {
+     "thread_ms": 50231.8,
+     "wall_ms": 5118.5,
+     "fanout": 9.814,
+     "pct_of_required_cut": 27.45,
+     "ratio_after": 1.3373
+    },
+    "all_planner_clip_free_ceiling": {
+     "wall_ms": 17178.9,
+     "pct_of_required_cut": 92.12,
+     "ratio_after": 0.9258
+    },
+    "all_planner_clip_plus_offset_free_ceiling": {
+     "wall_ms": 18193.1,
+     "pct_of_required_cut": 97.56,
+     "ratio_after": 0.8912
+    }
+   }
+  },
+  "benchy-classic-on": {
+   "required_cut_s": 2.0819,
+   "pnp_median_s": 4.300778,
+   "orca_s": 2.9414,
+   "stage_wall_estimate_s": 1.8928,
+   "prices": {
+    "phase1_bbox_window_ceiling": {
+     "thread_ms": 5135.8,
+     "wall_ms": 500.9,
+     "fanout": 10.254,
+     "clip_points": 28230127,
+     "in_bbox_points": 19278,
+     "in_bbox_share": 0.000682887,
+     "windowed_edge_share": 0.03646651,
+     "saving_thread_ms": 4948.5,
+     "saving_wall_ms": 482.6,
+     "pct_of_cell_wall": 11.22,
+     "pct_of_required_cut": 23.18,
+     "ratio_after": 1.2981
+    },
+    "phase1_bbox_disjoint_polygon_filter": {
+     "near_share": 0.433764,
+     "saving_wall_ms": 283.6,
+     "pct_of_required_cut": 13.62,
+     "ratio_after": 1.3657
+    },
+    "phase3_union_free_ceiling": {
+     "thread_ms": 1542.1,
+     "wall_ms": 183.6,
+     "fanout": 8.399,
+     "pct_of_required_cut": 8.82,
+     "ratio_after": 1.3997
+    },
+    "all_planner_clip_free_ceiling": {
+     "wall_ms": 733.8,
+     "pct_of_required_cut": 35.25,
+     "ratio_after": 1.2127
+    },
+    "all_planner_clip_plus_offset_free_ceiling": {
+     "wall_ms": 830.0,
+     "pct_of_required_cut": 39.87,
+     "ratio_after": 1.18
+    }
+   }
+  },
+  "benchy-arachne-on": {
+   "required_cut_s": 2.1511,
+   "pnp_median_s": 4.318749,
+   "orca_s": 2.9234,
+   "stage_wall_estimate_s": 1.8962,
+   "prices": {
+    "phase1_bbox_window_ceiling": {
+     "thread_ms": 5124.7,
+     "wall_ms": 487.3,
+     "fanout": 10.516,
+     "clip_points": 28230127,
+     "in_bbox_points": 19278,
+     "in_bbox_share": 0.000682887,
+     "windowed_edge_share": 0.03646651,
+     "saving_thread_ms": 4937.8,
+     "saving_wall_ms": 469.6,
+     "pct_of_cell_wall": 10.87,
+     "pct_of_required_cut": 21.83,
+     "ratio_after": 1.3167
+    },
+    "phase1_bbox_disjoint_polygon_filter": {
+     "near_share": 0.433764,
+     "saving_wall_ms": 275.9,
+     "pct_of_required_cut": 12.83,
+     "ratio_after": 1.3829
+    },
+    "phase3_union_free_ceiling": {
+     "thread_ms": 1527.9,
+     "wall_ms": 189.0,
+     "fanout": 8.085,
+     "pct_of_required_cut": 8.79,
+     "ratio_after": 1.4127
+    },
+    "all_planner_clip_free_ceiling": {
+     "wall_ms": 725.0,
+     "pct_of_required_cut": 33.7,
+     "ratio_after": 1.2293
+    },
+    "all_planner_clip_plus_offset_free_ceiling": {
+     "wall_ms": 827.3,
+     "pct_of_required_cut": 38.46,
+     "ratio_after": 1.1943
+    }
+   }
+  },
+  "base-classic-off": {
+   "required_cut_s": -2.5013,
+   "pnp_median_s": 11.233015,
+   "orca_s": 18.2003,
+   "stage_wall_estimate_s": 0.2148,
+   "prices": {},
+   "not_applicable": "cell is estimated below 1.0x; supports-off control"
+  }
+ }
+}

@@ -1,0 +1,493 @@
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index f73b4680..e0d03286 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2599,7 +2599,32 @@ impl hs::Host for HostExecutionContext {
+             hs::LogLevel::Warn => "warn",
+             hs::LogLevel::Error => "error",
+         };
+-        self.log_messages.push((level_str.to_string(), message));
++        self.log_messages.push((level_str.to_string(), message.clone()));
++        // t136 probe: guest phase markers are echoed synchronously so a
++        // segment's guest wall lines up with the host calls it issued
++        // (env-gated; reverted before close).
++        if crate::t136_probe::enabled() {
++            if let Some(name) = message.strip_prefix("T136PHASE:") {
++                crate::t136_probe::set_phase(name);
++            } else if let Some(rest) = message.strip_prefix("T136WALL:") {
++                if let Some((name, ns)) = rest.rsplit_once(':') {
++                    if let Ok(ns) = ns.parse::<u64>() {
++                        crate::t136_probe::end_segment(name, ns);
++                    }
++                }
++            } else if let Some(rest) = message.strip_prefix("T136CHUNK:") {
++                let parts: Vec<&str> = rest.split(':').collect();
++                if let [phase, idx, requests, sdk_ns] = parts.as_slice() {
++                    if let (Ok(idx), Ok(requests), Ok(sdk_ns)) = (
++                        idx.parse::<u64>(),
++                        requests.parse::<u64>(),
++                        sdk_ns.parse::<u64>(),
++                    ) {
++                        crate::t136_probe::chunk(phase, idx, requests, sdk_ns);
++                    }
++                }
++            }
++        }
+         Ok(())
+     }
+ 
+@@ -2738,10 +2763,18 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::ClipRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+-        let (results, _mode) = crate::batch::map_batch(
++        // TEMPORARY t136 probe (reverted before close).
++        let t136_on = crate::t136_probe::enabled();
++        let t136_call = t136_on.then(std::time::Instant::now);
++        if t136_on {
++            crate::t136_probe::begin_call();
++        }
++        let (results, mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+             |r| {
++                let t136_request = t136_on.then(std::time::Instant::now);
++                let vertices = expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip);
+                 let ir_subject = wit_to_ir_expolygons(&r.subject);
+                 let ir_clip = wit_to_ir_expolygons(&r.clip);
+                 let result = slicer_core::polygon_ops::clip_polygons(
+@@ -2749,9 +2782,22 @@ impl hs::Host for HostExecutionContext {
+                     &ir_clip,
+                     ir_clip_op(r.op),
+                 );
++                if let Some(t136_request) = t136_request {
++                    crate::t136_probe::record_request(
++                        t136_request.elapsed().as_nanos() as u64,
++                        vertices,
++                    );
++                }
+                 ir_to_wit_expolygons(&result)
+             },
+         );
++        if let Some(t136_call) = t136_call {
++            crate::t136_probe::end_call(
++                requests.len(),
++                mode,
++                t136_call.elapsed().as_nanos() as u64,
++            );
++        }
+         Ok(results)
+     }
+ 
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index fc900794..646221f3 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -26,6 +26,7 @@ pub mod profiling;
+ pub mod selection;
+ pub mod support_aggregation;
+ pub mod support_territory;
++mod t136_probe;
+ pub mod traits;
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/crates/slicer-wasm-host/src/t136_probe.rs b/crates/slicer-wasm-host/src/t136_probe.rs
+new file mode 100644
+index 00000000..0f1a227d
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/t136_probe.rs
+@@ -0,0 +1,179 @@
++//! TEMPORARY probe for wayfinder ticket 136 — planner clip-batch fan-out.
++//!
++//! Compiled into the host binary only and enabled at runtime by
++//! `PNP_T136_PROBE=1`; the wasm guest never sees it. The take reverts it before
++//! close, so the evidence directory's `probe.patch` is the only artifact.
++//!
++//! # What it measures
++//!
++//! One `t136-batch` line per `clip_polygons_batch` host call and one
++//! `t136-segment` line per guest phase segment. The guest emits the segment
++//! boundaries (`T136PHASE:` / `T136WALL:`) and its own chunk timings
++//! (`T136CHUNK:`) through `host::log_warn`; this module echoes them
++//! synchronously, so the stderr stream is execution order and a segment's
++//! guest wall can be compared with the host calls issued inside it.
++//!
++//! Per call: `thread_ns` is the sum of the per-request closure durations (each
++//! runs on one rayon worker and includes both WIT conversions plus the clipper
++//! op), `max_ns` the longest single request, `ideal_ns` the call's own
++//! critical-path floor `max(thread/12, max)`.
++//!
++//! Per segment the same sums are accumulated, so the decomposition is exact at
++//! each level:
++//!
++//! ```text
++//! guest_wall_ns           guest-side span around the segment
++//!   - wall_sum_ns         host calls issued inside it
++//!   = guest_serial_ns     request building, marshalling, decode, assembly
++//! wall_sum_ns
++//!   - ideal_ns            critical-path floor of the chunking
++//!   = dispatch_excess_ns  rayon wake-up, imbalance, per-call floor
++//! ```
++//!
++//! `sdk_ns` on the chunk lines adds the third level: `sdk_ns - wall_sum_ns` is
++//! the wasm-side marshalling and result decoding around the host call.
++
++#![cfg(not(target_arch = "wasm32"))]
++
++use crate::batch::BatchMode;
++use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++use std::sync::{Mutex, OnceLock};
++
++static ON: OnceLock<bool> = OnceLock::new();
++static THREADS: OnceLock<u64> = OnceLock::new();
++static CALL_SUM_NS: AtomicU64 = AtomicU64::new(0);
++static CALL_MAX_NS: AtomicU64 = AtomicU64::new(0);
++static CALL_VERTICES: AtomicU64 = AtomicU64::new(0);
++
++/// Whether the probe is enabled (`PNP_T136_PROBE`).
++pub fn enabled() -> bool {
++    *ON.get_or_init(|| std::env::var_os("PNP_T136_PROBE").is_some())
++}
++
++/// Fan-out width the floors are quoted against — the rayon pool size.
++fn threads() -> u64 {
++    *THREADS.get_or_init(|| {
++        std::env::var("RAYON_NUM_THREADS")
++            .ok()
++            .and_then(|v| v.parse().ok())
++            .filter(|n: &u64| *n > 0)
++            .unwrap_or(1)
++    })
++}
++
++#[derive(Default)]
++struct Segment {
++    name: String,
++    calls: u64,
++    requests: u64,
++    vertices: u64,
++    wall_ns: u64,
++    thread_ns: u64,
++    max_ns: u64,
++    ideal_ns: u64,
++}
++
++#[derive(Default)]
++struct State {
++    phase: String,
++    seq: u64,
++    segment: Segment,
++}
++
++static STATE: OnceLock<Mutex<State>> = OnceLock::new();
++
++fn state() -> &'static Mutex<State> {
++    STATE.get_or_init(|| Mutex::new(State::default()))
++}
++
++/// Reset the per-call accumulators before `map_batch` fans out.
++pub fn begin_call() {
++    if !enabled() {
++        return;
++    }
++    CALL_SUM_NS.store(0, Relaxed);
++    CALL_MAX_NS.store(0, Relaxed);
++    CALL_VERTICES.store(0, Relaxed);
++}
++
++/// Record one completed request: its closure duration and its operand size.
++pub fn record_request(ns: u64, vertices: u64) {
++    if !enabled() {
++        return;
++    }
++    CALL_SUM_NS.fetch_add(ns, Relaxed);
++    CALL_MAX_NS.fetch_max(ns, Relaxed);
++    CALL_VERTICES.fetch_add(vertices, Relaxed);
++}
++
++/// Print one completed host call and fold it into the current segment.
++pub fn end_call(requests: usize, mode: BatchMode, wall_ns: u64) {
++    if !enabled() {
++        return;
++    }
++    let thread_ns = CALL_SUM_NS.swap(0, Relaxed);
++    let max_ns = CALL_MAX_NS.swap(0, Relaxed);
++    let vertices = CALL_VERTICES.swap(0, Relaxed);
++    let ideal_ns = (thread_ns / threads()).max(max_ns);
++    let mut st = state().lock().expect("t136 probe state poisoned");
++    st.seq += 1;
++    let seq = st.seq;
++    let phase = st.phase.clone();
++    eprintln!(
++        "t136-batch phase={phase} seq={seq} requests={requests} mode={mode:?} vertices={vertices} wall_ns={wall_ns} thread_ns={thread_ns} max_ns={max_ns} ideal_ns={ideal_ns}"
++    );
++    let seg = &mut st.segment;
++    seg.calls += 1;
++    seg.requests += requests as u64;
++    seg.vertices += vertices;
++    seg.wall_ns += wall_ns;
++    seg.thread_ns += thread_ns;
++    seg.max_ns = seg.max_ns.max(max_ns);
++    seg.ideal_ns += ideal_ns;
++}
++
++/// Start a new guest phase segment (`T136PHASE:<name>`).
++pub fn set_phase(name: &str) {
++    if !enabled() {
++        return;
++    }
++    let mut st = state().lock().expect("t136 probe state poisoned");
++    st.phase = name.to_string();
++    st.segment = Segment {
++        name: name.to_string(),
++        ..Segment::default()
++    };
++}
++
++/// Close the current segment with the guest's own wall and print it
++/// (`T136WALL:<name>:<ns>`).
++pub fn end_segment(name: &str, guest_wall_ns: u64) {
++    if !enabled() {
++        return;
++    }
++    let mut st = state().lock().expect("t136 probe state poisoned");
++    // The marker names the segment being closed; trust it over the state name
++    // so a missing `T136PHASE` cannot silently merge two segments.
++    st.segment.name = name.to_string();
++    let seg = std::mem::take(&mut st.segment);
++    eprintln!(
++        "t136-segment name={} calls={} requests={} vertices={} wall_sum_ns={} thread_ns={} max_ns={} ideal_ns={} guest_wall_ns={}",
++        seg.name,
++        seg.calls,
++        seg.requests,
++        seg.vertices,
++        seg.wall_ns,
++        seg.thread_ns,
++        seg.max_ns,
++        seg.ideal_ns,
++        guest_wall_ns
++    );
++}
++
++/// Echo a guest chunk timing (`T136CHUNK:<phase>:<idx>:<requests>:<sdk_ns>`).
++pub fn chunk(phase: &str, index: u64, requests: u64, sdk_ns: u64) {
++    if !enabled() {
++        return;
++    }
++    eprintln!("t136-chunk phase={phase} idx={index} requests={requests} sdk_ns={sdk_ns}");
++}
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index 87ef92d3..b6793cf4 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -1261,6 +1261,47 @@ const CLIP_BATCH_MAX_REQUESTS: usize = 256;
+ /// buffered collision sets from stacking up across the whole job.
+ const EMIT_BATCH_LAYERS: usize = 4;
+ 
++// ---------------------------------------------------------------------------
++// [PERF-T136-PROBE] Temporary segment brackets for wayfinder ticket 136
++// (planner clip-batch fan-out). Probe-only: removed before close; grep
++// `PERF-T136-PROBE` for every site. The host echoes these markers
++// synchronously, so a segment's guest wall can be compared with the host calls
++// issued inside it.
++// ---------------------------------------------------------------------------
++thread_local! {
++    static T136_LAST: std::cell::Cell<Option<(&'static str, u64)>> =
++        const { std::cell::Cell::new(None) };
++    static T136_CURRENT: std::cell::Cell<&'static str> = const { std::cell::Cell::new("none") };
++}
++
++/// Close the open segment and open `name`.
++fn t136_mark(name: &'static str) {
++    let now = host::now_us();
++    if let Some((prev, start)) = T136_LAST.with(std::cell::Cell::get) {
++        host::log_warn(&format!(
++            "T136WALL:{prev}:{}",
++            now.saturating_sub(start) * 1_000
++        ));
++    }
++    T136_LAST.with(|cell| cell.set(Some((name, now))));
++    T136_CURRENT.with(|cell| cell.set(name));
++    host::log_warn(&format!("T136PHASE:{name}"));
++}
++
++/// Close the last open segment.
++fn t136_end() {
++    let now = host::now_us();
++    if let Some((prev, start)) = T136_LAST.with(std::cell::Cell::get) {
++        host::log_warn(&format!(
++            "T136WALL:{prev}:{}",
++            now.saturating_sub(start) * 1_000
++        ));
++    }
++    T136_LAST.with(|cell| cell.set(None));
++    T136_CURRENT.with(|cell| cell.set("none"));
++    host::log_warn("T136PHASE:end");
++}
++
+ /// One buffered [`build_roles`] call.
+ ///
+ /// Ticket 78: 99.03 % of the planner's measured clipper core sits inside
+@@ -1312,8 +1353,18 @@ fn role_regions(input: &RoleBuildInput, role: usize) -> Vec<ExPolygon> {
+ /// Issue a batch in bounded slices, preserving input order across slices.
+ fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+     let mut results = Vec::with_capacity(requests.len());
+-    for slice in requests.chunks(CLIP_BATCH_MAX_REQUESTS) {
+-        results.extend(clip_polygons_batch(slice));
++    for (index, slice) in requests.chunks(CLIP_BATCH_MAX_REQUESTS).enumerate() {
++        // [PERF-T136-PROBE] the SDK call includes wasm-side marshalling and
++        // result decoding; the host's own wall excludes both.
++        let phase = T136_CURRENT.with(std::cell::Cell::get);
++        let start_us = host::now_us();
++        let out = clip_polygons_batch(slice);
++        let sdk_ns = host::now_us().saturating_sub(start_us) * 1_000;
++        host::log_warn(&format!(
++            "T136CHUNK:{phase}:{index}:{}:{sdk_ns}",
++            slice.len()
++        ));
++        results.extend(out);
+     }
+     results
+ }
+@@ -1335,6 +1386,8 @@ fn run_clip_batches(requests: &[ClipRequest]) -> Vec<Vec<ExPolygon>> {
+ /// 6. the body-minus-interfaces differences, one round per cut role,
+ /// 7. the territory intersect for modifier sub-regions.
+ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::SupportPlanRoleRegion>> {
++    // [PERF-T136-PROBE]
++    t136_mark("carve_build");
+     let mut carved: Vec<[Vec<ExPolygon>; ROLE_COUNT]> = inputs
+         .iter()
+         .map(|_| std::array::from_fn(|_| Vec::new()))
+@@ -1383,10 +1436,14 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             slot_lists[i][role] = slots;
+         }
+     }
++    // [PERF-T136-PROBE]
++    t136_mark("carve_run");
+     let mut carve_results: Vec<Option<ExPolygon>> = run_clip_batches(&carve_requests)
+         .into_iter()
+         .map(largest_part)
+         .collect();
++    // [PERF-T136-PROBE]
++    t136_mark("carve_apply");
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             for slot in std::mem::take(&mut slot_lists[i][role]) {
+@@ -1406,6 +1463,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+     // Phase 2: the lone-gated repair. `carve_emitted_regions_with_bbox_gate`
+     // re-clips a sole gated survivor under an active simplify tolerance because
+     // Douglas–Peucker's anchor is start-vertex sensitive.
++    // [PERF-T136-PROBE]
++    t136_mark("lone_build");
+     let mut lone_slots: Vec<(usize, usize)> = Vec::new();
+     let mut lone_requests: Vec<ClipRequest> = Vec::new();
+     for i in 0..inputs.len() {
+@@ -1420,12 +1479,18 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             }
+         }
+     }
++    // [PERF-T136-PROBE]
++    t136_mark("lone_run");
+     let lone_results = run_clip_batches(&lone_requests);
++    // [PERF-T136-PROBE]
++    t136_mark("lone_apply");
+     for ((i, role), result) in lone_slots.into_iter().zip(lone_results) {
+         carved[i][role] = largest_part(result).into_iter().collect();
+     }
+ 
+     // Phase 3: one union per role that carries more than one region.
++    // [PERF-T136-PROBE]
++    t136_mark("union_build");
+     let mut union_slots: Vec<(usize, usize)> = Vec::new();
+     let mut union_requests: Vec<ClipRequest> = Vec::new();
+     for i in 0..inputs.len() {
+@@ -1442,12 +1507,18 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             union_slots.push((i, role));
+         }
+     }
++    // [PERF-T136-PROBE]
++    t136_mark("union_run");
+     let union_results = run_clip_batches(&union_requests);
++    // [PERF-T136-PROBE]
++    t136_mark("union_apply");
+     for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+         carved[i][role] = result;
+     }
+ 
+     // Phase 4: in-guest simplification, exactly as the serial closure runs it.
++    // [PERF-T136-PROBE]
++    t136_mark("simplify");
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             if let Some(tolerance) = simplify[i][role] {
+@@ -1457,6 +1528,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+     }
+ 
+     // Phase 5: the set-wide difference against the collision set.
++    // [PERF-T136-PROBE]
++    t136_mark("set_build");
+     let mut set_slots: Vec<(usize, usize)> = Vec::new();
+     let mut set_requests: Vec<ClipRequest> = Vec::new();
+     for i in 0..inputs.len() {
+@@ -1475,16 +1548,24 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             set_slots.push((i, role));
+         }
+     }
++    // [PERF-T136-PROBE]
++    t136_mark("set_run");
+     let set_results = run_clip_batches(&set_requests);
++    // [PERF-T136-PROBE]
++    t136_mark("set_apply");
+     for ((i, role), result) in set_slots.into_iter().zip(set_results) {
+         carved[i][role] = result;
+     }
+ 
+     // Phase 6: subtract the interface geometry out of the body, one round per
+     // cut role. Each item's own sequence is preserved; items are independent.
++    // [PERF-T136-PROBE]
++    t136_mark("body_build");
+     let mut body: Vec<Vec<ExPolygon>> = (0..inputs.len())
+         .map(|i| std::mem::take(&mut carved[i][ROLE_BODY]))
+         .collect();
++    // [PERF-T136-PROBE]
++    t136_mark("body_cut");
+     for cut_role in [ROLE_ROOF, ROLE_BASE, ROLE_FLOOR] {
+         let mut slots: Vec<usize> = Vec::new();
+         let mut requests: Vec<ClipRequest> = Vec::new();
+@@ -1509,6 +1590,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+     }
+ 
+     // Phase 7: the territory intersect for modifier sub-regions.
++    // [PERF-T136-PROBE]
++    t136_mark("territory_build");
+     let mut territory_slots: Vec<(usize, usize)> = Vec::new();
+     let mut territory_requests: Vec<ClipRequest> = Vec::new();
+     for i in 0..inputs.len() {
+@@ -1527,12 +1610,18 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             territory_slots.push((i, role));
+         }
+     }
++    // [PERF-T136-PROBE]
++    t136_mark("territory_run");
+     let territory_results = run_clip_batches(&territory_requests);
++    // [PERF-T136-PROBE]
++    t136_mark("territory_apply");
+     for ((i, role), result) in territory_slots.into_iter().zip(territory_results) {
+         carved[i][role] = result;
+     }
+ 
+     // Phase 8: assemble in `build_roles` order, dropping empty roles.
++    // [PERF-T136-PROBE]
++    t136_mark("assemble");
+     let mut out = Vec::with_capacity(inputs.len());
+     for i in 0..inputs.len() {
+         let mut roles = Vec::new();
+@@ -1552,6 +1641,8 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         }
+         out.push(roles);
+     }
++    // [PERF-T136-PROBE]
++    t136_end();
+     out
+ }
+ 

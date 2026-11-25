@@ -1,5 +1,6 @@
-//! TDD (packet 107, AC-2): wiring `sliced_region_to_data`'s `overhang_areas`
-//! populator to `SurfaceClassificationIR.overhang_quartile_polygons`.
+//! TDD (packet 107, AC-2; re-sourced by ticket 142): wiring
+//! `sliced_region_to_data`'s `overhang_areas` populator to
+//! `SurfaceClassificationIR.overhang_areas`.
 //!
 //! Prior to this packet the populator hardcoded `overhang_areas: Vec::new()`
 //! (see `overhang_areas_empty_until_p106_tdd.rs`, whose default-constructed-
@@ -7,10 +8,15 @@
 //! end-to-end: slice a real overhang-ramp mesh through
 //! `execute_prepass_with_builtins` (host built-ins, including
 //! `PrePass::OverhangAnnotation` from packet 106) to obtain a genuine
-//! `SurfaceClassificationIR` with non-empty `overhang_quartile_polygons`,
-//! then feed a `SlicedRegion` covering the ramp's footprint through
+//! `SurfaceClassificationIR` with a non-empty `overhang_areas` map, then feed a
+//! `SlicedRegion` covering the ramp's footprint through
 //! `sliced_region_to_data` and assert the resulting `SliceRegionData.
-//! overhang_areas` (and `overhang_quartile_polygons`) are non-empty.
+//! overhang_areas` is non-empty and clipped to the region.
+//!
+//! Since ticket 142 the production slice path does not carry quartile-band
+//! polygons (`overhang_quartile_polygons` stays empty there); the band
+//! clipping contract that used to live here is a diagnostic-only surface now,
+//! reconstructed by the visual-debug renderer.
 
 #![allow(missing_docs)]
 
@@ -182,13 +188,16 @@ fn two_global_layers() -> Vec<GlobalLayer> {
     vec![
         GlobalLayer {
             index: 0,
-            z: 0.5,
+            // t139 midpoint sampling: the slice plane is 0.5 * (lo + hi), so a
+            // declared top of 1.0 samples z=0.5 (inside the lower box). A top of
+            // 0.5 would sample z=0.0, exactly on the plate, and slice nothing.
+            z: 1.0,
             active_regions: vec![active_region("ramp")],
             ..Default::default()
         },
         GlobalLayer {
             index: 1,
-            z: 1.5,
+            z: 2.0,
             active_regions: vec![active_region("ramp")],
             ..Default::default()
         },
@@ -199,13 +208,13 @@ fn overlapping_two_global_layers() -> Vec<GlobalLayer> {
     vec![
         GlobalLayer {
             index: 0,
-            z: 0.5,
+            z: 1.0,
             active_regions: vec![active_region("object-a"), active_region("object-b")],
             ..Default::default()
         },
         GlobalLayer {
             index: 1,
-            z: 1.5,
+            z: 2.0,
             active_regions: vec![active_region("object-a"), active_region("object-b")],
             ..Default::default()
         },
@@ -215,7 +224,7 @@ fn overlapping_two_global_layers() -> Vec<GlobalLayer> {
 /// Seed a blackboard with mesh analysis + layer plan, run `PrePass::Slice`, then
 /// `PrePass::OverhangAnnotation` (which derives overhang from the committed
 /// slices), returning the blackboard with a populated
-/// `SurfaceClassificationIR.overhang_quartile_polygons`. `commit_slice_builtin`
+/// `SurfaceClassificationIR.overhang_areas`. `commit_slice_builtin`
 /// needs no `RegionMapIR` (per-region defaults are used when none is present).
 fn seed_slice_and_annotate(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> Blackboard {
     let sc = execute_mesh_analysis(&mesh).expect("mesh analysis must succeed");
@@ -318,19 +327,19 @@ fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
         .surface_classification()
         .expect("SurfaceClassificationIR must be committed by PrePass::MeshAnalysis");
     assert!(
-        !surface_classification.overhang_quartile_polygons.is_empty(),
-        "fixture setup invariant: expected at least one global layer index with \
-         overhang quartile bands, got: {:?}",
-        surface_classification.overhang_quartile_polygons
+        !surface_classification.overhang_areas.is_empty(),
+        "fixture setup invariant: expected at least one global layer index with an \
+         overhang area, got: {:?}",
+        surface_classification.overhang_areas
     );
 
-    // Pick any layer index that actually has overhang quartile bands, and
+    // Pick any layer index that actually has an overhang area, and
     // build a region for the "ramp" object whose polygon generously covers
     // both boxes' XY footprint so the cheap AABB prefilter overlaps.
     let (&overhang_layer_index, _) = surface_classification
-        .overhang_quartile_polygons
+        .overhang_areas
         .get("ramp")
-        .expect("ramp object has bands")
+        .expect("ramp object has overhang areas")
         .iter()
         .next()
         .expect("checked non-empty above");
@@ -361,17 +370,16 @@ fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
          footprint at layer {overhang_layer_index} (packet 107 wiring)"
     );
     assert!(
-        !data.overhang_quartile_polygons.is_empty(),
-        "overhang_quartile_polygons() must be non-empty for a region covering the \
-         overhang footprint at layer {overhang_layer_index} (packet 107 wiring)"
+        data.overhang_quartile_polygons.is_empty(),
+        "the production path must not carry quartile band polygons (ticket 142)"
     );
 
-    // AC-1/AC-2 (packet 107 fix): `overhang_areas` and each quartile band's
-    // polygons must be exactly clipped to the region's own polygon area, not
-    // merely AABB-adjacent to it. Assert every returned vertex lies within
-    // the region's own bounding box (a necessary condition of exact clipping
-    // — the pre-fix AABB-only prefilter could leak vertices from a band that
-    // extends past the region but whose AABB happens to overlap).
+    // AC-1/AC-2 (packet 107 fix): `overhang_areas` must be exactly clipped to
+    // the region's own polygon area, not merely AABB-adjacent to it. Assert
+    // every returned vertex lies within the region's own bounding box (a
+    // necessary condition of exact clipping — the pre-fix AABB-only prefilter
+    // could leak vertices from a polygon that extends past the region but whose
+    // AABB happens to overlap).
     let region_bbox =
         ir_expolygons_bbox(&region.polygons).expect("test region has non-empty polygons");
     let (r_min_x, r_min_y, r_max_x, r_max_y) = region_bbox;
@@ -384,23 +392,9 @@ fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
             && overhang_bbox.2 <= r_max_x
             && overhang_bbox.3 <= r_max_y,
         "overhang_areas bbox {overhang_bbox:?} must be contained within the region's own \
-         polygon bbox {region_bbox:?} — a wider bbox proves band polygons leaked in from \
+         polygon bbox {region_bbox:?} — a wider bbox proves the area leaked in from \
          outside the region's actual footprint (AC-1)"
     );
-
-    for band in &data.overhang_quartile_polygons {
-        let band_bbox = wit_expolygons_bbox(&band.polygons)
-            .expect("dropped-if-empty invariant: only non-empty clipped bands are emitted");
-        assert!(
-            band_bbox.0 >= r_min_x
-                && band_bbox.1 >= r_min_y
-                && band_bbox.2 <= r_max_x
-                && band_bbox.3 <= r_max_y,
-            "quartile band (q={}) bbox {band_bbox:?} must be contained within the region's \
-             own polygon bbox {region_bbox:?} (AC-1)",
-            band.quartile
-        );
-    }
 }
 
 #[test]
@@ -424,8 +418,8 @@ fn overhang_areas_object_scoped_no_cross_object_leak() {
         polygons: vec![covering_square(4.0, -1.0, 21.0, 11.0)],
         ..Default::default()
     };
-    let data_a = sliced_region_to_data(&region_a, 1.5, vec![], Some(sc), 1);
-    let data_b = sliced_region_to_data(&region_b, 1.5, vec![], Some(sc), 1);
+    let data_a = sliced_region_to_data(&region_a, 2.0, vec![], Some(sc), 1);
+    let data_b = sliced_region_to_data(&region_b, 2.0, vec![], Some(sc), 1);
 
     let a_boundary = wit_expolygons_bbox(&data_a.prev_layer_boundary).expect("object A boundary");
     let b_boundary = wit_expolygons_bbox(&data_b.prev_layer_boundary).expect("object B boundary");
@@ -438,15 +432,10 @@ fn overhang_areas_object_scoped_no_cross_object_leak() {
         "object B view leaked object A boundary polygons: {b_boundary:?}"
     );
 
-    let b_band_polygons = data_b
-        .overhang_quartile_polygons
-        .iter()
-        .flat_map(|band| band.polygons.clone())
-        .collect::<Vec<_>>();
-    if let Some(bbox) = wit_expolygons_bbox(&b_band_polygons) {
+    if let Some(bbox) = wit_expolygons_bbox(&data_b.overhang_areas) {
         assert!(
             bbox.0 >= 150_000,
-            "object B quartile bands leaked object A overhang polygons: {bbox:?}"
+            "object B overhang areas leaked object A overhang polygons: {bbox:?}"
         );
     }
 }

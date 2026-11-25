@@ -829,17 +829,23 @@ fn push_profile_segment(
 /// Evaluate an object-local layer-top schedule from a composed profile.
 ///
 /// The walk starts at Z=0 and repeatedly adds the height of the segment
-/// containing a probe just **above** the current top (`z + 1e-9`), pushing each
-/// new top while it is at most `object_height` plus the same tolerance.
+/// containing a probe just **above** the current bottom (`z + 1e-9`), emitting
+/// each new top while that layer's **midpoint** is still below
+/// `object_height`. This is canonical `generate_object_layers` (`Slicing.cpp`),
+/// which breaks its loop on `slice_z >= object_print_z_height` where
+/// `slice_z = print_z + 0.5 × height`: an object whose height is not an exact
+/// multiple of its layer height keeps a final layer whose print top overshoots
+/// the object, exactly as canonical does (OrcaSlicer's 496th base layer with a
+/// 99.2 top on a 99.1598 mm object).
 ///
-/// Probing above the top (rather than testing the top itself against
+/// Probing above the bottom (rather than testing the top itself against
 /// `z_start <= z < z_end`) is what makes the walk cross a range boundary
-/// exactly once. Canonical `generate_object_layers` (`Slicing.cpp`) selects a
-/// layer's height from a probe inside the layer for the same reason: `0.7 + 0.1`
-/// accumulates to `0.7999999999999999`, one ULP below the `[0.4, 0.8)` end, so a
-/// half-open test on the top re-selects the exhausted 0.1 mm segment and the
-/// object's final layer is silently dropped. Probing past the boundary advances
-/// to the next segment, whose height carries the schedule to the object top.
+/// exactly once. Canonical selects a layer's height from a probe inside the
+/// layer for the same reason: `0.7 + 0.1` accumulates to `0.7999999999999999`,
+/// one ULP below the `[0.4, 0.8)` end, so a half-open test on the top
+/// re-selects the exhausted 0.1 mm segment and the object's final layer is
+/// silently dropped. Probing past the boundary advances to the next segment,
+/// whose height carries the schedule to the object top.
 ///
 /// A probe outside every segment stops the walk defensively. The returned Zs
 /// are object-local: no raft offset is applied here.
@@ -860,12 +866,14 @@ pub fn layer_top_zs(segments: &[HeightProfileSegment], object_height: f64) -> Ve
         if segment.height.is_nan() || segment.height <= 0.0 {
             break;
         }
-        z += segment.height;
-        if z <= object_height + 1.0e-9 {
-            tops.push(z);
-        } else {
+        // Canonical termination: the layer exists while its own slice plane
+        // (the band midpoint) is strictly below the object height.
+        let slice_z = z + 0.5 * segment.height;
+        if slice_z >= object_height {
             break;
         }
+        z += segment.height;
+        tops.push(z);
     }
 
     tops

@@ -1,0 +1,66 @@
+[
+ {
+  "cell": "benchy-classic-off",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 3.895,
+  "gcode_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_sha256": "3d28d1b32f450af31f57832640ab7b27c9111025f32c8ba11553d2fb85ba772c",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-classic-on",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 7.584,
+  "gcode_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_sha256": "eb202973a1ece31c535d74d5b648c3fefdd4fbc048b81807e7e091e5adaffcd0",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-arachne-off",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 3.849,
+  "gcode_sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+  "reference_sha256": "39ad6289b681529e89ed9feb64c5731915e6c384c5f26974b1f14c110501f165",
+  "reference_match": true
+ },
+ {
+  "cell": "benchy-arachne-on",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 7.572,
+  "gcode_sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+  "reference_sha256": "77c3c578aa28382cd398ff007e529804b088668f1a6844ae76bb5950e25464d2",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-off",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 28.017,
+  "gcode_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_sha256": "9bb18f0e8173ec9ce0b1f22dfdbb9f23067135df041644074a55c2924d8fd37e",
+  "reference_match": true
+ },
+ {
+  "cell": "base-classic-on",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 81.449,
+  "gcode_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_sha256": "eccbd5238d2dde1b30473abdbd88df941316f1e49e6e4fcb783aa02b56fcd656",
+  "reference_match": true
+ },
+ {
+  "cell": "base-arachne-off",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 32.771,
+  "gcode_sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+  "reference_sha256": "2f249cdb8fd2c570b0a818debfa2340f9925509e9e164abdaaf3e993c6324770",
+  "reference_match": true
+ },
+ {
+  "cell": "base-arachne-on",
+  "exit_code": 0,
+  "instrumented_wall_seconds": 85.182,
+  "gcode_sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+  "reference_sha256": "1811425ffccda686c9b86448cf30169e6d09859991e1a2d5e7ac9d4cb49b6285",
+  "reference_match": true
+ }
+]

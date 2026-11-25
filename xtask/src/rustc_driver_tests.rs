@@ -1,9 +1,10 @@
 use super::build_guests::enforce_accelerated_latch_gate;
 use super::rustc_driver::{
     clear_latch, is_latched, latch_path, latch_policy_rejection, parse_rustc_identity,
-    prepare_rustc_invocation, resolve_shim_root, shim_wrapper_path, validate_rustc_invocation,
-    AccelerationProfile, DriverMode, InvocationKind, ALLOWED_COMMIT_HASH, ALLOWED_HOST,
-    ALLOWED_LLVM_VERSION, ALLOWED_RELEASE, ALLOWED_WASM_TARGET, RESERVED_CFG,
+    prepare_rustc_invocation, resolve_shim_root, shim_wrapper_path, strip_verbatim_prefix,
+    validate_rustc_invocation, AccelerationProfile, DriverMode, InvocationKind,
+    ALLOWED_COMMIT_HASH, ALLOWED_HOST, ALLOWED_LLVM_VERSION, ALLOWED_RELEASE, ALLOWED_WASM_TARGET,
+    RESERVED_CFG,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -716,5 +717,30 @@ fn shim_root_falls_back_to_the_xtask_binary_directory() {
 
     for path in [root, elsewhere] {
         remove_test_root(&path);
+    }
+}
+
+/// A verbatim path must never reach a tool argument. MSVC's `cl.exe` reads
+/// `-c \\?\D:\ws\out\x.cc` as the UNC path `\\x.cc` and fails with
+/// `c1xx: fatal error C1083`; the same spelling in `CARGO_TARGET_DIR` is how
+/// the accelerated host build failed from packet 142 to t161.
+#[test]
+fn verbatim_paths_are_flattened_and_ordinary_paths_are_untouched() {
+    assert_eq!(
+        strip_verbatim_prefix(PathBuf::from(r"\\?\D:\ws\target").as_path()),
+        PathBuf::from(r"D:\ws\target"),
+        "a drive-absolute verbatim path loses only the prefix"
+    );
+    assert_eq!(
+        strip_verbatim_prefix(PathBuf::from(r"\\?\UNC\server\share\ws").as_path()),
+        PathBuf::from(r"\\server\share\ws"),
+        "an UNC verbatim path becomes the ordinary UNC spelling, not a relative one"
+    );
+    for ordinary in [r"D:\ws\target", "target", "", r"\\server\share"] {
+        assert_eq!(
+            strip_verbatim_prefix(PathBuf::from(ordinary).as_path()),
+            PathBuf::from(ordinary),
+            "ordinary path {ordinary:?} must be returned unchanged"
+        );
     }
 }

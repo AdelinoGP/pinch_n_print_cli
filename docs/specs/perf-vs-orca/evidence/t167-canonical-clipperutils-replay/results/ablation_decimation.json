@@ -1,0 +1,5287 @@
+{
+  "corpus": "t167/base-prepass-t167.corpus",
+  "corpus_sha256": "74c2b553659d71d67d6327b766fa929280eec520d6dafdf6317213c2084260a0",
+  "case_count": 118,
+  "method": "batch mode, forward+reverse (10 repeats median per case), single-thread",
+  "by_site": {
+    "IB_CAND_POS": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 0.24,
+        "cpp_c2_1_5_2": 0.221,
+        "orca_v2_5_0_nodecim": 0.171,
+        "orca_v2_5_0": 0.1532
+      },
+      "median_ms": {
+        "rust_pnp": 0.00605,
+        "cpp_c2_1_5_2": 0.00628,
+        "orca_v2_5_0_nodecim": 0.00575,
+        "orca_v2_5_0": 0.00528
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 1.5666,
+        "f1_rust_over_cpp152": 1.086,
+        "f2_cpp152_over_c201_nodecim": 1.2924,
+        "f3_c201_nodecim_over_c201_decim": 1.1162
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 1.7e-05,
+        "orca_v2_5_0": 3.2e-05
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 9e-05,
+        "orca_v2_5_0": 0.044634
+      }
+    },
+    "IB_DEEP_NEG": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 591.1126,
+        "cpp_c2_1_5_2": 479.0478,
+        "orca_v2_5_0_nodecim": 389.8281,
+        "orca_v2_5_0": 47.1472
+      },
+      "median_ms": {
+        "rust_pnp": 13.40475,
+        "cpp_c2_1_5_2": 10.46787,
+        "orca_v2_5_0_nodecim": 8.57575,
+        "orca_v2_5_0": 0.94857
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 12.5376,
+        "f1_rust_over_cpp152": 1.2339,
+        "f2_cpp152_over_c201_nodecim": 1.2289,
+        "f3_c201_nodecim_over_c201_decim": 8.2683
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 4.7e-05,
+        "orca_v2_5_0": 0.064432
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.000362,
+        "orca_v2_5_0": 0.492109
+      }
+    },
+    "IB_DEEP_POS": {
+      "n": 24,
+      "sum_ms": {
+        "rust_pnp": 2867.8223,
+        "cpp_c2_1_5_2": 2381.1307,
+        "orca_v2_5_0_nodecim": 2114.9383,
+        "orca_v2_5_0": 593.6631
+      },
+      "median_ms": {
+        "rust_pnp": 136.13165,
+        "cpp_c2_1_5_2": 111.16078,
+        "orca_v2_5_0_nodecim": 98.665,
+        "orca_v2_5_0": 23.07923
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 4.8307,
+        "f1_rust_over_cpp152": 1.2044,
+        "f2_cpp152_over_c201_nodecim": 1.1259,
+        "f3_c201_nodecim_over_c201_decim": 3.5625
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 2e-06,
+        "orca_v2_5_0": 0.003495
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 3e-06,
+        "orca_v2_5_0": 0.020257
+      }
+    },
+    "SH_OPEN_BOT_CANON": {
+      "n": 15,
+      "sum_ms": {
+        "rust_pnp": 112.7355,
+        "cpp_c2_1_5_2": 80.7135,
+        "orca_v2_5_0_nodecim": 46.822,
+        "orca_v2_5_0": 37.1079
+      },
+      "median_ms": {
+        "rust_pnp": 9.16715,
+        "cpp_c2_1_5_2": 6.5522,
+        "orca_v2_5_0_nodecim": 3.69245,
+        "orca_v2_5_0": 2.54585
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 3.038,
+        "f1_rust_over_cpp152": 1.3967,
+        "f2_cpp152_over_c201_nodecim": 1.7238,
+        "f3_c201_nodecim_over_c201_decim": 1.2618
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.001156,
+        "orca_v2_5_0": 0.000971
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.002284,
+        "orca_v2_5_0": 0.002299
+      }
+    },
+    "SH_OPEN_BOT_LEGACY": {
+      "n": 15,
+      "sum_ms": {
+        "rust_pnp": 446.5509,
+        "cpp_c2_1_5_2": 303.5484,
+        "orca_v2_5_0_nodecim": 328.5059,
+        "orca_v2_5_0": 161.0884
+      },
+      "median_ms": {
+        "rust_pnp": 28.78945,
+        "cpp_c2_1_5_2": 19.42135,
+        "orca_v2_5_0_nodecim": 22.41995,
+        "orca_v2_5_0": 8.208
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 2.7721,
+        "f1_rust_over_cpp152": 1.4711,
+        "f2_cpp152_over_c201_nodecim": 0.924,
+        "f3_c201_nodecim_over_c201_decim": 2.0393
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 3.8e-05,
+        "orca_v2_5_0": 5.2e-05
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.000874,
+        "orca_v2_5_0": 0.000797
+      }
+    },
+    "SH_OPEN_TOP_CANON": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 140.9791,
+        "cpp_c2_1_5_2": 100.2416,
+        "orca_v2_5_0_nodecim": 56.9681,
+        "orca_v2_5_0": 44.2907
+      },
+      "median_ms": {
+        "rust_pnp": 7.94473,
+        "cpp_c2_1_5_2": 5.94853,
+        "orca_v2_5_0_nodecim": 3.37257,
+        "orca_v2_5_0": 2.62565
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 3.183,
+        "f1_rust_over_cpp152": 1.4064,
+        "f2_cpp152_over_c201_nodecim": 1.7596,
+        "f3_c201_nodecim_over_c201_decim": 1.2862
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.00132,
+        "orca_v2_5_0": 0.001173
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.003096,
+        "orca_v2_5_0": 0.003697
+      }
+    },
+    "SH_OPEN_TOP_LEGACY": {
+      "n": 16,
+      "sum_ms": {
+        "rust_pnp": 571.443,
+        "cpp_c2_1_5_2": 425.8812,
+        "orca_v2_5_0_nodecim": 433.6002,
+        "orca_v2_5_0": 206.2589
+      },
+      "median_ms": {
+        "rust_pnp": 32.69435,
+        "cpp_c2_1_5_2": 24.02135,
+        "orca_v2_5_0_nodecim": 20.01833,
+        "orca_v2_5_0": 8.88958
+      },
+      "factors": {
+        "total_rust_over_orca_v250": 2.7705,
+        "f1_rust_over_cpp152": 1.3418,
+        "f2_cpp152_over_c201_nodecim": 0.9822,
+        "f3_c201_nodecim_over_c201_decim": 2.1022
+      },
+      "median_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 1.3e-05,
+        "orca_v2_5_0": 3.7e-05
+      },
+      "max_rel_area_vs_rust": {
+        "orca_v2_5_0_nodecim": 0.000209,
+        "orca_v2_5_0": 0.000357
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_index": 0,
+      "site": "IB_CAND_POS",
+      "layer": 22,
+      "opcode": 0,
+      "in_verts": 21,
+      "rust_pnp": {
+        "median_ns": 5850,
+        "fwd_median_ns": 6100,
+        "rev_median_ns": 5600,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166259.5,
+        "out_hash": "77fcc23b0f41ccaf"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6650,
+        "fwd_median_ns": 6400,
+        "rev_median_ns": 6900,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166259.5,
+        "out_hash": "77fcc23b0f41ccaf"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5350,
+        "fwd_median_ns": 5600,
+        "rev_median_ns": 5100,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160786.86915,
+        "out_hash": "d83d8ee1f7d73d41"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5150,
+        "fwd_median_ns": 5300,
+        "rev_median_ns": 5000,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160758.2609,
+        "out_hash": "7bd99dec43a71904"
+      }
+    },
+    {
+      "case_index": 1,
+      "site": "IB_CAND_POS",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 3,
+      "rust_pnp": {
+        "median_ns": 850,
+        "fwd_median_ns": 900,
+        "rev_median_ns": 800,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436.0,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 1300,
+        "fwd_median_ns": 1300,
+        "rev_median_ns": 1300,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1500,
+        "fwd_median_ns": 1500,
+        "rev_median_ns": 1500,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1350,
+        "fwd_median_ns": 1400,
+        "rev_median_ns": 1300,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      }
+    },
+    {
+      "case_index": 2,
+      "site": "IB_CAND_POS",
+      "layer": 45,
+      "opcode": 0,
+      "in_verts": 6,
+      "rust_pnp": {
+        "median_ns": 1300,
+        "fwd_median_ns": 1400,
+        "rev_median_ns": 1300,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565.0,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 1900,
+        "fwd_median_ns": 1900,
+        "rev_median_ns": 1900,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2100,
+        "fwd_median_ns": 2200,
+        "rev_median_ns": 2000,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1900,
+        "fwd_median_ns": 1900,
+        "rev_median_ns": 1900,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      }
+    },
+    {
+      "case_index": 3,
+      "site": "IB_CAND_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 179,
+      "rust_pnp": {
+        "median_ns": 126550,
+        "fwd_median_ns": 126200,
+        "rev_median_ns": 127700,
+        "out_paths": 1,
+        "out_verts": 152,
+        "out_area_u2": 700670949.0,
+        "out_hash": "6147563163ca49a3"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 104000,
+        "fwd_median_ns": 106200,
+        "rev_median_ns": 101800,
+        "out_paths": 1,
+        "out_verts": 152,
+        "out_area_u2": 700670949,
+        "out_hash": "6147563163ca49a3"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 76950,
+        "fwd_median_ns": 75500,
+        "rev_median_ns": 78400,
+        "out_paths": 1,
+        "out_verts": 154,
+        "out_area_u2": 700664071.0134,
+        "out_hash": "385e0f9fcbe89291"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 70200,
+        "fwd_median_ns": 72300,
+        "rev_median_ns": 69600,
+        "out_paths": 1,
+        "out_verts": 155,
+        "out_area_u2": 700653594.3219,
+        "out_hash": "c33f1d564e46f910"
+      }
+    },
+    {
+      "case_index": 4,
+      "site": "IB_CAND_POS",
+      "layer": 47,
+      "opcode": 0,
+      "in_verts": 70,
+      "rust_pnp": {
+        "median_ns": 18600,
+        "fwd_median_ns": 18800,
+        "rev_median_ns": 18100,
+        "out_paths": 1,
+        "out_verts": 57,
+        "out_area_u2": 291620484.5,
+        "out_hash": "d8f422e3d4a9618b"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 18050,
+        "fwd_median_ns": 18100,
+        "rev_median_ns": 18000,
+        "out_paths": 1,
+        "out_verts": 57,
+        "out_area_u2": 291620484.5,
+        "out_hash": "d8f422e3d4a9618b"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 14800,
+        "fwd_median_ns": 14800,
+        "rev_median_ns": 13800,
+        "out_paths": 1,
+        "out_verts": 58,
+        "out_area_u2": 291621129.92445,
+        "out_hash": "296c29efb4558e0f"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 12800,
+        "fwd_median_ns": 13100,
+        "rev_median_ns": 12700,
+        "out_paths": 1,
+        "out_verts": 62,
+        "out_area_u2": 291614686.82585,
+        "out_hash": "481cc531fd2beb12"
+      }
+    },
+    {
+      "case_index": 5,
+      "site": "IB_CAND_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 4,
+      "rust_pnp": {
+        "median_ns": 1100,
+        "fwd_median_ns": 1100,
+        "rev_median_ns": 1100,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 1700,
+        "fwd_median_ns": 1700,
+        "rev_median_ns": 1700,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1800,
+        "fwd_median_ns": 1800,
+        "rev_median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1700,
+        "fwd_median_ns": 1700,
+        "rev_median_ns": 1700,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      }
+    },
+    {
+      "case_index": 6,
+      "site": "IB_CAND_POS",
+      "layer": 69,
+      "opcode": 0,
+      "in_verts": 17,
+      "rust_pnp": {
+        "median_ns": 2800,
+        "fwd_median_ns": 3100,
+        "rev_median_ns": 2700,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047625.0,
+        "out_hash": "4b99dac715dc99f7"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3450,
+        "fwd_median_ns": 3400,
+        "rev_median_ns": 3500,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047625,
+        "out_hash": "4b99dac715dc99f7"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3650,
+        "fwd_median_ns": 4000,
+        "rev_median_ns": 3400,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3250,
+        "fwd_median_ns": 3200,
+        "rev_median_ns": 3300,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      }
+    },
+    {
+      "case_index": 7,
+      "site": "IB_CAND_POS",
+      "layer": 87,
+      "opcode": 0,
+      "in_verts": 53,
+      "rust_pnp": {
+        "median_ns": 8850,
+        "fwd_median_ns": 9500,
+        "rev_median_ns": 8700,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139105063.0,
+        "out_hash": "e335acaefba6b8fc"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 10600,
+        "fwd_median_ns": 10600,
+        "rev_median_ns": 10600,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139105063,
+        "out_hash": "e335acaefba6b8fc"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 8900,
+        "fwd_median_ns": 8900,
+        "rev_median_ns": 8900,
+        "out_paths": 1,
+        "out_verts": 50,
+        "out_area_u2": 139101396.89785,
+        "out_hash": "aea8f2b7c0ca1b1e"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 8150,
+        "fwd_median_ns": 8100,
+        "rev_median_ns": 8200,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139099575.15015,
+        "out_hash": "e9ecd4dac3d3e5a0"
+      }
+    },
+    {
+      "case_index": 8,
+      "site": "IB_CAND_POS",
+      "layer": 117,
+      "opcode": 0,
+      "in_verts": 8,
+      "rust_pnp": {
+        "median_ns": 1900,
+        "fwd_median_ns": 2100,
+        "rev_median_ns": 1800,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193640.5,
+        "out_hash": "30171458a54c8cad"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 2500,
+        "fwd_median_ns": 2500,
+        "rev_median_ns": 2500,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193640.5,
+        "out_hash": "30171458a54c8cad"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2700,
+        "fwd_median_ns": 2800,
+        "rev_median_ns": 2700,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 56193341.27135,
+        "out_hash": "f3d97a948166bff5"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1900,
+        "fwd_median_ns": 1900,
+        "rev_median_ns": 1900,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53685480.07415,
+        "out_hash": "c9baf989dd8d6f9d"
+      }
+    },
+    {
+      "case_index": 9,
+      "site": "IB_CAND_POS",
+      "layer": 163,
+      "opcode": 0,
+      "in_verts": 11,
+      "rust_pnp": {
+        "median_ns": 2400,
+        "fwd_median_ns": 2700,
+        "rev_median_ns": 2200,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732.0,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 2850,
+        "fwd_median_ns": 2900,
+        "rev_median_ns": 2800,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3200,
+        "fwd_median_ns": 3100,
+        "rev_median_ns": 3200,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2900,
+        "fwd_median_ns": 2900,
+        "rev_median_ns": 2900,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      }
+    },
+    {
+      "case_index": 10,
+      "site": "IB_CAND_POS",
+      "layer": 164,
+      "opcode": 0,
+      "in_verts": 27,
+      "rust_pnp": {
+        "median_ns": 6250,
+        "fwd_median_ns": 6000,
+        "rev_median_ns": 6500,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722.0,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5900,
+        "fwd_median_ns": 5900,
+        "rev_median_ns": 5900,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 6300,
+        "fwd_median_ns": 6600,
+        "rev_median_ns": 6200,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 6000,
+        "fwd_median_ns": 6000,
+        "rev_median_ns": 6000,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      }
+    },
+    {
+      "case_index": 11,
+      "site": "IB_CAND_POS",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 43,
+      "rust_pnp": {
+        "median_ns": 8300,
+        "fwd_median_ns": 9200,
+        "rev_median_ns": 8300,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142268796.5,
+        "out_hash": "d23d3f1d0e765852"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 9550,
+        "fwd_median_ns": 9500,
+        "rev_median_ns": 9600,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142268796.5,
+        "out_hash": "d23d3f1d0e765852"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 7550,
+        "fwd_median_ns": 7500,
+        "rev_median_ns": 7600,
+        "out_paths": 1,
+        "out_verts": 46,
+        "out_area_u2": 142270932.6252,
+        "out_hash": "2bd173acd02e46a9"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 6950,
+        "fwd_median_ns": 6900,
+        "rev_median_ns": 7000,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142270661.9708,
+        "out_hash": "00ca9285cfc2f14e"
+      }
+    },
+    {
+      "case_index": 12,
+      "site": "IB_CAND_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 14,
+      "rust_pnp": {
+        "median_ns": 3150,
+        "fwd_median_ns": 3400,
+        "rev_median_ns": 3000,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84128075.0,
+        "out_hash": "0267850ab998d9a1"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3850,
+        "fwd_median_ns": 3900,
+        "rev_median_ns": 3800,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84128075,
+        "out_hash": "0267850ab998d9a1"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3900,
+        "fwd_median_ns": 4000,
+        "rev_median_ns": 3800,
+        "out_paths": 1,
+        "out_verts": 15,
+        "out_area_u2": 84129852.97765,
+        "out_hash": "ea6710737e5911f1"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3200,
+        "fwd_median_ns": 3200,
+        "rev_median_ns": 3200,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84103358.40655,
+        "out_hash": "9aafad851a5ed115"
+      }
+    },
+    {
+      "case_index": 13,
+      "site": "IB_CAND_POS",
+      "layer": 328,
+      "opcode": 0,
+      "in_verts": 32,
+      "rust_pnp": {
+        "median_ns": 8100,
+        "fwd_median_ns": 8300,
+        "rev_median_ns": 8100,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126687618.0,
+        "out_hash": "27c56646c6d52ae3"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 8900,
+        "fwd_median_ns": 8900,
+        "rev_median_ns": 8900,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126687618,
+        "out_hash": "27c56646c6d52ae3"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 6150,
+        "fwd_median_ns": 6300,
+        "rev_median_ns": 5900,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5400,
+        "fwd_median_ns": 5400,
+        "rev_median_ns": 5400,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      }
+    },
+    {
+      "case_index": 14,
+      "site": "IB_CAND_POS",
+      "layer": 355,
+      "opcode": 0,
+      "in_verts": 37,
+      "rust_pnp": {
+        "median_ns": 9350,
+        "fwd_median_ns": 9500,
+        "rev_median_ns": 9300,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175670105.0,
+        "out_hash": "510fe969e67a52aa"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 10400,
+        "fwd_median_ns": 10400,
+        "rev_median_ns": 10400,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175670105,
+        "out_hash": "510fe969e67a52aa"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 7150,
+        "fwd_median_ns": 7200,
+        "rev_median_ns": 7100,
+        "out_paths": 1,
+        "out_verts": 37,
+        "out_area_u2": 175666904.9874,
+        "out_hash": "085f92f110563150"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 6300,
+        "fwd_median_ns": 6300,
+        "rev_median_ns": 6300,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175667011.1904,
+        "out_hash": "9b553d5d205cee0b"
+      }
+    },
+    {
+      "case_index": 15,
+      "site": "IB_CAND_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 87,
+      "rust_pnp": {
+        "median_ns": 34650,
+        "fwd_median_ns": 35900,
+        "rev_median_ns": 33100,
+        "out_paths": 1,
+        "out_verts": 83,
+        "out_area_u2": 455853666.0,
+        "out_hash": "63b9156f701f43be"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 29450,
+        "fwd_median_ns": 29000,
+        "rev_median_ns": 29900,
+        "out_paths": 1,
+        "out_verts": 83,
+        "out_area_u2": 455853666,
+        "out_hash": "63b9156f701f43be"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 19000,
+        "fwd_median_ns": 19200,
+        "rev_median_ns": 18800,
+        "out_paths": 1,
+        "out_verts": 80,
+        "out_area_u2": 455847815.70475,
+        "out_hash": "697492901e8538b8"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 16050,
+        "fwd_median_ns": 16200,
+        "rev_median_ns": 16000,
+        "out_paths": 1,
+        "out_verts": 79,
+        "out_area_u2": 455720220.5881,
+        "out_hash": "791aa4db9aebd329"
+      }
+    },
+    {
+      "case_index": 16,
+      "site": "IB_DEEP_NEG",
+      "layer": 38,
+      "opcode": 0,
+      "in_verts": 378,
+      "rust_pnp": {
+        "median_ns": 1145800,
+        "fwd_median_ns": 1214600,
+        "rev_median_ns": 1112500,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597037901.5,
+        "out_hash": "0d9c42dbe452e8e1"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 815900,
+        "fwd_median_ns": 781900,
+        "rev_median_ns": 837200,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597037901.5,
+        "out_hash": "0d9c42dbe452e8e1"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 669850,
+        "fwd_median_ns": 673200,
+        "rev_median_ns": 657000,
+        "out_paths": 1,
+        "out_verts": 10,
+        "out_area_u2": 597061112.8848,
+        "out_hash": "d14719a22eeca5f6"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 136250,
+        "fwd_median_ns": 138700,
+        "rev_median_ns": 133800,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623704592.5642501,
+        "out_hash": "4fae39b0f0217fbb"
+      }
+    },
+    {
+      "case_index": 17,
+      "site": "IB_DEEP_NEG",
+      "layer": 41,
+      "opcode": 0,
+      "in_verts": 1303,
+      "rust_pnp": {
+        "median_ns": 8098300,
+        "fwd_median_ns": 8146800,
+        "rev_median_ns": 8004800,
+        "out_paths": 1,
+        "out_verts": 139,
+        "out_area_u2": 4439329802.5,
+        "out_hash": "8e08537c8d2df7b2"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5675100,
+        "fwd_median_ns": 5631200,
+        "rev_median_ns": 5714200,
+        "out_paths": 1,
+        "out_verts": 139,
+        "out_area_u2": 4439329802.5,
+        "out_hash": "8e08537c8d2df7b2"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4166200,
+        "fwd_median_ns": 4186900,
+        "rev_median_ns": 4135100,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 4439412852.30175,
+        "out_hash": "d3c811abeb9c5922"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 863850,
+        "fwd_median_ns": 865300,
+        "rev_median_ns": 863200,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588289700.45215,
+        "out_hash": "d45f591953d484e4"
+      }
+    },
+    {
+      "case_index": 18,
+      "site": "IB_DEEP_NEG",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 2523,
+      "rust_pnp": {
+        "median_ns": 75082700,
+        "fwd_median_ns": 75634200,
+        "rev_median_ns": 74819300,
+        "out_paths": 1,
+        "out_verts": 34,
+        "out_area_u2": 1097636920.0,
+        "out_hash": "599ef640021dd08c"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 59981650,
+        "fwd_median_ns": 59482600,
+        "rev_median_ns": 60044800,
+        "out_paths": 1,
+        "out_verts": 34,
+        "out_area_u2": 1097636920,
+        "out_hash": "599ef640021dd08c"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 56168000,
+        "fwd_median_ns": 55997700,
+        "rev_median_ns": 56319000,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 1097638996.2021,
+        "out_hash": "606afc102cb17d8a"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5353200,
+        "fwd_median_ns": 5367700,
+        "rev_median_ns": 5351000,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1281000757.4962,
+        "out_hash": "9fef7175c4b43b89"
+      }
+    },
+    {
+      "case_index": 19,
+      "site": "IB_DEEP_NEG",
+      "layer": 56,
+      "opcode": 0,
+      "in_verts": 3083,
+      "rust_pnp": {
+        "median_ns": 36498850,
+        "fwd_median_ns": 36769200,
+        "rev_median_ns": 36330300,
+        "out_paths": 2,
+        "out_verts": 55,
+        "out_area_u2": 1455000810.0,
+        "out_hash": "3d1b7a5bac266571"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 28242400,
+        "fwd_median_ns": 28278300,
+        "rev_median_ns": 28206500,
+        "out_paths": 2,
+        "out_verts": 55,
+        "out_area_u2": 1455000810,
+        "out_hash": "3d1b7a5bac266571"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 20935300,
+        "fwd_median_ns": 20970800,
+        "rev_median_ns": 20725700,
+        "out_paths": 2,
+        "out_verts": 54,
+        "out_area_u2": 1455069362.5778,
+        "out_hash": "0d34955cb1b8dcbd"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2921250,
+        "fwd_median_ns": 2924500,
+        "rev_median_ns": 2916900,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410199772.4115999,
+        "out_hash": "0fc68554f7388d2e"
+      }
+    },
+    {
+      "case_index": 20,
+      "site": "IB_DEEP_NEG",
+      "layer": 58,
+      "opcode": 0,
+      "in_verts": 1002,
+      "rust_pnp": {
+        "median_ns": 15187400,
+        "fwd_median_ns": 15286900,
+        "rev_median_ns": 14975600,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877111840.5,
+        "out_hash": "c8b1232492eb05c4"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 11592250,
+        "fwd_median_ns": 11446700,
+        "rev_median_ns": 11756000,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877111840.5,
+        "out_hash": "c8b1232492eb05c4"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 10107750,
+        "fwd_median_ns": 10189900,
+        "rev_median_ns": 10095000,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 877164469.7201,
+        "out_hash": "ce561227f67f1f81"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1116800,
+        "fwd_median_ns": 1107200,
+        "rev_median_ns": 1130300,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924593459.00175,
+        "out_hash": "eeda96a2d96cffba"
+      }
+    },
+    {
+      "case_index": 21,
+      "site": "IB_DEEP_NEG",
+      "layer": 68,
+      "opcode": 0,
+      "in_verts": 3867,
+      "rust_pnp": {
+        "median_ns": 49195550,
+        "fwd_median_ns": 49629800,
+        "rev_median_ns": 48901800,
+        "out_paths": 10,
+        "out_verts": 475,
+        "out_area_u2": 5112535065.0,
+        "out_hash": "5345b8931b8f4f28"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 37521950,
+        "fwd_median_ns": 36373900,
+        "rev_median_ns": 38256900,
+        "out_paths": 10,
+        "out_verts": 475,
+        "out_area_u2": 5112535065,
+        "out_hash": "5345b8931b8f4f28"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 25390900,
+        "fwd_median_ns": 25513900,
+        "rev_median_ns": 25358000,
+        "out_paths": 10,
+        "out_verts": 435,
+        "out_area_u2": 5112742244.09235,
+        "out_hash": "bbcfd3bc4b27afe8"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3319550,
+        "fwd_median_ns": 3320100,
+        "rev_median_ns": 3319000,
+        "out_paths": 5,
+        "out_verts": 510,
+        "out_area_u2": 5542098217.095851,
+        "out_hash": "9250c81ad0c20911"
+      }
+    },
+    {
+      "case_index": 22,
+      "site": "IB_DEEP_NEG",
+      "layer": 100,
+      "opcode": 0,
+      "in_verts": 845,
+      "rust_pnp": {
+        "median_ns": 7624650,
+        "fwd_median_ns": 7693900,
+        "rev_median_ns": 7623900,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99097346.5,
+        "out_hash": "eaa8d99efb1df679"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5675000,
+        "fwd_median_ns": 5609700,
+        "rev_median_ns": 5702700,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99097346.5,
+        "out_hash": "eaa8d99efb1df679"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4719950,
+        "fwd_median_ns": 4733200,
+        "rev_median_ns": 4714400,
+        "out_paths": 1,
+        "out_verts": 20,
+        "out_area_u2": 99133258.765,
+        "out_hash": "7733bbeeff5655cf"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 773950,
+        "fwd_median_ns": 774300,
+        "rev_median_ns": 773600,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195115446.863,
+        "out_hash": "f1e82848de600e92"
+      }
+    },
+    {
+      "case_index": 23,
+      "site": "IB_DEEP_NEG",
+      "layer": 133,
+      "opcode": 0,
+      "in_verts": 1174,
+      "rust_pnp": {
+        "median_ns": 18483150,
+        "fwd_median_ns": 19022200,
+        "rev_median_ns": 18104600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 14663150,
+        "fwd_median_ns": 14141900,
+        "rev_median_ns": 15156500,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 9886650,
+        "fwd_median_ns": 9965600,
+        "rev_median_ns": 9856800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1386000,
+        "fwd_median_ns": 1396000,
+        "rev_median_ns": 1385600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 24,
+      "site": "IB_DEEP_NEG",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 4610,
+      "rust_pnp": {
+        "median_ns": 218203800,
+        "fwd_median_ns": 219504000,
+        "rev_median_ns": 215685200,
+        "out_paths": 4,
+        "out_verts": 325,
+        "out_area_u2": 2984727643.5,
+        "out_hash": "d329d13db30ee7e5"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 184568450,
+        "fwd_median_ns": 180905100,
+        "rev_median_ns": 195606600,
+        "out_paths": 4,
+        "out_verts": 325,
+        "out_area_u2": 2984727643.5,
+        "out_hash": "d329d13db30ee7e5"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 153298150,
+        "fwd_median_ns": 153571800,
+        "rev_median_ns": 152642500,
+        "out_paths": 4,
+        "out_verts": 298,
+        "out_area_u2": 2984897844.2714996,
+        "out_hash": "20a28a56c1d2e8ed"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 20683200,
+        "fwd_median_ns": 20601700,
+        "rev_median_ns": 20764700,
+        "out_paths": 7,
+        "out_verts": 334,
+        "out_area_u2": 3262696506.9291,
+        "out_hash": "ceb2ba10dcd872e6"
+      }
+    },
+    {
+      "case_index": 25,
+      "site": "IB_DEEP_NEG",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 1057,
+      "rust_pnp": {
+        "median_ns": 19684000,
+        "fwd_median_ns": 19797300,
+        "rev_median_ns": 19500100,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011176488.5,
+        "out_hash": "aec73917a3f8b4db"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 15439350,
+        "fwd_median_ns": 15046400,
+        "rev_median_ns": 16291700,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011176488.5,
+        "out_hash": "aec73917a3f8b4db"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 12923350,
+        "fwd_median_ns": 12935300,
+        "rev_median_ns": 12911400,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 1011232418.8745,
+        "out_hash": "d90653489b22070c"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1033300,
+        "fwd_median_ns": 1036600,
+        "rev_median_ns": 1018200,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1143041556.7488,
+        "out_hash": "8cc42316aea80489"
+      }
+    },
+    {
+      "case_index": 26,
+      "site": "IB_DEEP_NEG",
+      "layer": 268,
+      "opcode": 0,
+      "in_verts": 718,
+      "rust_pnp": {
+        "median_ns": 8013700,
+        "fwd_median_ns": 8414700,
+        "rev_median_ns": 7982800,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718610363.0,
+        "out_hash": "9a241b82072ca4d0"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5976250,
+        "fwd_median_ns": 5831300,
+        "rev_median_ns": 6301200,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718610363,
+        "out_hash": "9a241b82072ca4d0"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5217800,
+        "fwd_median_ns": 5205500,
+        "rev_median_ns": 5237900,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 718658755.2464,
+        "out_hash": "a324d85c1357c923"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 357400,
+        "fwd_median_ns": 343600,
+        "rev_median_ns": 363800,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796807464.86555,
+        "out_hash": "2def1da544d4cbdc"
+      }
+    },
+    {
+      "case_index": 27,
+      "site": "IB_DEEP_NEG",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 2320,
+      "rust_pnp": {
+        "median_ns": 100459350,
+        "fwd_median_ns": 100710200,
+        "rev_median_ns": 99117700,
+        "out_paths": 4,
+        "out_verts": 483,
+        "out_area_u2": 8452052446.5,
+        "out_hash": "99f4a0d3c9f183a4"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 83490550,
+        "fwd_median_ns": 80872900,
+        "rev_median_ns": 86917200,
+        "out_paths": 4,
+        "out_verts": 483,
+        "out_area_u2": 8452052446.5,
+        "out_hash": "99f4a0d3c9f183a4"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 66306150,
+        "fwd_median_ns": 66668900,
+        "rev_median_ns": 66175700,
+        "out_paths": 4,
+        "out_verts": 446,
+        "out_area_u2": 8452417371.294899,
+        "out_hash": "bdcc28e79dedf8dc"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 7435600,
+        "fwd_median_ns": 7419600,
+        "rev_median_ns": 7450100,
+        "out_paths": 3,
+        "out_verts": 426,
+        "out_area_u2": 8674889702.5156,
+        "out_hash": "66eb779dde79dbd9"
+      }
+    },
+    {
+      "case_index": 28,
+      "site": "IB_DEEP_NEG",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 690,
+      "rust_pnp": {
+        "median_ns": 9040400,
+        "fwd_median_ns": 8959900,
+        "rev_median_ns": 9662600,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297679209.0,
+        "out_hash": "f6e2c6670539bae5"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6370850,
+        "fwd_median_ns": 6327900,
+        "rev_median_ns": 6381700,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297679209,
+        "out_hash": "f6e2c6670539bae5"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5524450,
+        "fwd_median_ns": 5538600,
+        "rev_median_ns": 5480100,
+        "out_paths": 1,
+        "out_verts": 18,
+        "out_area_u2": 297710983.4812,
+        "out_hash": "dd6359c69817e175"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 266200,
+        "fwd_median_ns": 266400,
+        "rev_median_ns": 266000,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422521459.67655,
+        "out_hash": "e1aad2994c9a066e"
+      }
+    },
+    {
+      "case_index": 29,
+      "site": "IB_DEEP_NEG",
+      "layer": 468,
+      "opcode": 0,
+      "in_verts": 559,
+      "rust_pnp": {
+        "median_ns": 4724550,
+        "fwd_median_ns": 4612800,
+        "rev_median_ns": 4778200,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 171596728.5,
+        "out_hash": "158fa1fc8ac25bb9"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3546550,
+        "fwd_median_ns": 3453900,
+        "rev_median_ns": 3604500,
+        "out_paths": 1,
+        "out_verts": 23,
+        "out_area_u2": 171596728.5,
+        "out_hash": "158fa1fc8ac25bb9"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2430600,
+        "fwd_median_ns": 2433400,
+        "rev_median_ns": 2427800,
+        "out_paths": 1,
+        "out_verts": 22,
+        "out_area_u2": 171611799.57455,
+        "out_hash": "07aecd7dc1af7df5"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 235800,
+        "fwd_median_ns": 218200,
+        "rev_median_ns": 245100,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180756187.7856,
+        "out_hash": "76206631b8f9bcf6"
+      }
+    },
+    {
+      "case_index": 30,
+      "site": "IB_DEEP_NEG",
+      "layer": 492,
+      "opcode": 0,
+      "in_verts": 759,
+      "rust_pnp": {
+        "median_ns": 8048300,
+        "fwd_median_ns": 7798300,
+        "rev_median_ns": 8216800,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66720387.5,
+        "out_hash": "92d3b03da12c0b58"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6144900,
+        "fwd_median_ns": 6020200,
+        "rev_median_ns": 6320700,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66720387.5,
+        "out_hash": "92d3b03da12c0b58"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4818200,
+        "fwd_median_ns": 4903600,
+        "rev_median_ns": 4751800,
+        "out_paths": 3,
+        "out_verts": 38,
+        "out_area_u2": 66723466.2404,
+        "out_hash": "41fa96bc173c1311"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 623150,
+        "fwd_median_ns": 616600,
+        "rev_median_ns": 626400,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112376914.56805,
+        "out_hash": "37cdd1ceb16d1475"
+      }
+    },
+    {
+      "case_index": 31,
+      "site": "IB_DEEP_NEG",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 812,
+      "rust_pnp": {
+        "median_ns": 11622100,
+        "fwd_median_ns": 11416100,
+        "rev_median_ns": 12004300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 9343500,
+        "fwd_median_ns": 8521100,
+        "rev_median_ns": 9717300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 7264850,
+        "fwd_median_ns": 7325000,
+        "rev_median_ns": 7198500,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 641700,
+        "fwd_median_ns": 651200,
+        "rev_median_ns": 627300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 32,
+      "site": "IB_DEEP_POS",
+      "layer": 23,
+      "opcode": 0,
+      "in_verts": 5741,
+      "rust_pnp": {
+        "median_ns": 25909900,
+        "fwd_median_ns": 26344100,
+        "rev_median_ns": 25483100,
+        "out_paths": 3,
+        "out_verts": 1329,
+        "out_area_u2": 48454307829.5,
+        "out_hash": "a7926e4d54776b71"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 20982650,
+        "fwd_median_ns": 18673600,
+        "rev_median_ns": 21392700,
+        "out_paths": 3,
+        "out_verts": 1329,
+        "out_area_u2": 48454307829.5,
+        "out_hash": "a7926e4d54776b71"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 14318400,
+        "fwd_median_ns": 14679400,
+        "rev_median_ns": 14055000,
+        "out_paths": 3,
+        "out_verts": 1319,
+        "out_area_u2": 48454433796.661545,
+        "out_hash": "f678db2fbe153023"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3734600,
+        "fwd_median_ns": 3711600,
+        "rev_median_ns": 3854200,
+        "out_paths": 3,
+        "out_verts": 1281,
+        "out_area_u2": 47887604361.282646,
+        "out_hash": "dd274a8591ff51d0"
+      }
+    },
+    {
+      "case_index": 33,
+      "site": "IB_DEEP_POS",
+      "layer": 37,
+      "opcode": 0,
+      "in_verts": 8630,
+      "rust_pnp": {
+        "median_ns": 42579200,
+        "fwd_median_ns": 42018900,
+        "rev_median_ns": 42654100,
+        "out_paths": 3,
+        "out_verts": 2183,
+        "out_area_u2": 88602375111.0,
+        "out_hash": "d8b56ca87b542415"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 33713500,
+        "fwd_median_ns": 33152400,
+        "rev_median_ns": 35440900,
+        "out_paths": 3,
+        "out_verts": 2183,
+        "out_area_u2": 88602375111,
+        "out_hash": "d8b56ca87b542415"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 24968700,
+        "fwd_median_ns": 25120600,
+        "rev_median_ns": 24900700,
+        "out_paths": 3,
+        "out_verts": 2156,
+        "out_area_u2": 88602482373.64174,
+        "out_hash": "c631945eddab63ef"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 6342700,
+        "fwd_median_ns": 6186600,
+        "rev_median_ns": 6646300,
+        "out_paths": 4,
+        "out_verts": 2099,
+        "out_area_u2": 87555848449.4361,
+        "out_hash": "4372b9ecd2627a12"
+      }
+    },
+    {
+      "case_index": 34,
+      "site": "IB_DEEP_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 13758,
+      "rust_pnp": {
+        "median_ns": 164816450,
+        "fwd_median_ns": 164735600,
+        "rev_median_ns": 167257100,
+        "out_paths": 4,
+        "out_verts": 3091,
+        "out_area_u2": 118791037501.0,
+        "out_hash": "9925460098f95ee7"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 136995700,
+        "fwd_median_ns": 123987900,
+        "rev_median_ns": 151740600,
+        "out_paths": 4,
+        "out_verts": 3091,
+        "out_area_u2": 118791037501,
+        "out_hash": "9925460098f95ee7"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 108988000,
+        "fwd_median_ns": 111228900,
+        "rev_median_ns": 108825900,
+        "out_paths": 4,
+        "out_verts": 3090,
+        "out_area_u2": 118791167099.98592,
+        "out_hash": "ed0f2bdf67737bbc"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 21064950,
+        "fwd_median_ns": 20872700,
+        "rev_median_ns": 21992600,
+        "out_paths": 4,
+        "out_verts": 2965,
+        "out_area_u2": 117697891166.54213,
+        "out_hash": "0104650e06ac7935"
+      }
+    },
+    {
+      "case_index": 35,
+      "site": "IB_DEEP_POS",
+      "layer": 48,
+      "opcode": 0,
+      "in_verts": 14536,
+      "rust_pnp": {
+        "median_ns": 174997200,
+        "fwd_median_ns": 175662500,
+        "rev_median_ns": 174936500,
+        "out_paths": 3,
+        "out_verts": 3269,
+        "out_area_u2": 119503694250.5,
+        "out_hash": "bded0b773aec7205"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 149289050,
+        "fwd_median_ns": 132165200,
+        "rev_median_ns": 163211500,
+        "out_paths": 3,
+        "out_verts": 3269,
+        "out_area_u2": 119503694250.5,
+        "out_hash": "bded0b773aec7205"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 117011600,
+        "fwd_median_ns": 117180300,
+        "rev_median_ns": 113934200,
+        "out_paths": 3,
+        "out_verts": 3244,
+        "out_area_u2": 119503854910.30406,
+        "out_hash": "4f07afa4c05314e5"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 25093500,
+        "fwd_median_ns": 25050600,
+        "rev_median_ns": 25136400,
+        "out_paths": 3,
+        "out_verts": 3007,
+        "out_area_u2": 118309348175.9006,
+        "out_hash": "781d959c0cee08a1"
+      }
+    },
+    {
+      "case_index": 36,
+      "site": "IB_DEEP_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 10246,
+      "rust_pnp": {
+        "median_ns": 73399500,
+        "fwd_median_ns": 72331500,
+        "rev_median_ns": 75230600,
+        "out_paths": 1,
+        "out_verts": 2238,
+        "out_area_u2": 118696295036.0,
+        "out_hash": "b736097572219db8"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 53013050,
+        "fwd_median_ns": 52520400,
+        "rev_median_ns": 62730900,
+        "out_paths": 1,
+        "out_verts": 2238,
+        "out_area_u2": 118696295036,
+        "out_hash": "b736097572219db8"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 41823850,
+        "fwd_median_ns": 41851100,
+        "rev_median_ns": 41598900,
+        "out_paths": 1,
+        "out_verts": 2233,
+        "out_area_u2": 118696413017.94965,
+        "out_hash": "3bdf06b0378fe2f1"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 10527400,
+        "fwd_median_ns": 10027600,
+        "rev_median_ns": 10627700,
+        "out_paths": 1,
+        "out_verts": 2224,
+        "out_area_u2": 117737557204.03305,
+        "out_hash": "e3eb8f3993db205d"
+      }
+    },
+    {
+      "case_index": 37,
+      "site": "IB_DEEP_POS",
+      "layer": 66,
+      "opcode": 0,
+      "in_verts": 8080,
+      "rust_pnp": {
+        "median_ns": 50577150,
+        "fwd_median_ns": 59345100,
+        "rev_median_ns": 48628400,
+        "out_paths": 1,
+        "out_verts": 2098,
+        "out_area_u2": 119440537592.5,
+        "out_hash": "001f3885a90b1acb"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 38854800,
+        "fwd_median_ns": 36233000,
+        "rev_median_ns": 43698900,
+        "out_paths": 1,
+        "out_verts": 2098,
+        "out_area_u2": 119440537592.5,
+        "out_hash": "001f3885a90b1acb"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 29667200,
+        "fwd_median_ns": 32547100,
+        "rev_median_ns": 28888900,
+        "out_paths": 1,
+        "out_verts": 2080,
+        "out_area_u2": 119440611546.35374,
+        "out_hash": "63186bd1319eae59"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5505500,
+        "fwd_median_ns": 5468400,
+        "rev_median_ns": 5627800,
+        "out_paths": 1,
+        "out_verts": 2039,
+        "out_area_u2": 118825897210.95026,
+        "out_hash": "30c431b591e8d608"
+      }
+    },
+    {
+      "case_index": 38,
+      "site": "IB_DEEP_POS",
+      "layer": 99,
+      "opcode": 0,
+      "in_verts": 9986,
+      "rust_pnp": {
+        "median_ns": 63608650,
+        "fwd_median_ns": 64178300,
+        "rev_median_ns": 61896400,
+        "out_paths": 1,
+        "out_verts": 2634,
+        "out_area_u2": 137821725973.0,
+        "out_hash": "74eec0b1ddbe8cbc"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 48888350,
+        "fwd_median_ns": 47156400,
+        "rev_median_ns": 54900300,
+        "out_paths": 1,
+        "out_verts": 2634,
+        "out_area_u2": 137821725973,
+        "out_hash": "74eec0b1ddbe8cbc"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 38198700,
+        "fwd_median_ns": 42646200,
+        "rev_median_ns": 36013500,
+        "out_paths": 1,
+        "out_verts": 2581,
+        "out_area_u2": 137821964173.8566,
+        "out_hash": "01d4ca026ba94f94"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 9021100,
+        "fwd_median_ns": 8776600,
+        "rev_median_ns": 10099200,
+        "out_paths": 1,
+        "out_verts": 2417,
+        "out_area_u2": 137297460076.6174,
+        "out_hash": "2ed2373726eb120e"
+      }
+    },
+    {
+      "case_index": 39,
+      "site": "IB_DEEP_POS",
+      "layer": 116,
+      "opcode": 0,
+      "in_verts": 10550,
+      "rust_pnp": {
+        "median_ns": 73485950,
+        "fwd_median_ns": 74101700,
+        "rev_median_ns": 71734800,
+        "out_paths": 1,
+        "out_verts": 2942,
+        "out_area_u2": 130527815523.0,
+        "out_hash": "fc6cd5d51ff50059"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 63789900,
+        "fwd_median_ns": 54496200,
+        "rev_median_ns": 67703500,
+        "out_paths": 1,
+        "out_verts": 2942,
+        "out_area_u2": 130527815523,
+        "out_hash": "fc6cd5d51ff50059"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 46568200,
+        "fwd_median_ns": 47988600,
+        "rev_median_ns": 45776800,
+        "out_paths": 1,
+        "out_verts": 2875,
+        "out_area_u2": 130528097439.8743,
+        "out_hash": "fbd0230d10faac76"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 10821350,
+        "fwd_median_ns": 10687500,
+        "rev_median_ns": 11095000,
+        "out_paths": 1,
+        "out_verts": 2721,
+        "out_area_u2": 130200839680.94855,
+        "out_hash": "2b5c3c7078578ca1"
+      }
+    },
+    {
+      "case_index": 40,
+      "site": "IB_DEEP_POS",
+      "layer": 132,
+      "opcode": 0,
+      "in_verts": 9760,
+      "rust_pnp": {
+        "median_ns": 146908700,
+        "fwd_median_ns": 147092100,
+        "rev_median_ns": 146725300,
+        "out_paths": 4,
+        "out_verts": 2827,
+        "out_area_u2": 117757675008.0,
+        "out_hash": "effe8672dc5bf795"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 130135050,
+        "fwd_median_ns": 118637600,
+        "rev_median_ns": 142506500,
+        "out_paths": 4,
+        "out_verts": 2827,
+        "out_area_u2": 117757675008,
+        "out_hash": "effe8672dc5bf795"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 110584500,
+        "fwd_median_ns": 118826600,
+        "rev_median_ns": 107613700,
+        "out_paths": 4,
+        "out_verts": 2750,
+        "out_area_u2": 117757901154.33319,
+        "out_hash": "2f36c45d8ec5631b"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 35679550,
+        "fwd_median_ns": 35574700,
+        "rev_median_ns": 35905100,
+        "out_paths": 4,
+        "out_verts": 2482,
+        "out_area_u2": 117210006675.94205,
+        "out_hash": "e1989260cdbd7ae5"
+      }
+    },
+    {
+      "case_index": 41,
+      "site": "IB_DEEP_POS",
+      "layer": 157,
+      "opcode": 0,
+      "in_verts": 11766,
+      "rust_pnp": {
+        "median_ns": 230663200,
+        "fwd_median_ns": 230813400,
+        "rev_median_ns": 229916900,
+        "out_paths": 2,
+        "out_verts": 3022,
+        "out_area_u2": 121426703021.5,
+        "out_hash": "304d79da7b443f07"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 203738750,
+        "fwd_median_ns": 196253900,
+        "rev_median_ns": 216737400,
+        "out_paths": 2,
+        "out_verts": 3022,
+        "out_area_u2": 121426703021.5,
+        "out_hash": "304d79da7b443f07"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 181186650,
+        "fwd_median_ns": 181047200,
+        "rev_median_ns": 182228900,
+        "out_paths": 2,
+        "out_verts": 2994,
+        "out_area_u2": 121426921157.4412,
+        "out_hash": "7614c43186d686bc"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 44762750,
+        "fwd_median_ns": 43810100,
+        "rev_median_ns": 46798200,
+        "out_paths": 2,
+        "out_verts": 2902,
+        "out_area_u2": 120825924579.79385,
+        "out_hash": "74b8470c8a271b85"
+      }
+    },
+    {
+      "case_index": 42,
+      "site": "IB_DEEP_POS",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 9622,
+      "rust_pnp": {
+        "median_ns": 182651000,
+        "fwd_median_ns": 182400400,
+        "rev_median_ns": 192802400,
+        "out_paths": 1,
+        "out_verts": 2484,
+        "out_area_u2": 121642444612.0,
+        "out_hash": "972f6685929e8fae"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 163564100,
+        "fwd_median_ns": 155013400,
+        "rev_median_ns": 177964500,
+        "out_paths": 1,
+        "out_verts": 2484,
+        "out_area_u2": 121642444612,
+        "out_hash": "972f6685929e8fae"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 152486800,
+        "fwd_median_ns": 145569700,
+        "rev_median_ns": 155963700,
+        "out_paths": 1,
+        "out_verts": 2451,
+        "out_area_u2": 121642726644.88686,
+        "out_hash": "223f50e7c8c9caa8"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 45938000,
+        "fwd_median_ns": 45753500,
+        "rev_median_ns": 46096700,
+        "out_paths": 1,
+        "out_verts": 2168,
+        "out_area_u2": 121400765225.4537,
+        "out_hash": "d5c4f333bc28d2e9"
+      }
+    },
+    {
+      "case_index": 43,
+      "site": "IB_DEEP_POS",
+      "layer": 225,
+      "opcode": 0,
+      "in_verts": 9209,
+      "rust_pnp": {
+        "median_ns": 182886550,
+        "fwd_median_ns": 181931000,
+        "rev_median_ns": 184416400,
+        "out_paths": 1,
+        "out_verts": 2327,
+        "out_area_u2": 116034557816.5,
+        "out_hash": "f304ad1790d814b2"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 163770800,
+        "fwd_median_ns": 154096800,
+        "rev_median_ns": 182938800,
+        "out_paths": 1,
+        "out_verts": 2327,
+        "out_area_u2": 116034557816.5,
+        "out_hash": "f304ad1790d814b2"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 145044650,
+        "fwd_median_ns": 149580200,
+        "rev_median_ns": 142469000,
+        "out_paths": 1,
+        "out_verts": 2298,
+        "out_area_u2": 116034794878.6407,
+        "out_hash": "83c7eaa4f067e147"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 40936900,
+        "fwd_median_ns": 40581100,
+        "rev_median_ns": 41269900,
+        "out_paths": 1,
+        "out_verts": 1993,
+        "out_area_u2": 115730201074.41576,
+        "out_hash": "7a22c0d9517a2853"
+      }
+    },
+    {
+      "case_index": 44,
+      "site": "IB_DEEP_POS",
+      "layer": 231,
+      "opcode": 0,
+      "in_verts": 8264,
+      "rust_pnp": {
+        "median_ns": 177947250,
+        "fwd_median_ns": 174763500,
+        "rev_median_ns": 180338300,
+        "out_paths": 1,
+        "out_verts": 2102,
+        "out_area_u2": 113866344404.5,
+        "out_hash": "d21abceb048b6f56"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 151338650,
+        "fwd_median_ns": 153126600,
+        "rev_median_ns": 149232100,
+        "out_paths": 1,
+        "out_verts": 2102,
+        "out_area_u2": 113866344404.5,
+        "out_hash": "d21abceb048b6f56"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 146691300,
+        "fwd_median_ns": 146498300,
+        "rev_median_ns": 147272800,
+        "out_paths": 1,
+        "out_verts": 2040,
+        "out_area_u2": 113866576398.07124,
+        "out_hash": "2f3072b1948f83fe"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 48014500,
+        "fwd_median_ns": 48363100,
+        "rev_median_ns": 47607700,
+        "out_paths": 1,
+        "out_verts": 1900,
+        "out_area_u2": 113560289748.08345,
+        "out_hash": "a02da9585dd5ab96"
+      }
+    },
+    {
+      "case_index": 45,
+      "site": "IB_DEEP_POS",
+      "layer": 250,
+      "opcode": 0,
+      "in_verts": 8485,
+      "rust_pnp": {
+        "median_ns": 194314100,
+        "fwd_median_ns": 191648800,
+        "rev_median_ns": 195517100,
+        "out_paths": 1,
+        "out_verts": 2213,
+        "out_area_u2": 114130353225.5,
+        "out_hash": "a9dc7b8900fd2425"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 159687200,
+        "fwd_median_ns": 159456900,
+        "rev_median_ns": 159917500,
+        "out_paths": 1,
+        "out_verts": 2213,
+        "out_area_u2": 114130353225.5,
+        "out_hash": "a9dc7b8900fd2425"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 149603150,
+        "fwd_median_ns": 148658900,
+        "rev_median_ns": 149948200,
+        "out_paths": 1,
+        "out_verts": 2132,
+        "out_area_u2": 114130642401.15936,
+        "out_hash": "de7d70ea2fc54dcf"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 41996650,
+        "fwd_median_ns": 41880300,
+        "rev_median_ns": 42113000,
+        "out_paths": 1,
+        "out_verts": 2045,
+        "out_area_u2": 113822350078.1849,
+        "out_hash": "2b4d4b8f64fd3bfe"
+      }
+    },
+    {
+      "case_index": 46,
+      "site": "IB_DEEP_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 7920,
+      "rust_pnp": {
+        "median_ns": 136338600,
+        "fwd_median_ns": 139511600,
+        "rev_median_ns": 135801100,
+        "out_paths": 1,
+        "out_verts": 2262,
+        "out_area_u2": 99559578817.0,
+        "out_hash": "b90f2c109563ce32"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 111172450,
+        "fwd_median_ns": 111097900,
+        "rev_median_ns": 112852000,
+        "out_paths": 1,
+        "out_verts": 2262,
+        "out_area_u2": 99559578817,
+        "out_hash": "b90f2c109563ce32"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 102552400,
+        "fwd_median_ns": 108132700,
+        "rev_median_ns": 101624400,
+        "out_paths": 1,
+        "out_verts": 2227,
+        "out_area_u2": 99559833873.6912,
+        "out_hash": "ed85d9136225cd7e"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 36017650,
+        "fwd_median_ns": 35968500,
+        "rev_median_ns": 36066800,
+        "out_paths": 1,
+        "out_verts": 2034,
+        "out_area_u2": 99296721313.71895,
+        "out_hash": "2cd0ef5f20a65866"
+      }
+    },
+    {
+      "case_index": 47,
+      "site": "IB_DEEP_POS",
+      "layer": 311,
+      "opcode": 0,
+      "in_verts": 6713,
+      "rust_pnp": {
+        "median_ns": 166109100,
+        "fwd_median_ns": 167571200,
+        "rev_median_ns": 163346300,
+        "out_paths": 1,
+        "out_verts": 1677,
+        "out_area_u2": 86885409587.0,
+        "out_hash": "413153a1be41693d"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 134017650,
+        "fwd_median_ns": 133619900,
+        "rev_median_ns": 134255400,
+        "out_paths": 1,
+        "out_verts": 1677,
+        "out_area_u2": 86885409587,
+        "out_hash": "413153a1be41693d"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 129022750,
+        "fwd_median_ns": 130342900,
+        "rev_median_ns": 128260400,
+        "out_paths": 1,
+        "out_verts": 1653,
+        "out_area_u2": 86885598617.1652,
+        "out_hash": "455b2641a9413b89"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 40676250,
+        "fwd_median_ns": 40404500,
+        "rev_median_ns": 44602700,
+        "out_paths": 1,
+        "out_verts": 1479,
+        "out_area_u2": 86713694211.08624,
+        "out_hash": "3cc425bca07759a9"
+      }
+    },
+    {
+      "case_index": 48,
+      "site": "IB_DEEP_POS",
+      "layer": 318,
+      "opcode": 0,
+      "in_verts": 7536,
+      "rust_pnp": {
+        "median_ns": 239803600,
+        "fwd_median_ns": 227633600,
+        "rev_median_ns": 249384500,
+        "out_paths": 1,
+        "out_verts": 1829,
+        "out_area_u2": 86917794945.5,
+        "out_hash": "e842bd7aaaef4399"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 189717550,
+        "fwd_median_ns": 189017400,
+        "rev_median_ns": 191839000,
+        "out_paths": 1,
+        "out_verts": 1829,
+        "out_area_u2": 86917794945.5,
+        "out_hash": "e842bd7aaaef4399"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 185656550,
+        "fwd_median_ns": 184030400,
+        "rev_median_ns": 186799900,
+        "out_paths": 1,
+        "out_verts": 1806,
+        "out_area_u2": 86918010766.22371,
+        "out_hash": "5dc46467054762b8"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 55652100,
+        "fwd_median_ns": 54854200,
+        "rev_median_ns": 57769100,
+        "out_paths": 1,
+        "out_verts": 1717,
+        "out_area_u2": 86554174993.82664,
+        "out_hash": "c5fa77405e853fa4"
+      }
+    },
+    {
+      "case_index": 49,
+      "site": "IB_DEEP_POS",
+      "layer": 320,
+      "opcode": 0,
+      "in_verts": 6090,
+      "rust_pnp": {
+        "median_ns": 135924700,
+        "fwd_median_ns": 134408500,
+        "rev_median_ns": 140334000,
+        "out_paths": 1,
+        "out_verts": 1458,
+        "out_area_u2": 87007930053.5,
+        "out_hash": "2b337f88e605c3ae"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 111282550,
+        "fwd_median_ns": 109185500,
+        "rev_median_ns": 112101600,
+        "out_paths": 1,
+        "out_verts": 1458,
+        "out_area_u2": 87007930053.5,
+        "out_hash": "2b337f88e605c3ae"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 94777600,
+        "fwd_median_ns": 94711700,
+        "rev_median_ns": 96113700,
+        "out_paths": 1,
+        "out_verts": 1440,
+        "out_area_u2": 87008169614.64995,
+        "out_hash": "7773b4b8ea856d43"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 30144400,
+        "fwd_median_ns": 29721800,
+        "rev_median_ns": 31137100,
+        "out_paths": 1,
+        "out_verts": 1344,
+        "out_area_u2": 86836984087.34785,
+        "out_hash": "282e387ee1c65ce2"
+      }
+    },
+    {
+      "case_index": 50,
+      "site": "IB_DEEP_POS",
+      "layer": 322,
+      "opcode": 0,
+      "in_verts": 5351,
+      "rust_pnp": {
+        "median_ns": 98976250,
+        "fwd_median_ns": 95915500,
+        "rev_median_ns": 100182000,
+        "out_paths": 1,
+        "out_verts": 1457,
+        "out_area_u2": 85085378491.0,
+        "out_hash": "248d5e35a33c79d4"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 76821050,
+        "fwd_median_ns": 76777100,
+        "rev_median_ns": 76865000,
+        "out_paths": 1,
+        "out_verts": 1457,
+        "out_area_u2": 85085378491,
+        "out_hash": "248d5e35a33c79d4"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 65876400,
+        "fwd_median_ns": 64822000,
+        "rev_median_ns": 66285100,
+        "out_paths": 1,
+        "out_verts": 1419,
+        "out_area_u2": 85085599573.6555,
+        "out_hash": "1e5e697d05b2e8d0"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 17615500,
+        "fwd_median_ns": 17354100,
+        "rev_median_ns": 17684900,
+        "out_paths": 1,
+        "out_verts": 1323,
+        "out_area_u2": 84814308871.5942,
+        "out_hash": "a7e6681e227170d4"
+      }
+    },
+    {
+      "case_index": 51,
+      "site": "IB_DEEP_POS",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 4254,
+      "rust_pnp": {
+        "median_ns": 69628150,
+        "fwd_median_ns": 68839700,
+        "rev_median_ns": 70902800,
+        "out_paths": 1,
+        "out_verts": 1277,
+        "out_area_u2": 75608286244.5,
+        "out_hash": "3e6714b57ffa2c26"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 55365650,
+        "fwd_median_ns": 55382200,
+        "rev_median_ns": 54415100,
+        "out_paths": 1,
+        "out_verts": 1277,
+        "out_area_u2": 75608286244.5,
+        "out_hash": "3e6714b57ffa2c26"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 48022750,
+        "fwd_median_ns": 47774300,
+        "rev_median_ns": 48099800,
+        "out_paths": 1,
+        "out_verts": 1253,
+        "out_area_u2": 75608502468.96484,
+        "out_hash": "3691f2051d37756d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 14442750,
+        "fwd_median_ns": 14272900,
+        "rev_median_ns": 14499800,
+        "out_paths": 1,
+        "out_verts": 1121,
+        "out_area_u2": 75496210914.10036,
+        "out_hash": "4e290f5149e00362"
+      }
+    },
+    {
+      "case_index": 52,
+      "site": "IB_DEEP_POS",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 4487,
+      "rust_pnp": {
+        "median_ns": 76773000,
+        "fwd_median_ns": 75561300,
+        "rev_median_ns": 78451500,
+        "out_paths": 1,
+        "out_verts": 1224,
+        "out_area_u2": 71302653271.0,
+        "out_hash": "540838c4cd01bd53"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 60687650,
+        "fwd_median_ns": 62011900,
+        "rev_median_ns": 60476200,
+        "out_paths": 1,
+        "out_verts": 1224,
+        "out_area_u2": 71302653271,
+        "out_hash": "540838c4cd01bd53"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 54005500,
+        "fwd_median_ns": 53559900,
+        "rev_median_ns": 54236800,
+        "out_paths": 1,
+        "out_verts": 1240,
+        "out_area_u2": 71302881865.3009,
+        "out_hash": "cd4eab26a39cfd36"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 11784100,
+        "fwd_median_ns": 11713700,
+        "rev_median_ns": 12013500,
+        "out_paths": 1,
+        "out_verts": 1037,
+        "out_area_u2": 71175617642.3612,
+        "out_hash": "c4f3029ac3c28550"
+      }
+    },
+    {
+      "case_index": 53,
+      "site": "IB_DEEP_POS",
+      "layer": 397,
+      "opcode": 0,
+      "in_verts": 4997,
+      "rust_pnp": {
+        "median_ns": 140129550,
+        "fwd_median_ns": 133698800,
+        "rev_median_ns": 142667800,
+        "out_paths": 1,
+        "out_verts": 1406,
+        "out_area_u2": 68247940316.5,
+        "out_hash": "768c68f2cbb3d647"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 111149100,
+        "fwd_median_ns": 111296100,
+        "rev_median_ns": 111078100,
+        "out_paths": 1,
+        "out_verts": 1406,
+        "out_area_u2": 68247940316.5,
+        "out_hash": "768c68f2cbb3d647"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 116598650,
+        "fwd_median_ns": 115033700,
+        "rev_median_ns": 117188000,
+        "out_paths": 1,
+        "out_verts": 1423,
+        "out_area_u2": 68248124160.392,
+        "out_hash": "0f54c2ec6514c022"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 35479800,
+        "fwd_median_ns": 33530100,
+        "rev_median_ns": 35733000,
+        "out_paths": 1,
+        "out_verts": 1199,
+        "out_area_u2": 68086735407.86255,
+        "out_hash": "f6b93abc815869fc"
+      }
+    },
+    {
+      "case_index": 54,
+      "site": "IB_DEEP_POS",
+      "layer": 469,
+      "opcode": 0,
+      "in_verts": 2271,
+      "rust_pnp": {
+        "median_ns": 15604100,
+        "fwd_median_ns": 15513900,
+        "rev_median_ns": 15746300,
+        "out_paths": 1,
+        "out_verts": 662,
+        "out_area_u2": 26389256450.0,
+        "out_hash": "f14784cf5dece91e"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 10706650,
+        "fwd_median_ns": 10705000,
+        "rev_median_ns": 10708300,
+        "out_paths": 1,
+        "out_verts": 662,
+        "out_area_u2": 26389256450,
+        "out_hash": "f14784cf5dece91e"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 9215900,
+        "fwd_median_ns": 9207400,
+        "rev_median_ns": 9234100,
+        "out_paths": 1,
+        "out_verts": 661,
+        "out_area_u2": 26389328734.9355,
+        "out_hash": "899f21900632492e"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1933100,
+        "fwd_median_ns": 1825800,
+        "rev_median_ns": 1992400,
+        "out_paths": 1,
+        "out_verts": 622,
+        "out_area_u2": 26169802372.2805,
+        "out_hash": "e254dfcd29233011"
+      }
+    },
+    {
+      "case_index": 55,
+      "site": "IB_DEEP_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 844,
+      "rust_pnp": {
+        "median_ns": 3790450,
+        "fwd_median_ns": 3753400,
+        "rev_median_ns": 3827500,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141954113.0,
+        "out_hash": "0eae42667ad96d14"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 2448800,
+        "fwd_median_ns": 2369200,
+        "rev_median_ns": 2503600,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141954113,
+        "out_hash": "0eae42667ad96d14"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2068050,
+        "fwd_median_ns": 2063100,
+        "rev_median_ns": 2071600,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 3141959888.333,
+        "out_hash": "a032d6841c330f07"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 478000,
+        "fwd_median_ns": 481000,
+        "rev_median_ns": 475000,
+        "out_paths": 1,
+        "out_verts": 169,
+        "out_area_u2": 3078307548.3677,
+        "out_hash": "8bb8949f22d58868"
+      }
+    },
+    {
+      "case_index": 56,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_pnp": {
+        "median_ns": 208900,
+        "fwd_median_ns": 222400,
+        "rev_median_ns": 191800,
+        "out_paths": 1,
+        "out_verts": 224,
+        "out_area_u2": 231513727.5,
+        "out_hash": "7b4a4c4bc37b955d"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 194550,
+        "fwd_median_ns": 171800,
+        "rev_median_ns": 226900,
+        "out_paths": 1,
+        "out_verts": 224,
+        "out_area_u2": 231513727.5,
+        "out_hash": "7b4a4c4bc37b955d"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 89450,
+        "fwd_median_ns": 83900,
+        "rev_median_ns": 95600,
+        "out_paths": 1,
+        "out_verts": 209,
+        "out_area_u2": 231415580.21355,
+        "out_hash": "b0aa2a4d14469f6f"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 73100,
+        "fwd_median_ns": 72900,
+        "rev_median_ns": 89000,
+        "out_paths": 1,
+        "out_verts": 207,
+        "out_area_u2": 231413285.72495,
+        "out_hash": "2f0137ecd4b013af"
+      }
+    },
+    {
+      "case_index": 57,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_pnp": {
+        "median_ns": 15215200,
+        "fwd_median_ns": 14610400,
+        "rev_median_ns": 15715700,
+        "out_paths": 14,
+        "out_verts": 7455,
+        "out_area_u2": 4421485037.0,
+        "out_hash": "af3648aed9ddc8aa"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 11935450,
+        "fwd_median_ns": 11684500,
+        "rev_median_ns": 11935700,
+        "out_paths": 14,
+        "out_verts": 7455,
+        "out_area_u2": 4421485037,
+        "out_hash": "af3648aed9ddc8aa"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 6203300,
+        "fwd_median_ns": 6262300,
+        "rev_median_ns": 5915500,
+        "out_paths": 14,
+        "out_verts": 7328,
+        "out_area_u2": 4416374855.00305,
+        "out_hash": "c4e57773733d365d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5014050,
+        "fwd_median_ns": 5003300,
+        "rev_median_ns": 5257700,
+        "out_paths": 14,
+        "out_verts": 7272,
+        "out_area_u2": 4417338592.6395,
+        "out_hash": "eeee115763c6adfe"
+      }
+    },
+    {
+      "case_index": 58,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_pnp": {
+        "median_ns": 9167150,
+        "fwd_median_ns": 9384600,
+        "rev_median_ns": 8890600,
+        "out_paths": 11,
+        "out_verts": 4679,
+        "out_area_u2": 1653069297.0,
+        "out_hash": "704075d63a9610c0"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7024600,
+        "fwd_median_ns": 6881500,
+        "rev_median_ns": 7167700,
+        "out_paths": 11,
+        "out_verts": 4679,
+        "out_area_u2": 1653069297,
+        "out_hash": "704075d63a9610c0"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3692450,
+        "fwd_median_ns": 3647500,
+        "rev_median_ns": 3703600,
+        "out_paths": 11,
+        "out_verts": 4537,
+        "out_area_u2": 1651472597.37045,
+        "out_hash": "cfbe1ba128d682c1"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3080900,
+        "fwd_median_ns": 2955500,
+        "rev_median_ns": 3223500,
+        "out_paths": 11,
+        "out_verts": 4514,
+        "out_area_u2": 1651464055.9330497,
+        "out_hash": "a5747a47967f44a8"
+      }
+    },
+    {
+      "case_index": 59,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_pnp": {
+        "median_ns": 5553450,
+        "fwd_median_ns": 5832600,
+        "rev_median_ns": 5244500,
+        "out_paths": 8,
+        "out_verts": 1280,
+        "out_area_u2": 294324977.0,
+        "out_hash": "c160ae631db484dc"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 4005650,
+        "fwd_median_ns": 4113800,
+        "rev_median_ns": 4004700,
+        "out_paths": 8,
+        "out_verts": 1280,
+        "out_area_u2": 294324977,
+        "out_hash": "c160ae631db484dc"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2282900,
+        "fwd_median_ns": 2242500,
+        "rev_median_ns": 2312700,
+        "out_paths": 8,
+        "out_verts": 1243,
+        "out_area_u2": 293952831.10595,
+        "out_hash": "414901d77c0bcf1f"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1913450,
+        "fwd_median_ns": 1734300,
+        "rev_median_ns": 1985200,
+        "out_paths": 8,
+        "out_verts": 1235,
+        "out_area_u2": 294152124.3262,
+        "out_hash": "64af1424169d6bba"
+      }
+    },
+    {
+      "case_index": 60,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_pnp": {
+        "median_ns": 15160300,
+        "fwd_median_ns": 15187600,
+        "rev_median_ns": 15133000,
+        "out_paths": 13,
+        "out_verts": 3169,
+        "out_area_u2": 948586215.5,
+        "out_hash": "551c96bb1086ed1a"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 9610800,
+        "fwd_median_ns": 9792700,
+        "rev_median_ns": 9608700,
+        "out_paths": 13,
+        "out_verts": 3169,
+        "out_area_u2": 948586215.5,
+        "out_hash": "551c96bb1086ed1a"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5040650,
+        "fwd_median_ns": 5129000,
+        "rev_median_ns": 5014100,
+        "out_paths": 13,
+        "out_verts": 3097,
+        "out_area_u2": 946967696.4908001,
+        "out_hash": "8702f8323ec59899"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 4269150,
+        "fwd_median_ns": 4061000,
+        "rev_median_ns": 4579100,
+        "out_paths": 13,
+        "out_verts": 3054,
+        "out_area_u2": 947126579.4030001,
+        "out_hash": "2af0df4063004c92"
+      }
+    },
+    {
+      "case_index": 61,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_pnp": {
+        "median_ns": 10172550,
+        "fwd_median_ns": 9743000,
+        "rev_median_ns": 11831700,
+        "out_paths": 15,
+        "out_verts": 2623,
+        "out_area_u2": 692947204.5,
+        "out_hash": "a2f834f2df75535b"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7602200,
+        "fwd_median_ns": 7511100,
+        "rev_median_ns": 7839000,
+        "out_paths": 15,
+        "out_verts": 2623,
+        "out_area_u2": 692947204.5,
+        "out_hash": "a2f834f2df75535b"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4304050,
+        "fwd_median_ns": 4361800,
+        "rev_median_ns": 4246300,
+        "out_paths": 15,
+        "out_verts": 2670,
+        "out_area_u2": 692069141.9519501,
+        "out_hash": "be1e2ece3c7bc7fd"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3630450,
+        "fwd_median_ns": 3572200,
+        "rev_median_ns": 3939500,
+        "out_paths": 15,
+        "out_verts": 2609,
+        "out_area_u2": 692069761.77505,
+        "out_hash": "f27204f1a9c988ba"
+      }
+    },
+    {
+      "case_index": 62,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_pnp": {
+        "median_ns": 9628300,
+        "fwd_median_ns": 9428000,
+        "rev_median_ns": 9775300,
+        "out_paths": 9,
+        "out_verts": 1129,
+        "out_area_u2": 327406679.0,
+        "out_hash": "c74fce5fdb631053"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7079500,
+        "fwd_median_ns": 7213900,
+        "rev_median_ns": 7001700,
+        "out_paths": 9,
+        "out_verts": 1129,
+        "out_area_u2": 327406679,
+        "out_hash": "c74fce5fdb631053"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3875500,
+        "fwd_median_ns": 3748800,
+        "rev_median_ns": 3979800,
+        "out_paths": 9,
+        "out_verts": 1181,
+        "out_area_u2": 327039938.29239994,
+        "out_hash": "3a4d268deffb0368"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3224800,
+        "fwd_median_ns": 3075400,
+        "rev_median_ns": 3426500,
+        "out_paths": 9,
+        "out_verts": 1167,
+        "out_area_u2": 327056476.8735,
+        "out_hash": "ab2796063c68b815"
+      }
+    },
+    {
+      "case_index": 63,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_pnp": {
+        "median_ns": 10720800,
+        "fwd_median_ns": 12138700,
+        "rev_median_ns": 9493300,
+        "out_paths": 12,
+        "out_verts": 1288,
+        "out_area_u2": 350925078.0,
+        "out_hash": "2873752332806b82"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7015400,
+        "fwd_median_ns": 7023200,
+        "rev_median_ns": 7007600,
+        "out_paths": 12,
+        "out_verts": 1288,
+        "out_area_u2": 350925078,
+        "out_hash": "2873752332806b82"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4075450,
+        "fwd_median_ns": 4042800,
+        "rev_median_ns": 4343900,
+        "out_paths": 12,
+        "out_verts": 1314,
+        "out_area_u2": 350626335.67885,
+        "out_hash": "188ba38690c766b4"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3435200,
+        "fwd_median_ns": 3150400,
+        "rev_median_ns": 3784200,
+        "out_paths": 12,
+        "out_verts": 1310,
+        "out_area_u2": 350650055.28055,
+        "out_hash": "5cfb04d04260a918"
+      }
+    },
+    {
+      "case_index": 64,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_pnp": {
+        "median_ns": 6119150,
+        "fwd_median_ns": 6986200,
+        "rev_median_ns": 4992400,
+        "out_paths": 7,
+        "out_verts": 1646,
+        "out_area_u2": 441882428.0,
+        "out_hash": "dd0cdd809b069964"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3979750,
+        "fwd_median_ns": 4002900,
+        "rev_median_ns": 3943200,
+        "out_paths": 7,
+        "out_verts": 1646,
+        "out_area_u2": 441882428,
+        "out_hash": "dd0cdd809b069964"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2552050,
+        "fwd_median_ns": 2535500,
+        "rev_median_ns": 2591400,
+        "out_paths": 7,
+        "out_verts": 1635,
+        "out_area_u2": 441308041.55929995,
+        "out_hash": "cc3d093a99610227"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2186700,
+        "fwd_median_ns": 1995800,
+        "rev_median_ns": 2402800,
+        "out_paths": 7,
+        "out_verts": 1599,
+        "out_area_u2": 441227861.28134996,
+        "out_hash": "5ca84965701b5fbf"
+      }
+    },
+    {
+      "case_index": 65,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_pnp": {
+        "median_ns": 10329700,
+        "fwd_median_ns": 10605900,
+        "rev_median_ns": 9996400,
+        "out_paths": 8,
+        "out_verts": 1720,
+        "out_area_u2": 680490823.5,
+        "out_hash": "51863a0d59d6d71f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7592600,
+        "fwd_median_ns": 7857100,
+        "rev_median_ns": 7523200,
+        "out_paths": 8,
+        "out_verts": 1720,
+        "out_area_u2": 680490823.5,
+        "out_hash": "51863a0d59d6d71f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4982600,
+        "fwd_median_ns": 4828600,
+        "rev_median_ns": 5976900,
+        "out_paths": 8,
+        "out_verts": 1686,
+        "out_area_u2": 679246499.50855,
+        "out_hash": "b7880ad23a3830d6"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3959750,
+        "fwd_median_ns": 3623200,
+        "rev_median_ns": 4101200,
+        "out_paths": 8,
+        "out_verts": 1650,
+        "out_area_u2": 679221125.312,
+        "out_hash": "c022a13dab09b3e6"
+      }
+    },
+    {
+      "case_index": 66,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_pnp": {
+        "median_ns": 6358050,
+        "fwd_median_ns": 6163100,
+        "rev_median_ns": 6492600,
+        "out_paths": 13,
+        "out_verts": 827,
+        "out_area_u2": 135427676.0,
+        "out_hash": "71c6caadb825c31b"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 4588500,
+        "fwd_median_ns": 4584800,
+        "rev_median_ns": 4671400,
+        "out_paths": 13,
+        "out_verts": 827,
+        "out_area_u2": 135427676,
+        "out_hash": "71c6caadb825c31b"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2957750,
+        "fwd_median_ns": 2400600,
+        "rev_median_ns": 3454500,
+        "out_paths": 13,
+        "out_verts": 873,
+        "out_area_u2": 135421483.82489997,
+        "out_hash": "303990abe11494ab"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2047800,
+        "fwd_median_ns": 1981700,
+        "rev_median_ns": 2095500,
+        "out_paths": 13,
+        "out_verts": 876,
+        "out_area_u2": 135377024.77549997,
+        "out_hash": "58134448bc00891a"
+      }
+    },
+    {
+      "case_index": 67,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_pnp": {
+        "median_ns": 9242850,
+        "fwd_median_ns": 9282600,
+        "rev_median_ns": 8923800,
+        "out_paths": 9,
+        "out_verts": 1174,
+        "out_area_u2": 512009441.5,
+        "out_hash": "17fc10ac53ee8a71"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6552200,
+        "fwd_median_ns": 6608900,
+        "rev_median_ns": 6482900,
+        "out_paths": 9,
+        "out_verts": 1174,
+        "out_area_u2": 512009441.5,
+        "out_hash": "17fc10ac53ee8a71"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4293950,
+        "fwd_median_ns": 3250700,
+        "rev_median_ns": 5411600,
+        "out_paths": 9,
+        "out_verts": 1210,
+        "out_area_u2": 511687219.05689996,
+        "out_hash": "36b52a2d970d9f80"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2545850,
+        "fwd_median_ns": 2442800,
+        "rev_median_ns": 2607100,
+        "out_paths": 9,
+        "out_verts": 1195,
+        "out_area_u2": 511675706.5856,
+        "out_hash": "41bfa73294fab547"
+      }
+    },
+    {
+      "case_index": 68,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_pnp": {
+        "median_ns": 3380900,
+        "fwd_median_ns": 3453100,
+        "rev_median_ns": 3348700,
+        "out_paths": 5,
+        "out_verts": 1084,
+        "out_area_u2": 410946873.5,
+        "out_hash": "b454b17962b5f624"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 2448000,
+        "fwd_median_ns": 2503600,
+        "rev_median_ns": 2428000,
+        "out_paths": 5,
+        "out_verts": 1084,
+        "out_area_u2": 410946873.5,
+        "out_hash": "b454b17962b5f624"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1804050,
+        "fwd_median_ns": 1360000,
+        "rev_median_ns": 2141000,
+        "out_paths": 5,
+        "out_verts": 1102,
+        "out_area_u2": 410018993.9234,
+        "out_hash": "51f6b77d695cb380"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1204250,
+        "fwd_median_ns": 1147100,
+        "rev_median_ns": 1275100,
+        "out_paths": 5,
+        "out_verts": 1074,
+        "out_area_u2": 410017702.34835,
+        "out_hash": "7277e61e068d9260"
+      }
+    },
+    {
+      "case_index": 69,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_pnp": {
+        "median_ns": 1460350,
+        "fwd_median_ns": 1463000,
+        "rev_median_ns": 1453900,
+        "out_paths": 1,
+        "out_verts": 101,
+        "out_area_u2": 14093159.0,
+        "out_hash": "1ac8075d3df0f0b1"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 1071750,
+        "fwd_median_ns": 1061100,
+        "rev_median_ns": 1085400,
+        "out_paths": 1,
+        "out_verts": 101,
+        "out_area_u2": 14093159,
+        "out_hash": "1ac8075d3df0f0b1"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 659050,
+        "fwd_median_ns": 612400,
+        "rev_median_ns": 785300,
+        "out_paths": 1,
+        "out_verts": 110,
+        "out_area_u2": 14060964.8119,
+        "out_hash": "8fd9754c4a6b4bdc"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 515450,
+        "fwd_median_ns": 487700,
+        "rev_median_ns": 533700,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 14060751.96765,
+        "out_hash": "847fd723f432882b"
+      }
+    },
+    {
+      "case_index": 70,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_pnp": {
+        "median_ns": 17800,
+        "fwd_median_ns": 17500,
+        "rev_median_ns": 18100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 12550,
+        "fwd_median_ns": 16200,
+        "rev_median_ns": 11300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 8750,
+        "fwd_median_ns": 8700,
+        "rev_median_ns": 8800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 7000,
+        "fwd_median_ns": 6800,
+        "rev_median_ns": 7000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 71,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_pnp": {
+        "median_ns": 828450,
+        "fwd_median_ns": 808600,
+        "rev_median_ns": 904100,
+        "out_paths": 1,
+        "out_verts": 332,
+        "out_area_u2": 227790222.5,
+        "out_hash": "07493daf13c3f1f4"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 564050,
+        "fwd_median_ns": 552300,
+        "rev_median_ns": 609800,
+        "out_paths": 1,
+        "out_verts": 332,
+        "out_area_u2": 227790222.5,
+        "out_hash": "07493daf13c3f1f4"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 344950,
+        "fwd_median_ns": 337300,
+        "rev_median_ns": 508600,
+        "out_paths": 1,
+        "out_verts": 328,
+        "out_area_u2": 227784653.65135,
+        "out_hash": "0b44a4ae7d064057"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 200850,
+        "fwd_median_ns": 196200,
+        "rev_median_ns": 203700,
+        "out_paths": 1,
+        "out_verts": 312,
+        "out_area_u2": 227775776.2629,
+        "out_hash": "c1945a02ce20497c"
+      }
+    },
+    {
+      "case_index": 72,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_pnp": {
+        "median_ns": 45625200,
+        "fwd_median_ns": 44480700,
+        "rev_median_ns": 45950500,
+        "out_paths": 10,
+        "out_verts": 3097,
+        "out_area_u2": 2415695774.5,
+        "out_hash": "06002b606879d0f5"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 30513700,
+        "fwd_median_ns": 30407400,
+        "rev_median_ns": 31701100,
+        "out_paths": 10,
+        "out_verts": 3095,
+        "out_area_u2": 2415695774.5,
+        "out_hash": "8a87767e6604f24a"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 22419950,
+        "fwd_median_ns": 21915400,
+        "rev_median_ns": 23927100,
+        "out_paths": 10,
+        "out_verts": 3201,
+        "out_area_u2": 2415704954.1170497,
+        "out_hash": "1680d12293185e0d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 8140700,
+        "fwd_median_ns": 8188800,
+        "rev_median_ns": 8111000,
+        "out_paths": 10,
+        "out_verts": 2812,
+        "out_area_u2": 2415719071.0617,
+        "out_hash": "bad578a37357febc"
+      }
+    },
+    {
+      "case_index": 73,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_pnp": {
+        "median_ns": 22201000,
+        "fwd_median_ns": 21829400,
+        "rev_median_ns": 23384500,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 257792356.0,
+        "out_hash": "d3562266b876ec35"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 14419050,
+        "fwd_median_ns": 14513900,
+        "rev_median_ns": 14004600,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 257792356,
+        "out_hash": "d3562266b876ec35"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 11474950,
+        "fwd_median_ns": 11220800,
+        "rev_median_ns": 12660500,
+        "out_paths": 2,
+        "out_verts": 451,
+        "out_area_u2": 257778589.93684998,
+        "out_hash": "1b78b9576572dd08"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5177150,
+        "fwd_median_ns": 5087600,
+        "rev_median_ns": 5320400,
+        "out_paths": 2,
+        "out_verts": 412,
+        "out_area_u2": 257779030.42195,
+        "out_hash": "f0170f67562f7a11"
+      }
+    },
+    {
+      "case_index": 74,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_pnp": {
+        "median_ns": 21259350,
+        "fwd_median_ns": 21148300,
+        "rev_median_ns": 21836100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 13721500,
+        "fwd_median_ns": 13811900,
+        "rev_median_ns": 13181700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 11325200,
+        "fwd_median_ns": 11179400,
+        "rev_median_ns": 12614300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 4753850,
+        "fwd_median_ns": 4757600,
+        "rev_median_ns": 4750100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 75,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_pnp": {
+        "median_ns": 55315800,
+        "fwd_median_ns": 54419200,
+        "rev_median_ns": 55448100,
+        "out_paths": 2,
+        "out_verts": 315,
+        "out_area_u2": 262283301.0,
+        "out_hash": "567139a1dc0d7b89"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 36187200,
+        "fwd_median_ns": 36209200,
+        "rev_median_ns": 35541400,
+        "out_paths": 2,
+        "out_verts": 315,
+        "out_area_u2": 262283301,
+        "out_hash": "567139a1dc0d7b89"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 28704250,
+        "fwd_median_ns": 28413400,
+        "rev_median_ns": 29624100,
+        "out_paths": 2,
+        "out_verts": 328,
+        "out_area_u2": 262275699.19785002,
+        "out_hash": "1678bbba8ffdaa62"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 11724150,
+        "fwd_median_ns": 11637900,
+        "rev_median_ns": 11749000,
+        "out_paths": 2,
+        "out_verts": 296,
+        "out_area_u2": 262274933.28855002,
+        "out_hash": "e58001e2745e02aa"
+      }
+    },
+    {
+      "case_index": 76,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_pnp": {
+        "median_ns": 39823800,
+        "fwd_median_ns": 39774100,
+        "rev_median_ns": 42324700,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15174455.0,
+        "out_hash": "0d579ce3ab5c79b9"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 26387300,
+        "fwd_median_ns": 26466700,
+        "rev_median_ns": 25875500,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15174455,
+        "out_hash": "0d579ce3ab5c79b9"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 23728650,
+        "fwd_median_ns": 24200700,
+        "rev_median_ns": 23605700,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184183.32005,
+        "out_hash": "156e5f070a9f51a9"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 10699100,
+        "fwd_median_ns": 11040000,
+        "rev_median_ns": 10322700,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184183.32005,
+        "out_hash": "156e5f070a9f51a9"
+      }
+    },
+    {
+      "case_index": 77,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_pnp": {
+        "median_ns": 44565400,
+        "fwd_median_ns": 44600900,
+        "rev_median_ns": 44529900,
+        "out_paths": 2,
+        "out_verts": 188,
+        "out_area_u2": 55193992.5,
+        "out_hash": "d3da2c8750139ab2"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 32189500,
+        "fwd_median_ns": 32899000,
+        "rev_median_ns": 31925700,
+        "out_paths": 2,
+        "out_verts": 188,
+        "out_area_u2": 55193992.5,
+        "out_hash": "d3da2c8750139ab2"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 40783400,
+        "fwd_median_ns": 40617200,
+        "rev_median_ns": 40800900,
+        "out_paths": 2,
+        "out_verts": 187,
+        "out_area_u2": 55189236.76369999,
+        "out_hash": "e8ce5ef710661c87"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 21514000,
+        "fwd_median_ns": 21494200,
+        "rev_median_ns": 21797400,
+        "out_paths": 2,
+        "out_verts": 185,
+        "out_area_u2": 55181111.1066,
+        "out_hash": "53e76fce5f573e76"
+      }
+    },
+    {
+      "case_index": 78,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_pnp": {
+        "median_ns": 43070950,
+        "fwd_median_ns": 43110200,
+        "rev_median_ns": 40733000,
+        "out_paths": 2,
+        "out_verts": 203,
+        "out_area_u2": 60519359.0,
+        "out_hash": "c9d3788d0916c392"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 31952600,
+        "fwd_median_ns": 32172800,
+        "rev_median_ns": 31203200,
+        "out_paths": 2,
+        "out_verts": 203,
+        "out_area_u2": 60519359,
+        "out_hash": "c9d3788d0916c392"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 39706200,
+        "fwd_median_ns": 39179600,
+        "rev_median_ns": 40170500,
+        "out_paths": 2,
+        "out_verts": 194,
+        "out_area_u2": 60492408.09905,
+        "out_hash": "67c353a6205aa2d3"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 21390800,
+        "fwd_median_ns": 21312900,
+        "rev_median_ns": 21518200,
+        "out_paths": 2,
+        "out_verts": 184,
+        "out_area_u2": 60490927.021299995,
+        "out_hash": "8daf80334dd81a28"
+      }
+    },
+    {
+      "case_index": 79,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_pnp": {
+        "median_ns": 19755850,
+        "fwd_median_ns": 18146600,
+        "rev_median_ns": 21250100,
+        "out_paths": 2,
+        "out_verts": 129,
+        "out_area_u2": 30573015.5,
+        "out_hash": "885898c618831985"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 13023700,
+        "fwd_median_ns": 13158700,
+        "rev_median_ns": 12864000,
+        "out_paths": 2,
+        "out_verts": 129,
+        "out_area_u2": 30573015.5,
+        "out_hash": "885898c618831985"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 14361200,
+        "fwd_median_ns": 14129900,
+        "rev_median_ns": 14414700,
+        "out_paths": 2,
+        "out_verts": 124,
+        "out_area_u2": 30577018.27745,
+        "out_hash": "5c7d39ae9a498863"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 8208000,
+        "fwd_median_ns": 7738400,
+        "rev_median_ns": 9047700,
+        "out_paths": 2,
+        "out_verts": 121,
+        "out_area_u2": 30570006.83015,
+        "out_hash": "c1dd9e5c1a54ddc3"
+      }
+    },
+    {
+      "case_index": 80,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_pnp": {
+        "median_ns": 55158800,
+        "fwd_median_ns": 49988600,
+        "rev_median_ns": 60003800,
+        "out_paths": 3,
+        "out_verts": 557,
+        "out_area_u2": 317171083.0,
+        "out_hash": "0e62d4dc845763b3"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 39023650,
+        "fwd_median_ns": 39160100,
+        "rev_median_ns": 38521400,
+        "out_paths": 3,
+        "out_verts": 557,
+        "out_area_u2": 317171083,
+        "out_hash": "0e62d4dc845763b3"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 57113150,
+        "fwd_median_ns": 56656800,
+        "rev_median_ns": 57142900,
+        "out_paths": 3,
+        "out_verts": 596,
+        "out_area_u2": 317108697.75380003,
+        "out_hash": "5c50f489a1e32cb5"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 29598200,
+        "fwd_median_ns": 28474100,
+        "rev_median_ns": 31613900,
+        "out_paths": 3,
+        "out_verts": 511,
+        "out_area_u2": 317067482.773,
+        "out_hash": "44579f5a3f782970"
+      }
+    },
+    {
+      "case_index": 81,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_pnp": {
+        "median_ns": 28789450,
+        "fwd_median_ns": 26976500,
+        "rev_median_ns": 32519600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 19421350,
+        "fwd_median_ns": 19405900,
+        "rev_median_ns": 19436800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 23815650,
+        "fwd_median_ns": 23559200,
+        "rev_median_ns": 24235000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 12371300,
+        "fwd_median_ns": 12325100,
+        "rev_median_ns": 12479000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 82,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_pnp": {
+        "median_ns": 48542250,
+        "fwd_median_ns": 45042800,
+        "rev_median_ns": 52878400,
+        "out_paths": 1,
+        "out_verts": 170,
+        "out_area_u2": 82543788.0,
+        "out_hash": "21ec9d2d2a53f3e8"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 34344550,
+        "fwd_median_ns": 34575500,
+        "rev_median_ns": 34296600,
+        "out_paths": 1,
+        "out_verts": 170,
+        "out_area_u2": 82543788,
+        "out_hash": "21ec9d2d2a53f3e8"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 44489200,
+        "fwd_median_ns": 43942500,
+        "rev_median_ns": 44677000,
+        "out_paths": 1,
+        "out_verts": 186,
+        "out_area_u2": 82540679.73915,
+        "out_hash": "c916ac55832d7fec"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 21644300,
+        "fwd_median_ns": 21460100,
+        "rev_median_ns": 22325100,
+        "out_paths": 1,
+        "out_verts": 167,
+        "out_area_u2": 82540705.3501,
+        "out_hash": "1985b986772c0f30"
+      }
+    },
+    {
+      "case_index": 83,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_pnp": {
+        "median_ns": 12924200,
+        "fwd_median_ns": 11604200,
+        "rev_median_ns": 14633200,
+        "out_paths": 1,
+        "out_verts": 66,
+        "out_area_u2": 17208547.5,
+        "out_hash": "5924f07422ec6e33"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7268250,
+        "fwd_median_ns": 7339100,
+        "rev_median_ns": 7191800,
+        "out_paths": 1,
+        "out_verts": 66,
+        "out_area_u2": 17208547.5,
+        "out_hash": "5924f07422ec6e33"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 6324750,
+        "fwd_median_ns": 6246800,
+        "rev_median_ns": 6363400,
+        "out_paths": 1,
+        "out_verts": 64,
+        "out_area_u2": 17223597.42085,
+        "out_hash": "1fdf2f7a969d3582"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3652150,
+        "fwd_median_ns": 3396100,
+        "rev_median_ns": 3748900,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 17222277.6055,
+        "out_hash": "d992739256f78f76"
+      }
+    },
+    {
+      "case_index": 84,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_pnp": {
+        "median_ns": 8595550,
+        "fwd_median_ns": 7165400,
+        "rev_median_ns": 9787400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 4479300,
+        "fwd_median_ns": 4586300,
+        "rev_median_ns": 4450400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3866650,
+        "fwd_median_ns": 3818800,
+        "rev_median_ns": 3927400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1988900,
+        "fwd_median_ns": 1939200,
+        "rev_median_ns": 2116600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 85,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_pnp": {
+        "median_ns": 94850,
+        "fwd_median_ns": 84400,
+        "rev_median_ns": 110100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 52700,
+        "fwd_median_ns": 51500,
+        "rev_median_ns": 53900,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 47750,
+        "fwd_median_ns": 38200,
+        "rev_median_ns": 53100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 24950,
+        "fwd_median_ns": 25000,
+        "rev_median_ns": 24700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 86,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_pnp": {
+        "median_ns": 7513200,
+        "fwd_median_ns": 6707900,
+        "rev_median_ns": 9155600,
+        "out_paths": 10,
+        "out_verts": 4187,
+        "out_area_u2": 1407773781.5,
+        "out_hash": "4b8be65ae2eed81e"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5565500,
+        "fwd_median_ns": 5675500,
+        "rev_median_ns": 5511600,
+        "out_paths": 10,
+        "out_verts": 4187,
+        "out_area_u2": 1407773781.5,
+        "out_hash": "4b8be65ae2eed81e"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3199450,
+        "fwd_median_ns": 2989100,
+        "rev_median_ns": 3260700,
+        "out_paths": 10,
+        "out_verts": 4144,
+        "out_area_u2": 1405603086.9775999,
+        "out_hash": "dc70867a4bfb7a03"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2378950,
+        "fwd_median_ns": 2321400,
+        "rev_median_ns": 2454900,
+        "out_paths": 10,
+        "out_verts": 4098,
+        "out_area_u2": 1405618978.76805,
+        "out_hash": "8263c37ddf08d7b6"
+      }
+    },
+    {
+      "case_index": 87,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_pnp": {
+        "median_ns": 6666900,
+        "fwd_median_ns": 5470000,
+        "rev_median_ns": 7530400,
+        "out_paths": 7,
+        "out_verts": 3450,
+        "out_area_u2": 1180252547.5,
+        "out_hash": "c86ff27705523eb1"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 4624600,
+        "fwd_median_ns": 4664900,
+        "rev_median_ns": 4541300,
+        "out_paths": 7,
+        "out_verts": 3450,
+        "out_area_u2": 1180252547.5,
+        "out_hash": "c86ff27705523eb1"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2427350,
+        "fwd_median_ns": 2435900,
+        "rev_median_ns": 2427100,
+        "out_paths": 7,
+        "out_verts": 3339,
+        "out_area_u2": 1177878763.0577002,
+        "out_hash": "d7e678d5675a5461"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2139150,
+        "fwd_median_ns": 1926300,
+        "rev_median_ns": 2162500,
+        "out_paths": 7,
+        "out_verts": 3318,
+        "out_area_u2": 1177862851.61205,
+        "out_hash": "35525e4d70136ef4"
+      }
+    },
+    {
+      "case_index": 88,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_pnp": {
+        "median_ns": 9261900,
+        "fwd_median_ns": 8781400,
+        "rev_median_ns": 11320700,
+        "out_paths": 12,
+        "out_verts": 3450,
+        "out_area_u2": 1101260608.0,
+        "out_hash": "33893ed04515577f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6828900,
+        "fwd_median_ns": 6933400,
+        "rev_median_ns": 6643700,
+        "out_paths": 12,
+        "out_verts": 3450,
+        "out_area_u2": 1101260608,
+        "out_hash": "33893ed04515577f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3579750,
+        "fwd_median_ns": 3528600,
+        "rev_median_ns": 3602100,
+        "out_paths": 12,
+        "out_verts": 3428,
+        "out_area_u2": 1099754130.15175,
+        "out_hash": "13b9fbb78d6e75f4"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3046400,
+        "fwd_median_ns": 2890600,
+        "rev_median_ns": 3100100,
+        "out_paths": 12,
+        "out_verts": 3397,
+        "out_area_u2": 1099782588.5811498,
+        "out_hash": "6dd4950b2aa8c4a4"
+      }
+    },
+    {
+      "case_index": 89,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_pnp": {
+        "median_ns": 14914300,
+        "fwd_median_ns": 13164400,
+        "rev_median_ns": 17011400,
+        "out_paths": 19,
+        "out_verts": 3926,
+        "out_area_u2": 1453235086.5,
+        "out_hash": "d3124ee4c310e029"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 9998350,
+        "fwd_median_ns": 9991100,
+        "rev_median_ns": 10025200,
+        "out_paths": 19,
+        "out_verts": 3926,
+        "out_area_u2": 1453235086.5,
+        "out_hash": "d3124ee4c310e029"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5355450,
+        "fwd_median_ns": 5092300,
+        "rev_median_ns": 7096500,
+        "out_paths": 20,
+        "out_verts": 3947,
+        "out_area_u2": 1452768965.3539503,
+        "out_hash": "c0fc19b64ecb41df"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 4254000,
+        "fwd_median_ns": 4112000,
+        "rev_median_ns": 4284300,
+        "out_paths": 20,
+        "out_verts": 3862,
+        "out_area_u2": 1452787567.6925998,
+        "out_hash": "8ace3fdbfac4fc7a"
+      }
+    },
+    {
+      "case_index": 90,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_pnp": {
+        "median_ns": 11608300,
+        "fwd_median_ns": 10421900,
+        "rev_median_ns": 13977500,
+        "out_paths": 18,
+        "out_verts": 1792,
+        "out_area_u2": 333372682.5,
+        "out_hash": "1339ab80372172e4"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 8001100,
+        "fwd_median_ns": 8008800,
+        "rev_median_ns": 7993400,
+        "out_paths": 18,
+        "out_verts": 1792,
+        "out_area_u2": 333372682.5,
+        "out_hash": "1339ab80372172e4"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3993350,
+        "fwd_median_ns": 3968200,
+        "rev_median_ns": 4008800,
+        "out_paths": 18,
+        "out_verts": 1859,
+        "out_area_u2": 332570942.2859,
+        "out_hash": "56a11e4972510d81"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3209600,
+        "fwd_median_ns": 3141900,
+        "rev_median_ns": 3220400,
+        "out_paths": 18,
+        "out_verts": 1826,
+        "out_area_u2": 332807666.7628,
+        "out_hash": "68f1da0af1cc6838"
+      }
+    },
+    {
+      "case_index": 91,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_pnp": {
+        "median_ns": 12610800,
+        "fwd_median_ns": 11062200,
+        "rev_median_ns": 13725500,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116244400.0,
+        "out_hash": "664539c5eb7df164"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 7760950,
+        "fwd_median_ns": 7739900,
+        "rev_median_ns": 7795000,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116244400,
+        "out_hash": "664539c5eb7df164"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 4187550,
+        "fwd_median_ns": 4130500,
+        "rev_median_ns": 4256700,
+        "out_paths": 7,
+        "out_verts": 585,
+        "out_area_u2": 116009764.67995,
+        "out_hash": "3842d80376977427"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3220800,
+        "fwd_median_ns": 3176800,
+        "rev_median_ns": 3237100,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116020676.5127,
+        "out_hash": "a2dcada07139447f"
+      }
+    },
+    {
+      "case_index": 92,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_pnp": {
+        "median_ns": 11286900,
+        "fwd_median_ns": 9633900,
+        "rev_median_ns": 12707400,
+        "out_paths": 6,
+        "out_verts": 528,
+        "out_area_u2": 100934709.0,
+        "out_hash": "d966dbd3bffdd533"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6707950,
+        "fwd_median_ns": 6742900,
+        "rev_median_ns": 6605300,
+        "out_paths": 6,
+        "out_verts": 528,
+        "out_area_u2": 100934709,
+        "out_hash": "d966dbd3bffdd533"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3677800,
+        "fwd_median_ns": 3483100,
+        "rev_median_ns": 3981000,
+        "out_paths": 6,
+        "out_verts": 555,
+        "out_area_u2": 100800859.86785,
+        "out_hash": "d583305c61e0217b"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2939700,
+        "fwd_median_ns": 2897800,
+        "rev_median_ns": 2979000,
+        "out_paths": 6,
+        "out_verts": 530,
+        "out_area_u2": 100642602.79419999,
+        "out_hash": "4903327c75b5fcca"
+      }
+    },
+    {
+      "case_index": 93,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_pnp": {
+        "median_ns": 23741200,
+        "fwd_median_ns": 24212400,
+        "rev_median_ns": 22615300,
+        "out_paths": 21,
+        "out_verts": 3009,
+        "out_area_u2": 1288143346.5,
+        "out_hash": "99bd8ee71789252f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 17780400,
+        "fwd_median_ns": 17458400,
+        "rev_median_ns": 18224300,
+        "out_paths": 21,
+        "out_verts": 3009,
+        "out_area_u2": 1288143346.5,
+        "out_hash": "99bd8ee71789252f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 10274700,
+        "fwd_median_ns": 9907400,
+        "rev_median_ns": 11632500,
+        "out_paths": 21,
+        "out_verts": 2947,
+        "out_area_u2": 1286442704.34365,
+        "out_hash": "e59e1be2c5cfc912"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 7545650,
+        "fwd_median_ns": 7262100,
+        "rev_median_ns": 8946700,
+        "out_paths": 21,
+        "out_verts": 2930,
+        "out_area_u2": 1286479596.3199,
+        "out_hash": "49c96348f7e81ba0"
+      }
+    },
+    {
+      "case_index": 94,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_pnp": {
+        "median_ns": 15508950,
+        "fwd_median_ns": 15359600,
+        "rev_median_ns": 18996100,
+        "out_paths": 10,
+        "out_verts": 2449,
+        "out_area_u2": 797429728.5,
+        "out_hash": "8cf069c2bcc2f2c5"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 11385950,
+        "fwd_median_ns": 11373600,
+        "rev_median_ns": 11608000,
+        "out_paths": 10,
+        "out_verts": 2449,
+        "out_area_u2": 797429728.5,
+        "out_hash": "8cf069c2bcc2f2c5"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 8532000,
+        "fwd_median_ns": 6908400,
+        "rev_median_ns": 9962900,
+        "out_paths": 10,
+        "out_verts": 2429,
+        "out_area_u2": 796377702.5430502,
+        "out_hash": "a280e0a8aa909552"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5635000,
+        "fwd_median_ns": 5325200,
+        "rev_median_ns": 6549100,
+        "out_paths": 10,
+        "out_verts": 2392,
+        "out_area_u2": 796589654.5921998,
+        "out_hash": "8ee70237ff2c11e2"
+      }
+    },
+    {
+      "case_index": 95,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_pnp": {
+        "median_ns": 8376250,
+        "fwd_median_ns": 8596200,
+        "rev_median_ns": 8156000,
+        "out_paths": 15,
+        "out_verts": 1541,
+        "out_area_u2": 1035750420.0,
+        "out_hash": "281d6081eaee913a"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6331550,
+        "fwd_median_ns": 6165700,
+        "rev_median_ns": 6458100,
+        "out_paths": 15,
+        "out_verts": 1541,
+        "out_area_u2": 1035750420,
+        "out_hash": "281d6081eaee913a"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 3545700,
+        "fwd_median_ns": 3452500,
+        "rev_median_ns": 3680200,
+        "out_paths": 15,
+        "out_verts": 1611,
+        "out_area_u2": 1034956152.5158498,
+        "out_hash": "f8888168db504791"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2872350,
+        "fwd_median_ns": 2645300,
+        "rev_median_ns": 3137200,
+        "out_paths": 15,
+        "out_verts": 1609,
+        "out_area_u2": 1035143752.27475,
+        "out_hash": "be06384608e46e1c"
+      }
+    },
+    {
+      "case_index": 96,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_pnp": {
+        "median_ns": 7215450,
+        "fwd_median_ns": 7239300,
+        "rev_median_ns": 6936900,
+        "out_paths": 10,
+        "out_verts": 1184,
+        "out_area_u2": 416223340.5,
+        "out_hash": "7486b2ee497c874f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 5475550,
+        "fwd_median_ns": 5378700,
+        "rev_median_ns": 5638900,
+        "out_paths": 10,
+        "out_verts": 1184,
+        "out_area_u2": 416223340.5,
+        "out_hash": "7486b2ee497c874f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 2895000,
+        "fwd_median_ns": 2811500,
+        "rev_median_ns": 2910100,
+        "out_paths": 10,
+        "out_verts": 1227,
+        "out_area_u2": 416138104.07615006,
+        "out_hash": "16d552336a7ddfaf"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 2367800,
+        "fwd_median_ns": 2159800,
+        "rev_median_ns": 2467500,
+        "out_paths": 10,
+        "out_verts": 1190,
+        "out_area_u2": 415831377.83225,
+        "out_hash": "6914fc0e6df1ef00"
+      }
+    },
+    {
+      "case_index": 97,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_pnp": {
+        "median_ns": 4547550,
+        "fwd_median_ns": 4568600,
+        "rev_median_ns": 4407600,
+        "out_paths": 5,
+        "out_verts": 1382,
+        "out_area_u2": 294634364.0,
+        "out_hash": "b5c902c01349a5cc"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3478650,
+        "fwd_median_ns": 3462200,
+        "rev_median_ns": 3495100,
+        "out_paths": 5,
+        "out_verts": 1382,
+        "out_area_u2": 294634364,
+        "out_hash": "b5c902c01349a5cc"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1995650,
+        "fwd_median_ns": 1953600,
+        "rev_median_ns": 2058500,
+        "out_paths": 5,
+        "out_verts": 1393,
+        "out_area_u2": 293722100.08895,
+        "out_hash": "e67779059c6e1bd3"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1746150,
+        "fwd_median_ns": 1626100,
+        "rev_median_ns": 1966800,
+        "out_paths": 5,
+        "out_verts": 1356,
+        "out_area_u2": 293545225.32860005,
+        "out_hash": "b82651296c75ea9b"
+      }
+    },
+    {
+      "case_index": 98,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_pnp": {
+        "median_ns": 4195400,
+        "fwd_median_ns": 4440000,
+        "rev_median_ns": 4131600,
+        "out_paths": 7,
+        "out_verts": 1168,
+        "out_area_u2": 478527193.5,
+        "out_hash": "a9f5e20fb34f706c"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 3311650,
+        "fwd_median_ns": 3334000,
+        "rev_median_ns": 3289300,
+        "out_paths": 7,
+        "out_verts": 1168,
+        "out_area_u2": 478527193.5,
+        "out_hash": "a9f5e20fb34f706c"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1726050,
+        "fwd_median_ns": 1696400,
+        "rev_median_ns": 1773400,
+        "out_paths": 7,
+        "out_verts": 1217,
+        "out_area_u2": 478240670.2364,
+        "out_hash": "61a1419946be9307"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1562600,
+        "fwd_median_ns": 1393700,
+        "rev_median_ns": 1680600,
+        "out_paths": 7,
+        "out_verts": 1164,
+        "out_area_u2": 478298310.34915,
+        "out_hash": "1bcbbdcb1241d7b5"
+      }
+    },
+    {
+      "case_index": 99,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_pnp": {
+        "median_ns": 3014900,
+        "fwd_median_ns": 3142600,
+        "rev_median_ns": 2938400,
+        "out_paths": 4,
+        "out_verts": 1700,
+        "out_area_u2": 864424860.5,
+        "out_hash": "9da876a7e10c34f5"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 2536100,
+        "fwd_median_ns": 2544200,
+        "rev_median_ns": 2528000,
+        "out_paths": 4,
+        "out_verts": 1700,
+        "out_area_u2": 864424860.5,
+        "out_hash": "9da876a7e10c34f5"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 1342600,
+        "fwd_median_ns": 1327400,
+        "rev_median_ns": 1434200,
+        "out_paths": 4,
+        "out_verts": 1652,
+        "out_area_u2": 863773708.2341499,
+        "out_hash": "fd5976e24c014129"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1163400,
+        "fwd_median_ns": 1082800,
+        "rev_median_ns": 1262300,
+        "out_paths": 4,
+        "out_verts": 1648,
+        "out_area_u2": 863827939.2730999,
+        "out_hash": "cfd4bc1e761c6ba3"
+      }
+    },
+    {
+      "case_index": 100,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_pnp": {
+        "median_ns": 406600,
+        "fwd_median_ns": 414900,
+        "rev_median_ns": 396200,
+        "out_paths": 1,
+        "out_verts": 366,
+        "out_area_u2": 678813703.5,
+        "out_hash": "1306e5928dbeff80"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 350100,
+        "fwd_median_ns": 321700,
+        "rev_median_ns": 388100,
+        "out_paths": 1,
+        "out_verts": 366,
+        "out_area_u2": 678813703.5,
+        "out_hash": "1306e5928dbeff80"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 175550,
+        "fwd_median_ns": 175200,
+        "rev_median_ns": 175900,
+        "out_paths": 1,
+        "out_verts": 364,
+        "out_area_u2": 678686384.80855,
+        "out_hash": "0a8234839d6d34ee"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 155150,
+        "fwd_median_ns": 131300,
+        "rev_median_ns": 170000,
+        "out_paths": 1,
+        "out_verts": 357,
+        "out_area_u2": 678689313.1309,
+        "out_hash": "b949099bac940a7f"
+      }
+    },
+    {
+      "case_index": 101,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_pnp": {
+        "median_ns": 110450,
+        "fwd_median_ns": 111300,
+        "rev_median_ns": 108600,
+        "out_paths": 1,
+        "out_verts": 120,
+        "out_area_u2": 82327637.5,
+        "out_hash": "4153a8b9d040e6d9"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 104300,
+        "fwd_median_ns": 92000,
+        "rev_median_ns": 108200,
+        "out_paths": 1,
+        "out_verts": 120,
+        "out_area_u2": 82327637.5,
+        "out_hash": "4153a8b9d040e6d9"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 60150,
+        "fwd_median_ns": 60900,
+        "rev_median_ns": 56700,
+        "out_paths": 1,
+        "out_verts": 112,
+        "out_area_u2": 82306318.88605,
+        "out_hash": "f2e62df0e1eca67c"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 54000,
+        "fwd_median_ns": 51600,
+        "rev_median_ns": 62800,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 82294001.5191,
+        "out_hash": "44ea53ce30e4925b"
+      }
+    },
+    {
+      "case_index": 102,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_pnp": {
+        "median_ns": 15457450,
+        "fwd_median_ns": 15629700,
+        "rev_median_ns": 14704900,
+        "out_paths": 6,
+        "out_verts": 1126,
+        "out_area_u2": 577971511.5,
+        "out_hash": "0c5cece04a167bd2"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 10538150,
+        "fwd_median_ns": 10707600,
+        "rev_median_ns": 10523600,
+        "out_paths": 6,
+        "out_verts": 1126,
+        "out_area_u2": 577971511.5,
+        "out_hash": "0c5cece04a167bd2"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 9056300,
+        "fwd_median_ns": 8910500,
+        "rev_median_ns": 9524800,
+        "out_paths": 6,
+        "out_verts": 1167,
+        "out_area_u2": 577951167.0953,
+        "out_hash": "f41df15f5a7e39a2"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 4159500,
+        "fwd_median_ns": 4103300,
+        "rev_median_ns": 4354700,
+        "out_paths": 6,
+        "out_verts": 1041,
+        "out_area_u2": 577927125.13085,
+        "out_hash": "51035a73955efab6"
+      }
+    },
+    {
+      "case_index": 103,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_pnp": {
+        "median_ns": 16260350,
+        "fwd_median_ns": 15422900,
+        "rev_median_ns": 19350900,
+        "out_paths": 3,
+        "out_verts": 371,
+        "out_area_u2": 171778092.5,
+        "out_hash": "d9ede088387138c6"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 10386850,
+        "fwd_median_ns": 10278400,
+        "rev_median_ns": 10462700,
+        "out_paths": 3,
+        "out_verts": 371,
+        "out_area_u2": 171778092.5,
+        "out_hash": "d9ede088387138c6"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 7914800,
+        "fwd_median_ns": 7889900,
+        "rev_median_ns": 8080800,
+        "out_paths": 3,
+        "out_verts": 386,
+        "out_area_u2": 171755654.10689998,
+        "out_hash": "3e5a8a83d670a14d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 3515450,
+        "fwd_median_ns": 3458500,
+        "rev_median_ns": 3590700,
+        "out_paths": 3,
+        "out_verts": 357,
+        "out_area_u2": 171751515.58685,
+        "out_hash": "cb00d109dab3e2b7"
+      }
+    },
+    {
+      "case_index": 104,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_pnp": {
+        "median_ns": 29286550,
+        "fwd_median_ns": 29408800,
+        "rev_median_ns": 27704500,
+        "out_paths": 4,
+        "out_verts": 707,
+        "out_area_u2": 277766220.5,
+        "out_hash": "3b60198e26f73c41"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 19598500,
+        "fwd_median_ns": 19765300,
+        "rev_median_ns": 19369500,
+        "out_paths": 4,
+        "out_verts": 707,
+        "out_area_u2": 277766220.5,
+        "out_hash": "3b60198e26f73c41"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 15658050,
+        "fwd_median_ns": 15654600,
+        "rev_median_ns": 15661500,
+        "out_paths": 4,
+        "out_verts": 710,
+        "out_area_u2": 277768163.08545,
+        "out_hash": "8b46ef1fc608fa8d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 7397200,
+        "fwd_median_ns": 7160800,
+        "rev_median_ns": 7505400,
+        "out_paths": 4,
+        "out_verts": 673,
+        "out_area_u2": 277786185.16015,
+        "out_hash": "cb4fcd36505e6a3f"
+      }
+    },
+    {
+      "case_index": 105,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_pnp": {
+        "median_ns": 45145850,
+        "fwd_median_ns": 46544900,
+        "rev_median_ns": 43509100,
+        "out_paths": 4,
+        "out_verts": 572,
+        "out_area_u2": 286425891.0,
+        "out_hash": "37a9851d9fe57917"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 31482000,
+        "fwd_median_ns": 31497700,
+        "rev_median_ns": 31290000,
+        "out_paths": 4,
+        "out_verts": 572,
+        "out_area_u2": 286425891,
+        "out_hash": "37a9851d9fe57917"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 28015250,
+        "fwd_median_ns": 27866100,
+        "rev_median_ns": 29182300,
+        "out_paths": 4,
+        "out_verts": 594,
+        "out_area_u2": 286418886.5656,
+        "out_hash": "3d661302d0c794b1"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 14594600,
+        "fwd_median_ns": 13992000,
+        "rev_median_ns": 15242300,
+        "out_paths": 4,
+        "out_verts": 518,
+        "out_area_u2": 286408136.1839,
+        "out_hash": "3b5d4e4e1196e084"
+      }
+    },
+    {
+      "case_index": 106,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_pnp": {
+        "median_ns": 46917950,
+        "fwd_median_ns": 44241200,
+        "rev_median_ns": 49910000,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25565537.5,
+        "out_hash": "ac6fd03200335816"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 29910200,
+        "fwd_median_ns": 29985400,
+        "rev_median_ns": 29835000,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25565537.5,
+        "out_hash": "ac6fd03200335816"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 28050450,
+        "fwd_median_ns": 27538000,
+        "rev_median_ns": 28619500,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25560193.73215,
+        "out_hash": "2753acbf2e63bc78"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 15457100,
+        "fwd_median_ns": 14403700,
+        "rev_median_ns": 15938400,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25574665.7536,
+        "out_hash": "e1cece57c0379c97"
+      }
+    },
+    {
+      "case_index": 107,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_pnp": {
+        "median_ns": 52588050,
+        "fwd_median_ns": 52836800,
+        "rev_median_ns": 50646400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 38235600,
+        "fwd_median_ns": 37787700,
+        "rev_median_ns": 44185700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 35798300,
+        "fwd_median_ns": 35283700,
+        "rev_median_ns": 36774600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 14330300,
+        "fwd_median_ns": 14123200,
+        "rev_median_ns": 15331300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 108,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_pnp": {
+        "median_ns": 43432650,
+        "fwd_median_ns": 45112500,
+        "rev_median_ns": 42041900,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 31343150,
+        "fwd_median_ns": 31370600,
+        "rev_median_ns": 30696700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 26473900,
+        "fwd_median_ns": 26283300,
+        "rev_median_ns": 26563300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 12848350,
+        "fwd_median_ns": 12823600,
+        "rev_median_ns": 12943100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 109,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_pnp": {
+        "median_ns": 111814900,
+        "fwd_median_ns": 112529100,
+        "rev_median_ns": 110576800,
+        "out_paths": 3,
+        "out_verts": 808,
+        "out_area_u2": 761841224.0,
+        "out_hash": "b46b0c7eca9e0d2a"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 91475550,
+        "fwd_median_ns": 86872400,
+        "rev_median_ns": 95783500,
+        "out_paths": 3,
+        "out_verts": 808,
+        "out_area_u2": 761841224,
+        "out_hash": "b46b0c7eca9e0d2a"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 118514450,
+        "fwd_median_ns": 118352700,
+        "rev_median_ns": 119970400,
+        "out_paths": 3,
+        "out_verts": 806,
+        "out_area_u2": 761847687.32635,
+        "out_hash": "6a59c68dd6259e4f"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 55832300,
+        "fwd_median_ns": 55136800,
+        "rev_median_ns": 58750000,
+        "out_paths": 3,
+        "out_verts": 725,
+        "out_area_u2": 761838922.3686999,
+        "out_hash": "923523ce061e4bd6"
+      }
+    },
+    {
+      "case_index": 110,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_pnp": {
+        "median_ns": 80155100,
+        "fwd_median_ns": 80580600,
+        "rev_median_ns": 78377400,
+        "out_paths": 2,
+        "out_verts": 252,
+        "out_area_u2": 91006535.5,
+        "out_hash": "edb507cb44b559ee"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 61848950,
+        "fwd_median_ns": 60684400,
+        "rev_median_ns": 67012300,
+        "out_paths": 2,
+        "out_verts": 252,
+        "out_area_u2": 91006535.5,
+        "out_hash": "edb507cb44b559ee"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 81876250,
+        "fwd_median_ns": 82562600,
+        "rev_median_ns": 81682000,
+        "out_paths": 2,
+        "out_verts": 244,
+        "out_area_u2": 90990352.26585001,
+        "out_hash": "f60d764960c015e1"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 42651100,
+        "fwd_median_ns": 42192700,
+        "rev_median_ns": 42957100,
+        "out_paths": 2,
+        "out_verts": 228,
+        "out_area_u2": 90991947.3308,
+        "out_hash": "f84d3372cf6971e7"
+      }
+    },
+    {
+      "case_index": 111,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_pnp": {
+        "median_ns": 42294000,
+        "fwd_median_ns": 43750600,
+        "rev_median_ns": 40869700,
+        "out_paths": 1,
+        "out_verts": 274,
+        "out_area_u2": 651387863.5,
+        "out_hash": "5479337a54b3ab41"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 34349000,
+        "fwd_median_ns": 30386100,
+        "rev_median_ns": 39059300,
+        "out_paths": 1,
+        "out_verts": 274,
+        "out_area_u2": 651387863.5,
+        "out_hash": "5479337a54b3ab41"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 29253150,
+        "fwd_median_ns": 29941200,
+        "rev_median_ns": 29234000,
+        "out_paths": 1,
+        "out_verts": 269,
+        "out_area_u2": 651392731.21655,
+        "out_hash": "44ea9a4ff719ed94"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 13428200,
+        "fwd_median_ns": 12781100,
+        "rev_median_ns": 14028800,
+        "out_paths": 1,
+        "out_verts": 247,
+        "out_area_u2": 651391743.6638,
+        "out_hash": "d2ff49d8d16b302a"
+      }
+    },
+    {
+      "case_index": 112,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_pnp": {
+        "median_ns": 36102150,
+        "fwd_median_ns": 37160400,
+        "rev_median_ns": 34987200,
+        "out_paths": 2,
+        "out_verts": 425,
+        "out_area_u2": 207518226.0,
+        "out_hash": "bb10524d635cb8a2"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 28444200,
+        "fwd_median_ns": 26501300,
+        "rev_median_ns": 31661700,
+        "out_paths": 2,
+        "out_verts": 425,
+        "out_area_u2": 207518226,
+        "out_hash": "bb10524d635cb8a2"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 24378600,
+        "fwd_median_ns": 23848200,
+        "rev_median_ns": 24677500,
+        "out_paths": 2,
+        "out_verts": 422,
+        "out_area_u2": 207511655.16085,
+        "out_hash": "09092c7f20c2d634"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 10381950,
+        "fwd_median_ns": 10215300,
+        "rev_median_ns": 10618800,
+        "out_paths": 2,
+        "out_verts": 387,
+        "out_area_u2": 207508218.13645,
+        "out_hash": "69a8a0d6a28c3175"
+      }
+    },
+    {
+      "case_index": 113,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_pnp": {
+        "median_ns": 21766050,
+        "fwd_median_ns": 22384500,
+        "rev_median_ns": 21570100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 14315550,
+        "fwd_median_ns": 14543800,
+        "rev_median_ns": 14291700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 11026800,
+        "fwd_median_ns": 10610800,
+        "rev_median_ns": 11227600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 5156900,
+        "fwd_median_ns": 5071800,
+        "rev_median_ns": 5237200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 114,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_pnp": {
+        "median_ns": 19944400,
+        "fwd_median_ns": 21356000,
+        "rev_median_ns": 19033200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 15375600,
+        "fwd_median_ns": 13807900,
+        "rev_median_ns": 17506000,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 11304150,
+        "fwd_median_ns": 10331700,
+        "rev_median_ns": 12846700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 4249400,
+        "fwd_median_ns": 4147400,
+        "rev_median_ns": 4250400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 115,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_pnp": {
+        "median_ns": 8319050,
+        "fwd_median_ns": 8864200,
+        "rev_median_ns": 7992600,
+        "out_paths": 2,
+        "out_verts": 497,
+        "out_area_u2": 267302399.5,
+        "out_hash": "aebddb0f0fee6942"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 6867650,
+        "fwd_median_ns": 5523100,
+        "rev_median_ns": 7428200,
+        "out_paths": 2,
+        "out_verts": 497,
+        "out_area_u2": 267302399.5,
+        "out_hash": "aebddb0f0fee6942"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 5246100,
+        "fwd_median_ns": 4454000,
+        "rev_median_ns": 6135800,
+        "out_paths": 2,
+        "out_verts": 524,
+        "out_area_u2": 267300638.3017,
+        "out_hash": "55e2ec6d5dfbd77d"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 1783800,
+        "fwd_median_ns": 1766500,
+        "rev_median_ns": 1809700,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 267297185.57475,
+        "out_hash": "8a54f211b4ca3736"
+      }
+    },
+    {
+      "case_index": 116,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_pnp": {
+        "median_ns": 1568200,
+        "fwd_median_ns": 1650400,
+        "rev_median_ns": 1525300,
+        "out_paths": 1,
+        "out_verts": 526,
+        "out_area_u2": 663946972.0,
+        "out_hash": "39ac020d0c3a7a3f"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 1376800,
+        "fwd_median_ns": 1107200,
+        "rev_median_ns": 1505600,
+        "out_paths": 1,
+        "out_verts": 526,
+        "out_area_u2": 663946972,
+        "out_hash": "39ac020d0c3a7a3f"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 801750,
+        "fwd_median_ns": 799100,
+        "rev_median_ns": 1045900,
+        "out_paths": 1,
+        "out_verts": 550,
+        "out_area_u2": 663958855.44335,
+        "out_hash": "723201dfc352d178"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 347950,
+        "fwd_median_ns": 351200,
+        "rev_median_ns": 346400,
+        "out_paths": 1,
+        "out_verts": 474,
+        "out_area_u2": 663963903.01375,
+        "out_hash": "cdbfac17972aaddb"
+      }
+    },
+    {
+      "case_index": 117,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_pnp": {
+        "median_ns": 390350,
+        "fwd_median_ns": 393400,
+        "rev_median_ns": 379300,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 74895283.0,
+        "out_hash": "7f5e2e0802a56824"
+      },
+      "cpp_c2_1_5_2": {
+        "median_ns": 333450,
+        "fwd_median_ns": 294300,
+        "rev_median_ns": 341000,
+        "out_paths": 1,
+        "out_verts": 140,
+        "out_area_u2": 74895283,
+        "out_hash": "7f5e2e0802a56824"
+      },
+      "orca_v2_5_0_nodecim": {
+        "median_ns": 231900,
+        "fwd_median_ns": 242300,
+        "rev_median_ns": 218700,
+        "out_paths": 1,
+        "out_verts": 141,
+        "out_area_u2": 74884419.7916,
+        "out_hash": "858595c6ef371bd6"
+      },
+      "orca_v2_5_0": {
+        "median_ns": 124800,
+        "fwd_median_ns": 126500,
+        "rev_median_ns": 123800,
+        "out_paths": 1,
+        "out_verts": 133,
+        "out_area_u2": 74883844.06755,
+        "out_hash": "8978ff3a9c4857d9"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1077 @@
+{
+ "note": "Wall-equivalent ceilings are thread_sum / measured effective parallelism: they charge 100 % of a carrier's parallel work to the critical path, so they are upper bounds, never prices. Cell walls are the arithmetic.json estimates.",
+ "cells": {
+  "base-arachne-off": {
+   "per_layer_wall_ms": 8661,
+   "per_layer_thread_sum_ms": 94390,
+   "effective_parallelism": 10.9,
+   "cell_wall_s_estimate": 26.8276,
+   "carriers": [
+    {
+     "module_id": "com.core.arachne-perimeters",
+     "thread_sum_ms": 52007,
+     "share_of_per_layer_thread": 0.551,
+     "wall_ceiling_ms": 4772.0,
+     "share_of_cell_wall": 0.1779,
+     "floor_multiple": 22.23,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 32766,
+     "share_of_per_layer_thread": 0.3471,
+     "wall_ceiling_ms": 3006.5,
+     "share_of_cell_wall": 0.1121,
+     "floor_multiple": 14.01,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 5118,
+     "share_of_per_layer_thread": 0.0542,
+     "wall_ceiling_ms": 469.6,
+     "share_of_cell_wall": 0.0175,
+     "floor_multiple": 2.19,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 657,
+     "share_of_per_layer_thread": 0.007,
+     "wall_ceiling_ms": 60.3,
+     "share_of_cell_wall": 0.0022,
+     "floor_multiple": 0.28,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 604,
+     "share_of_per_layer_thread": 0.0064,
+     "wall_ceiling_ms": 55.4,
+     "share_of_cell_wall": 0.0021,
+     "floor_multiple": 0.26,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 484,
+     "share_of_per_layer_thread": 0.0051,
+     "wall_ceiling_ms": 44.4,
+     "share_of_cell_wall": 0.0017,
+     "floor_multiple": 0.21,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 479,
+     "share_of_per_layer_thread": 0.0051,
+     "wall_ceiling_ms": 44.0,
+     "share_of_cell_wall": 0.0016,
+     "floor_multiple": 0.2,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 470,
+     "share_of_per_layer_thread": 0.005,
+     "wall_ceiling_ms": 43.1,
+     "share_of_cell_wall": 0.0016,
+     "floor_multiple": 0.2,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 441,
+     "share_of_per_layer_thread": 0.0047,
+     "wall_ceiling_ms": 40.5,
+     "share_of_cell_wall": 0.0015,
+     "floor_multiple": 0.19,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 438,
+     "share_of_per_layer_thread": 0.0046,
+     "wall_ceiling_ms": 40.2,
+     "share_of_cell_wall": 0.0015,
+     "floor_multiple": 0.19,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 400,
+     "share_of_per_layer_thread": 0.0042,
+     "wall_ceiling_ms": 36.7,
+     "share_of_cell_wall": 0.0014,
+     "floor_multiple": 0.17,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 333,
+     "share_of_per_layer_thread": 0.0035,
+     "wall_ceiling_ms": 30.6,
+     "share_of_cell_wall": 0.0011,
+     "floor_multiple": 0.14,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 190,
+     "share_of_per_layer_thread": 0.002,
+     "wall_ceiling_ms": 17.4,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 3,
+     "share_of_per_layer_thread": 0.0,
+     "wall_ceiling_ms": 0.3,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "base-arachne-on": {
+   "per_layer_wall_ms": 13033,
+   "per_layer_thread_sum_ms": 147244,
+   "effective_parallelism": 11.3,
+   "cell_wall_s_estimate": 79.0222,
+   "carriers": [
+    {
+     "module_id": "com.core.arachne-perimeters",
+     "thread_sum_ms": 52998,
+     "share_of_per_layer_thread": 0.3599,
+     "wall_ceiling_ms": 4691.0,
+     "share_of_cell_wall": 0.0594,
+     "floor_multiple": 7.42,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 50760,
+     "share_of_per_layer_thread": 0.3447,
+     "wall_ceiling_ms": 4492.9,
+     "share_of_cell_wall": 0.0569,
+     "floor_multiple": 7.11,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 33693,
+     "share_of_per_layer_thread": 0.2288,
+     "wall_ceiling_ms": 2982.3,
+     "share_of_cell_wall": 0.0377,
+     "floor_multiple": 4.72,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 5192,
+     "share_of_per_layer_thread": 0.0353,
+     "wall_ceiling_ms": 459.6,
+     "share_of_cell_wall": 0.0058,
+     "floor_multiple": 0.73,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 797,
+     "share_of_per_layer_thread": 0.0054,
+     "wall_ceiling_ms": 70.5,
+     "share_of_cell_wall": 0.0009,
+     "floor_multiple": 0.11,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 640,
+     "share_of_per_layer_thread": 0.0043,
+     "wall_ceiling_ms": 56.6,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 622,
+     "share_of_per_layer_thread": 0.0042,
+     "wall_ceiling_ms": 55.1,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 566,
+     "share_of_per_layer_thread": 0.0038,
+     "wall_ceiling_ms": 50.1,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 558,
+     "share_of_per_layer_thread": 0.0038,
+     "wall_ceiling_ms": 49.4,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 521,
+     "share_of_per_layer_thread": 0.0035,
+     "wall_ceiling_ms": 46.1,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.07,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 329,
+     "share_of_per_layer_thread": 0.0022,
+     "wall_ceiling_ms": 29.1,
+     "share_of_cell_wall": 0.0004,
+     "floor_multiple": 0.05,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 304,
+     "share_of_per_layer_thread": 0.0021,
+     "wall_ceiling_ms": 26.9,
+     "share_of_cell_wall": 0.0003,
+     "floor_multiple": 0.04,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 256,
+     "share_of_per_layer_thread": 0.0017,
+     "wall_ceiling_ms": 22.7,
+     "share_of_cell_wall": 0.0003,
+     "floor_multiple": 0.04,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 8,
+     "share_of_per_layer_thread": 0.0001,
+     "wall_ceiling_ms": 0.7,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "base-classic-off": {
+   "per_layer_wall_ms": 7675,
+   "per_layer_thread_sum_ms": 83752,
+   "effective_parallelism": 10.91,
+   "cell_wall_s_estimate": 24.5071,
+   "carriers": [
+    {
+     "module_id": "com.core.classic-perimeters",
+     "thread_sum_ms": 44206,
+     "share_of_per_layer_thread": 0.5278,
+     "wall_ceiling_ms": 4051.0,
+     "share_of_cell_wall": 0.1653,
+     "floor_multiple": 20.66,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 31218,
+     "share_of_per_layer_thread": 0.3727,
+     "wall_ceiling_ms": 2860.8,
+     "share_of_cell_wall": 0.1167,
+     "floor_multiple": 14.59,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 4482,
+     "share_of_per_layer_thread": 0.0535,
+     "wall_ceiling_ms": 410.7,
+     "share_of_cell_wall": 0.0168,
+     "floor_multiple": 2.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 593,
+     "share_of_per_layer_thread": 0.0071,
+     "wall_ceiling_ms": 54.3,
+     "share_of_cell_wall": 0.0022,
+     "floor_multiple": 0.28,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 474,
+     "share_of_per_layer_thread": 0.0057,
+     "wall_ceiling_ms": 43.4,
+     "share_of_cell_wall": 0.0018,
+     "floor_multiple": 0.22,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 459,
+     "share_of_per_layer_thread": 0.0055,
+     "wall_ceiling_ms": 42.1,
+     "share_of_cell_wall": 0.0017,
+     "floor_multiple": 0.21,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 445,
+     "share_of_per_layer_thread": 0.0053,
+     "wall_ceiling_ms": 40.8,
+     "share_of_cell_wall": 0.0017,
+     "floor_multiple": 0.21,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 404,
+     "share_of_per_layer_thread": 0.0048,
+     "wall_ceiling_ms": 37.0,
+     "share_of_cell_wall": 0.0015,
+     "floor_multiple": 0.19,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 398,
+     "share_of_per_layer_thread": 0.0048,
+     "wall_ceiling_ms": 36.5,
+     "share_of_cell_wall": 0.0015,
+     "floor_multiple": 0.19,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 376,
+     "share_of_per_layer_thread": 0.0045,
+     "wall_ceiling_ms": 34.5,
+     "share_of_cell_wall": 0.0014,
+     "floor_multiple": 0.18,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 302,
+     "share_of_per_layer_thread": 0.0036,
+     "wall_ceiling_ms": 27.7,
+     "share_of_cell_wall": 0.0011,
+     "floor_multiple": 0.14,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 268,
+     "share_of_per_layer_thread": 0.0032,
+     "wall_ceiling_ms": 24.6,
+     "share_of_cell_wall": 0.001,
+     "floor_multiple": 0.13,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 125,
+     "share_of_per_layer_thread": 0.0015,
+     "wall_ceiling_ms": 11.5,
+     "share_of_cell_wall": 0.0005,
+     "floor_multiple": 0.06,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 2,
+     "share_of_per_layer_thread": 0.0,
+     "wall_ceiling_ms": 0.2,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "base-classic-on": {
+   "per_layer_wall_ms": 11463,
+   "per_layer_thread_sum_ms": 128159,
+   "effective_parallelism": 11.18,
+   "cell_wall_s_estimate": 69.5401,
+   "carriers": [
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 46979,
+     "share_of_per_layer_thread": 0.3666,
+     "wall_ceiling_ms": 4202.0,
+     "share_of_cell_wall": 0.0604,
+     "floor_multiple": 7.55,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.classic-perimeters",
+     "thread_sum_ms": 42855,
+     "share_of_per_layer_thread": 0.3344,
+     "wall_ceiling_ms": 3833.1,
+     "share_of_cell_wall": 0.0551,
+     "floor_multiple": 6.89,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 30089,
+     "share_of_per_layer_thread": 0.2348,
+     "wall_ceiling_ms": 2691.3,
+     "share_of_cell_wall": 0.0387,
+     "floor_multiple": 4.84,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 4424,
+     "share_of_per_layer_thread": 0.0345,
+     "wall_ceiling_ms": 395.7,
+     "share_of_cell_wall": 0.0057,
+     "floor_multiple": 0.71,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 695,
+     "share_of_per_layer_thread": 0.0054,
+     "wall_ceiling_ms": 62.2,
+     "share_of_cell_wall": 0.0009,
+     "floor_multiple": 0.11,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 540,
+     "share_of_per_layer_thread": 0.0042,
+     "wall_ceiling_ms": 48.3,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 535,
+     "share_of_per_layer_thread": 0.0042,
+     "wall_ceiling_ms": 47.9,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 476,
+     "share_of_per_layer_thread": 0.0037,
+     "wall_ceiling_ms": 42.6,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 457,
+     "share_of_per_layer_thread": 0.0036,
+     "wall_ceiling_ms": 40.9,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.07,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 420,
+     "share_of_per_layer_thread": 0.0033,
+     "wall_ceiling_ms": 37.6,
+     "share_of_cell_wall": 0.0005,
+     "floor_multiple": 0.07,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 269,
+     "share_of_per_layer_thread": 0.0021,
+     "wall_ceiling_ms": 24.1,
+     "share_of_cell_wall": 0.0003,
+     "floor_multiple": 0.04,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 256,
+     "share_of_per_layer_thread": 0.002,
+     "wall_ceiling_ms": 22.9,
+     "share_of_cell_wall": 0.0003,
+     "floor_multiple": 0.04,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 162,
+     "share_of_per_layer_thread": 0.0013,
+     "wall_ceiling_ms": 14.5,
+     "share_of_cell_wall": 0.0002,
+     "floor_multiple": 0.03,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 2,
+     "share_of_per_layer_thread": 0.0,
+     "wall_ceiling_ms": 0.2,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "benchy-arachne-off": {
+   "per_layer_wall_ms": 1097,
+   "per_layer_thread_sum_ms": 7625,
+   "effective_parallelism": 6.95,
+   "cell_wall_s_estimate": 3.4956,
+   "carriers": [
+    {
+     "module_id": "com.core.arachne-perimeters",
+     "thread_sum_ms": 4176,
+     "share_of_per_layer_thread": 0.5477,
+     "wall_ceiling_ms": 600.8,
+     "share_of_cell_wall": 0.1719,
+     "floor_multiple": 21.48,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 1409,
+     "share_of_per_layer_thread": 0.1848,
+     "wall_ceiling_ms": 202.7,
+     "share_of_cell_wall": 0.058,
+     "floor_multiple": 7.25,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 1346,
+     "share_of_per_layer_thread": 0.1765,
+     "wall_ceiling_ms": 193.6,
+     "share_of_cell_wall": 0.0554,
+     "floor_multiple": 6.92,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 135,
+     "share_of_per_layer_thread": 0.0177,
+     "wall_ceiling_ms": 19.4,
+     "share_of_cell_wall": 0.0056,
+     "floor_multiple": 0.69,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 102,
+     "share_of_per_layer_thread": 0.0134,
+     "wall_ceiling_ms": 14.7,
+     "share_of_cell_wall": 0.0042,
+     "floor_multiple": 0.52,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 100,
+     "share_of_per_layer_thread": 0.0131,
+     "wall_ceiling_ms": 14.4,
+     "share_of_cell_wall": 0.0041,
+     "floor_multiple": 0.51,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 73,
+     "share_of_per_layer_thread": 0.0096,
+     "wall_ceiling_ms": 10.5,
+     "share_of_cell_wall": 0.003,
+     "floor_multiple": 0.38,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 60,
+     "share_of_per_layer_thread": 0.0079,
+     "wall_ceiling_ms": 8.6,
+     "share_of_cell_wall": 0.0025,
+     "floor_multiple": 0.31,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 52,
+     "share_of_per_layer_thread": 0.0068,
+     "wall_ceiling_ms": 7.5,
+     "share_of_cell_wall": 0.0021,
+     "floor_multiple": 0.27,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 50,
+     "share_of_per_layer_thread": 0.0066,
+     "wall_ceiling_ms": 7.2,
+     "share_of_cell_wall": 0.0021,
+     "floor_multiple": 0.26,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 46,
+     "share_of_per_layer_thread": 0.006,
+     "wall_ceiling_ms": 6.6,
+     "share_of_cell_wall": 0.0019,
+     "floor_multiple": 0.24,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 42,
+     "share_of_per_layer_thread": 0.0055,
+     "wall_ceiling_ms": 6.0,
+     "share_of_cell_wall": 0.0017,
+     "floor_multiple": 0.22,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 34,
+     "share_of_per_layer_thread": 0.0045,
+     "wall_ceiling_ms": 4.9,
+     "share_of_cell_wall": 0.0014,
+     "floor_multiple": 0.17,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 0,
+     "share_of_per_layer_thread": 0.0,
+     "wall_ceiling_ms": 0.0,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "benchy-arachne-on": {
+   "per_layer_wall_ms": 1338,
+   "per_layer_thread_sum_ms": 13072,
+   "effective_parallelism": 9.77,
+   "cell_wall_s_estimate": 6.973,
+   "carriers": [
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 5749,
+     "share_of_per_layer_thread": 0.4398,
+     "wall_ceiling_ms": 588.4,
+     "share_of_cell_wall": 0.0844,
+     "floor_multiple": 10.55,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.arachne-perimeters",
+     "thread_sum_ms": 3877,
+     "share_of_per_layer_thread": 0.2966,
+     "wall_ceiling_ms": 396.8,
+     "share_of_cell_wall": 0.0569,
+     "floor_multiple": 7.11,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 1490,
+     "share_of_per_layer_thread": 0.114,
+     "wall_ceiling_ms": 152.5,
+     "share_of_cell_wall": 0.0219,
+     "floor_multiple": 2.73,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 1284,
+     "share_of_per_layer_thread": 0.0982,
+     "wall_ceiling_ms": 131.4,
+     "share_of_cell_wall": 0.0188,
+     "floor_multiple": 2.36,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 149,
+     "share_of_per_layer_thread": 0.0114,
+     "wall_ceiling_ms": 15.3,
+     "share_of_cell_wall": 0.0022,
+     "floor_multiple": 0.27,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 100,
+     "share_of_per_layer_thread": 0.0076,
+     "wall_ceiling_ms": 10.2,
+     "share_of_cell_wall": 0.0015,
+     "floor_multiple": 0.18,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 92,
+     "share_of_per_layer_thread": 0.007,
+     "wall_ceiling_ms": 9.4,
+     "share_of_cell_wall": 0.0014,
+     "floor_multiple": 0.17,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 75,
+     "share_of_per_layer_thread": 0.0057,
+     "wall_ceiling_ms": 7.7,
+     "share_of_cell_wall": 0.0011,
+     "floor_multiple": 0.14,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 66,
+     "share_of_per_layer_thread": 0.005,
+     "wall_ceiling_ms": 6.8,
+     "share_of_cell_wall": 0.001,
+     "floor_multiple": 0.12,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 63,
+     "share_of_per_layer_thread": 0.0048,
+     "wall_ceiling_ms": 6.4,
+     "share_of_cell_wall": 0.0009,
+     "floor_multiple": 0.12,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 45,
+     "share_of_per_layer_thread": 0.0034,
+     "wall_ceiling_ms": 4.6,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 41,
+     "share_of_per_layer_thread": 0.0031,
+     "wall_ceiling_ms": 4.2,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.08,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 40,
+     "share_of_per_layer_thread": 0.0031,
+     "wall_ceiling_ms": 4.1,
+     "share_of_cell_wall": 0.0006,
+     "floor_multiple": 0.07,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 1,
+     "share_of_per_layer_thread": 0.0001,
+     "wall_ceiling_ms": 0.1,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "benchy-classic-off": {
+   "per_layer_wall_ms": 971,
+   "per_layer_thread_sum_ms": 6547,
+   "effective_parallelism": 6.74,
+   "cell_wall_s_estimate": 3.8431,
+   "carriers": [
+    {
+     "module_id": "com.core.classic-perimeters",
+     "thread_sum_ms": 3064,
+     "share_of_per_layer_thread": 0.468,
+     "wall_ceiling_ms": 454.4,
+     "share_of_cell_wall": 0.1182,
+     "floor_multiple": 14.78,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 1390,
+     "share_of_per_layer_thread": 0.2123,
+     "wall_ceiling_ms": 206.2,
+     "share_of_cell_wall": 0.0536,
+     "floor_multiple": 6.71,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 1345,
+     "share_of_per_layer_thread": 0.2054,
+     "wall_ceiling_ms": 199.5,
+     "share_of_cell_wall": 0.0519,
+     "floor_multiple": 6.49,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 173,
+     "share_of_per_layer_thread": 0.0264,
+     "wall_ceiling_ms": 25.7,
+     "share_of_cell_wall": 0.0067,
+     "floor_multiple": 0.83,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 85,
+     "share_of_per_layer_thread": 0.013,
+     "wall_ceiling_ms": 12.6,
+     "share_of_cell_wall": 0.0033,
+     "floor_multiple": 0.41,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 77,
+     "share_of_per_layer_thread": 0.0118,
+     "wall_ceiling_ms": 11.4,
+     "share_of_cell_wall": 0.003,
+     "floor_multiple": 0.37,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 74,
+     "share_of_per_layer_thread": 0.0113,
+     "wall_ceiling_ms": 11.0,
+     "share_of_cell_wall": 0.0029,
+     "floor_multiple": 0.36,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 64,
+     "share_of_per_layer_thread": 0.0098,
+     "wall_ceiling_ms": 9.5,
+     "share_of_cell_wall": 0.0025,
+     "floor_multiple": 0.31,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 63,
+     "share_of_per_layer_thread": 0.0096,
+     "wall_ceiling_ms": 9.3,
+     "share_of_cell_wall": 0.0024,
+     "floor_multiple": 0.3,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 63,
+     "share_of_per_layer_thread": 0.0096,
+     "wall_ceiling_ms": 9.3,
+     "share_of_cell_wall": 0.0024,
+     "floor_multiple": 0.3,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 62,
+     "share_of_per_layer_thread": 0.0095,
+     "wall_ceiling_ms": 9.2,
+     "share_of_cell_wall": 0.0024,
+     "floor_multiple": 0.3,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 54,
+     "share_of_per_layer_thread": 0.0082,
+     "wall_ceiling_ms": 8.0,
+     "share_of_cell_wall": 0.0021,
+     "floor_multiple": 0.26,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 30,
+     "share_of_per_layer_thread": 0.0046,
+     "wall_ceiling_ms": 4.4,
+     "share_of_cell_wall": 0.0012,
+     "floor_multiple": 0.14,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 3,
+     "share_of_per_layer_thread": 0.0005,
+     "wall_ceiling_ms": 0.4,
+     "share_of_cell_wall": 0.0001,
+     "floor_multiple": 0.01,
+     "stage_shared_preparation": false
+    }
+   ]
+  },
+  "benchy-classic-on": {
+   "per_layer_wall_ms": 1290,
+   "per_layer_thread_sum_ms": 12444,
+   "effective_parallelism": 9.65,
+   "cell_wall_s_estimate": 6.2786,
+   "carriers": [
+    {
+     "module_id": "com.core.tree-support",
+     "thread_sum_ms": 5950,
+     "share_of_per_layer_thread": 0.4781,
+     "wall_ceiling_ms": 616.8,
+     "share_of_cell_wall": 0.0982,
+     "floor_multiple": 12.28,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.classic-perimeters",
+     "thread_sum_ms": 2974,
+     "share_of_per_layer_thread": 0.239,
+     "wall_ceiling_ms": 308.3,
+     "share_of_cell_wall": 0.0491,
+     "floor_multiple": 6.14,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.infill-linker",
+     "thread_sum_ms": 1437,
+     "share_of_per_layer_thread": 0.1155,
+     "wall_ceiling_ms": 149.0,
+     "share_of_cell_wall": 0.0237,
+     "floor_multiple": 2.97,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.raft-default",
+     "thread_sum_ms": 1331,
+     "share_of_per_layer_thread": 0.107,
+     "wall_ceiling_ms": 138.0,
+     "share_of_cell_wall": 0.022,
+     "floor_multiple": 2.75,
+     "stage_shared_preparation": true
+    },
+    {
+     "module_id": "com.core.gyroid-infill",
+     "thread_sum_ms": 183,
+     "share_of_per_layer_thread": 0.0147,
+     "wall_ceiling_ms": 19.0,
+     "share_of_cell_wall": 0.003,
+     "floor_multiple": 0.38,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.rectilinear-infill",
+     "thread_sum_ms": 116,
+     "share_of_per_layer_thread": 0.0093,
+     "wall_ceiling_ms": 12.0,
+     "share_of_cell_wall": 0.0019,
+     "floor_multiple": 0.24,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.lightning-infill",
+     "thread_sum_ms": 100,
+     "share_of_per_layer_thread": 0.008,
+     "wall_ceiling_ms": 10.4,
+     "share_of_cell_wall": 0.0017,
+     "floor_multiple": 0.21,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.wave-overhangs",
+     "thread_sum_ms": 86,
+     "share_of_per_layer_thread": 0.0069,
+     "wall_ceiling_ms": 8.9,
+     "share_of_cell_wall": 0.0014,
+     "floor_multiple": 0.18,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.top-surface-ironing",
+     "thread_sum_ms": 71,
+     "share_of_per_layer_thread": 0.0057,
+     "wall_ceiling_ms": 7.4,
+     "share_of_cell_wall": 0.0012,
+     "floor_multiple": 0.15,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.support-surface-ironing",
+     "thread_sum_ms": 62,
+     "share_of_per_layer_thread": 0.005,
+     "wall_ceiling_ms": 6.4,
+     "share_of_cell_wall": 0.001,
+     "floor_multiple": 0.13,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.fuzzy-skin",
+     "thread_sum_ms": 46,
+     "share_of_per_layer_thread": 0.0037,
+     "wall_ceiling_ms": 4.8,
+     "share_of_cell_wall": 0.0008,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.seam-placer",
+     "thread_sum_ms": 45,
+     "share_of_per_layer_thread": 0.0036,
+     "wall_ceiling_ms": 4.7,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "com.core.path-optimization-default",
+     "thread_sum_ms": 43,
+     "share_of_per_layer_thread": 0.0035,
+     "wall_ceiling_ms": 4.5,
+     "share_of_cell_wall": 0.0007,
+     "floor_multiple": 0.09,
+     "stage_shared_preparation": false
+    },
+    {
+     "module_id": "host:paint_annotator",
+     "thread_sum_ms": 0,
+     "share_of_per_layer_thread": 0.0,
+     "wall_ceiling_ms": 0.0,
+     "share_of_cell_wall": 0.0,
+     "floor_multiple": 0.0,
+     "stage_shared_preparation": false
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,230 @@
+{
+  "cells": {
+    "base-arachne-off": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 495,
+            "mean_ms": 69.0,
+            "p50_ms": 66.0
+          }
+        },
+        "infill_calls": 2970,
+        "infill_thread_ms": 37537.0,
+        "per_layer_phase_ms": 8920
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 495,
+            "mean_ms": 63.09,
+            "p50_ms": 61.0
+          }
+        },
+        "infill_calls": 2475,
+        "infill_thread_ms": 33471.0,
+        "per_layer_phase_ms": 8207
+      },
+      "infill_thread_delta_ms": -4066.0,
+      "per_layer_phase_delta_ms": -713
+    },
+    "base-arachne-on": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 495,
+            "mean_ms": 65.33,
+            "p50_ms": 66.0
+          }
+        },
+        "infill_calls": 2970,
+        "infill_thread_ms": 35863.0,
+        "per_layer_phase_ms": 13132
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 495,
+            "mean_ms": 55.17,
+            "p50_ms": 57.0
+          }
+        },
+        "infill_calls": 2475,
+        "infill_thread_ms": 29263.0,
+        "per_layer_phase_ms": 11185
+      },
+      "infill_thread_delta_ms": -6600.0,
+      "per_layer_phase_delta_ms": -1947
+    },
+    "base-classic-off": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 495,
+            "mean_ms": 54.56,
+            "p50_ms": 56.0
+          }
+        },
+        "infill_calls": 2970,
+        "infill_thread_ms": 29140.0,
+        "per_layer_phase_ms": 6727
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 495,
+            "mean_ms": 61.73,
+            "p50_ms": 60.0
+          }
+        },
+        "infill_calls": 2475,
+        "infill_thread_ms": 32537.0,
+        "per_layer_phase_ms": 7495
+      },
+      "infill_thread_delta_ms": 3397.0,
+      "per_layer_phase_delta_ms": 768
+    },
+    "base-classic-on": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 495,
+            "mean_ms": 60.49,
+            "p50_ms": 60.0
+          }
+        },
+        "infill_calls": 2970,
+        "infill_thread_ms": 32987.0,
+        "per_layer_phase_ms": 12013
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 495,
+            "mean_ms": 57.22,
+            "p50_ms": 58.0
+          }
+        },
+        "infill_calls": 2475,
+        "infill_thread_ms": 30395.0,
+        "per_layer_phase_ms": 11265
+      },
+      "infill_thread_delta_ms": -2592.0,
+      "per_layer_phase_delta_ms": -748
+    },
+    "benchy-arachne-off": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 240,
+            "mean_ms": 5.32,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1440,
+        "infill_thread_ms": 1625.0,
+        "per_layer_phase_ms": 1753
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 240,
+            "mean_ms": 6.3,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1200,
+        "infill_thread_ms": 1938.0,
+        "per_layer_phase_ms": 1796
+      },
+      "infill_thread_delta_ms": 313.0,
+      "per_layer_phase_delta_ms": 43
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 240,
+            "mean_ms": 5.26,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1440,
+        "infill_thread_ms": 1714.0,
+        "per_layer_phase_ms": 2001
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 240,
+            "mean_ms": 5.31,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1200,
+        "infill_thread_ms": 1554.0,
+        "per_layer_phase_ms": 1845
+      },
+      "infill_thread_delta_ms": -160.0,
+      "per_layer_phase_delta_ms": -156
+    },
+    "benchy-classic-off": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 240,
+            "mean_ms": 5.56,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1440,
+        "infill_thread_ms": 1815.0,
+        "per_layer_phase_ms": 1596
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 240,
+            "mean_ms": 5.06,
+            "p50_ms": 4.0
+          }
+        },
+        "infill_calls": 1200,
+        "infill_thread_ms": 1361.0,
+        "per_layer_phase_ms": 1432
+      },
+      "infill_thread_delta_ms": -454.0,
+      "per_layer_phase_delta_ms": -164
+    },
+    "benchy-classic-on": {
+      "baseline": {
+        "first_infill_modules": {
+          "com.core.raft-default": {
+            "layers": 240,
+            "mean_ms": 4.69,
+            "p50_ms": 4.0
+          }
+        },
+        "infill_calls": 1440,
+        "infill_thread_ms": 1395.0,
+        "per_layer_phase_ms": 1574
+      },
+      "candidate": {
+        "first_infill_modules": {
+          "com.core.gyroid-infill": {
+            "layers": 240,
+            "mean_ms": 4.99,
+            "p50_ms": 5.0
+          }
+        },
+        "infill_calls": 1200,
+        "infill_thread_ms": 1422.0,
+        "per_layer_phase_ms": 1602
+      },
+      "infill_thread_delta_ms": 27.0,
+      "per_layer_phase_delta_ms": 28
+    }
+  },
+  "note": "Same-session instrumented passes of both arms, one per cell. `first_infill_modules` lists, per module, the layers on which it was the first Layer::Infill dispatch and the elapsed_ms of those calls. Attribution only: no wall claim is taken from an instrumented pass.",
+  "ticket": "127"
+}

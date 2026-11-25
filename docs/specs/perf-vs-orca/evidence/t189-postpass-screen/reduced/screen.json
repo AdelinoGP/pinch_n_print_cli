@@ -1,0 +1,2118 @@
+{
+  "schema": "t189_screen_v1",
+  "captured_utc": "2026-11-24T04:24:57.996375+00:00",
+  "head_commit": "07b7ecf6",
+  "rayon_num_threads": 12,
+  "baseline_exe_sha256": "3825ba813f712c79e951443b286350e677fed84e4a9d0a09ae53d65cd91ee9c9",
+  "candidate_exe_sha256": "d085f741d772860149162e81b1071a965696663e1b9a2b0badd7175c89337f10",
+  "warmup_runs": 2,
+  "measured_runs": 92,
+  "total_runs_verified_reference_match": 94,
+  "screened_mechanisms": [
+    {
+      "id": "PP-1",
+      "scope": "host + 4 PostPass::LayerFinalization core guests (zero WIT changes)",
+      "summary": "Zero-clone host LayerCollectionViewData::from_ir_shared (std::mem::take -> Arc -> Arc::try_unwrap restore), lazy OnceCell LayerCollectionView::ordered_entities in slicer-sdk/slicer-macros, skirt-brim .take(needed_layers), and part-cooling hoisted cooling_decision_for_event."
+    },
+    {
+      "id": "PP-2",
+      "scope": "host PostPass::GCodeSerialize (crates/slicer-gcode/src/serialize.rs)",
+      "summary": "Zero-alloc exact decimal formatter (push_fixed_trimmed / push_fixed_e5 with midpoint guard and core::fmt fallback) + Rayon chunk-parallel serialize_gcode using backward-scanned seed_e_accumulator."
+    },
+    {
+      "id": "PP-3",
+      "scope": "host PostPass::GCodeEmit + estimator + run.rs tail",
+      "summary": "Parallel drop(layer_irs) via Rayon, parallel zero-alloc simplify_and_prune_indices, pre-allocated commands + indexed annotations, single-pass parallelized estimator, PrintEstimate reuse across GCodePostProcess gated by parallel kinematic invariance check, and parallel ;LAYER_CHANGE scan in run.rs."
+    }
+  ],
+  "deferred_wit_leads": [
+    {
+      "id": "PP-4",
+      "stage": "PostPass::GCodePostProcess",
+      "module": "com.core.machine-gcode-emit",
+      "reason": "WIT run(commands: list<gcode-command>) passes 102K-977K commands by value and re-emits them via 102K-977K host push calls solely to prepend start G-code and append end G-code (+2 cmds). Fixing at the root requires an additive WIT resource-backed gcode-stream-view + push-input-range(start, end)."
+    },
+    {
+      "id": "PP-1b",
+      "stage": "PostPass::LayerFinalization",
+      "module": "com.core.part-cooling",
+      "reason": "part-cooling inspects only path.role == BridgeInfill (zero point coordinates read), yet current WIT layer-collection-view exposes only ordered-entities() with full polyline point arrays. Fixing requires an additive WIT query such as layer-has-role / entity-roles."
+    }
+  ],
+  "ab": {
+    "benchy-classic-off": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 1.35456,
+          "candidate_wall_s": 1.25868,
+          "baseline_cpu_s": 7.71875,
+          "candidate_cpu_s": 7.4375,
+          "baseline_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "candidate_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "baseline_bytes": 4077945,
+          "candidate_bytes": 4077945,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 1.33583,
+          "candidate_wall_s": 1.2638,
+          "baseline_cpu_s": 7.45312,
+          "candidate_cpu_s": 7.1875,
+          "baseline_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "candidate_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "baseline_bytes": 4077945,
+          "candidate_bytes": 4077945,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 1.32903,
+          "candidate_wall_s": 1.31824,
+          "baseline_cpu_s": 7.79688,
+          "candidate_cpu_s": 8.0,
+          "baseline_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "candidate_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+          "baseline_bytes": 4077945,
+          "candidate_bytes": 4077945,
+          "reference_match": true
+        }
+      ]
+    },
+    "benchy-classic-on": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 2.67568,
+          "candidate_wall_s": 2.40756,
+          "baseline_cpu_s": 11.46875,
+          "candidate_cpu_s": 11.60938,
+          "baseline_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "candidate_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "baseline_bytes": 8544099,
+          "candidate_bytes": 8544099,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 2.70135,
+          "candidate_wall_s": 2.44701,
+          "baseline_cpu_s": 11.3125,
+          "candidate_cpu_s": 10.89062,
+          "baseline_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "candidate_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "baseline_bytes": 8544099,
+          "candidate_bytes": 8544099,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 2.71994,
+          "candidate_wall_s": 2.46146,
+          "baseline_cpu_s": 11.14062,
+          "candidate_cpu_s": 11.51562,
+          "baseline_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "candidate_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "baseline_bytes": 8544099,
+          "candidate_bytes": 8544099,
+          "reference_match": true
+        }
+      ]
+    },
+    "benchy-arachne-off": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 1.43929,
+          "candidate_wall_s": 1.34229,
+          "baseline_cpu_s": 8.14062,
+          "candidate_cpu_s": 8.17188,
+          "baseline_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "candidate_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "baseline_bytes": 4225196,
+          "candidate_bytes": 4225196,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 1.42231,
+          "candidate_wall_s": 1.34023,
+          "baseline_cpu_s": 8.73438,
+          "candidate_cpu_s": 8.48438,
+          "baseline_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "candidate_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "baseline_bytes": 4225196,
+          "candidate_bytes": 4225196,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 1.44646,
+          "candidate_wall_s": 1.33066,
+          "baseline_cpu_s": 8.53125,
+          "candidate_cpu_s": 8.29688,
+          "baseline_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "candidate_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+          "baseline_bytes": 4225196,
+          "candidate_bytes": 4225196,
+          "reference_match": true
+        }
+      ]
+    },
+    "benchy-arachne-on": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 2.73845,
+          "candidate_wall_s": 2.48449,
+          "baseline_cpu_s": 13.0625,
+          "candidate_cpu_s": 12.625,
+          "baseline_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "candidate_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "baseline_bytes": 8688377,
+          "candidate_bytes": 8688377,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 2.78862,
+          "candidate_wall_s": 2.53751,
+          "baseline_cpu_s": 12.0625,
+          "candidate_cpu_s": 12.48438,
+          "baseline_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "candidate_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "baseline_bytes": 8688377,
+          "candidate_bytes": 8688377,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 2.76487,
+          "candidate_wall_s": 2.50202,
+          "baseline_cpu_s": 12.73438,
+          "candidate_cpu_s": 11.90625,
+          "baseline_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "candidate_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "baseline_bytes": 8688377,
+          "candidate_bytes": 8688377,
+          "reference_match": true
+        }
+      ]
+    },
+    "base-classic-off": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 9.71366,
+          "candidate_wall_s": 9.2652,
+          "baseline_cpu_s": 59.70312,
+          "candidate_cpu_s": 60.01562,
+          "baseline_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "candidate_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "baseline_bytes": 21230739,
+          "candidate_bytes": 21230739,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 9.55523,
+          "candidate_wall_s": 9.10021,
+          "baseline_cpu_s": 59.375,
+          "candidate_cpu_s": 59.48438,
+          "baseline_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "candidate_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "baseline_bytes": 21230739,
+          "candidate_bytes": 21230739,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 10.21774,
+          "candidate_wall_s": 9.22294,
+          "baseline_cpu_s": 59.34375,
+          "candidate_cpu_s": 59.23438,
+          "baseline_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "candidate_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+          "baseline_bytes": 21230739,
+          "candidate_bytes": 21230739,
+          "reference_match": true
+        }
+      ]
+    },
+    "base-classic-on": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 20.39995,
+          "candidate_wall_s": 18.89563,
+          "baseline_cpu_s": 105.125,
+          "candidate_cpu_s": 103.51562,
+          "baseline_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "candidate_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "baseline_bytes": 39605478,
+          "candidate_bytes": 39605478,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 20.33492,
+          "candidate_wall_s": 18.68276,
+          "baseline_cpu_s": 102.9375,
+          "candidate_cpu_s": 103.8125,
+          "baseline_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "candidate_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "baseline_bytes": 39605478,
+          "candidate_bytes": 39605478,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 19.77861,
+          "candidate_wall_s": 18.73376,
+          "baseline_cpu_s": 104.26562,
+          "candidate_cpu_s": 104.10938,
+          "baseline_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "candidate_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "baseline_bytes": 39605478,
+          "candidate_bytes": 39605478,
+          "reference_match": true
+        }
+      ]
+    },
+    "base-arachne-off": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 10.07609,
+          "candidate_wall_s": 9.77664,
+          "baseline_cpu_s": 64.57812,
+          "candidate_cpu_s": 64.5,
+          "baseline_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "candidate_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "baseline_bytes": 21041068,
+          "candidate_bytes": 21041068,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 9.96359,
+          "candidate_wall_s": 9.55578,
+          "baseline_cpu_s": 64.73438,
+          "candidate_cpu_s": 64.89062,
+          "baseline_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "candidate_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "baseline_bytes": 21041068,
+          "candidate_bytes": 21041068,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 10.1869,
+          "candidate_wall_s": 9.71743,
+          "baseline_cpu_s": 65.39062,
+          "candidate_cpu_s": 65.09375,
+          "baseline_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "candidate_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+          "baseline_bytes": 21041068,
+          "candidate_bytes": 21041068,
+          "reference_match": true
+        }
+      ]
+    },
+    "base-arachne-on": {
+      "pairs": [
+        {
+          "round": 1,
+          "order": "base_then_cand",
+          "baseline_wall_s": 20.55044,
+          "candidate_wall_s": 19.15223,
+          "baseline_cpu_s": 108.45312,
+          "candidate_cpu_s": 109.875,
+          "baseline_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "candidate_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "baseline_bytes": 39417439,
+          "candidate_bytes": 39417439,
+          "reference_match": true
+        },
+        {
+          "round": 2,
+          "order": "cand_then_base",
+          "baseline_wall_s": 20.59419,
+          "candidate_wall_s": 19.31428,
+          "baseline_cpu_s": 108.5,
+          "candidate_cpu_s": 110.875,
+          "baseline_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "candidate_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "baseline_bytes": 39417439,
+          "candidate_bytes": 39417439,
+          "reference_match": true
+        },
+        {
+          "round": 3,
+          "order": "base_then_cand",
+          "baseline_wall_s": 20.47081,
+          "candidate_wall_s": 19.40301,
+          "baseline_cpu_s": 107.28125,
+          "candidate_cpu_s": 107.53125,
+          "baseline_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "candidate_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "baseline_bytes": 39417439,
+          "candidate_bytes": 39417439,
+          "reference_match": true
+        }
+      ]
+    }
+  },
+  "instrumented": {
+    "benchy-classic-off": {
+      "baseline": {
+        "wall_s": 1.3992,
+        "cpu_s": 7.75,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1304,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 680,
+            "per_layer": 413,
+            "postpass": 136
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 11,
+            "PostPass::GCodePostProcess": 40,
+            "PostPass::GCodeSerialize": 46
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 9,
+            "PostPass::LayerFinalization/com.core.part-cooling": 9,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 9,
+            "PostPass::GCodeEmit/host:gcode_emit": 11,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 39,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 46
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 1.28146,
+        "cpu_s": 7.85938,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1189,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 662,
+            "per_layer": 384,
+            "postpass": 63
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 11,
+            "PostPass::GCodeEmit": 5,
+            "PostPass::GCodePostProcess": 43,
+            "PostPass::GCodeSerialize": 2
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 8,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 2,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 5,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 42,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 2
+          }
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "baseline": {
+        "wall_s": 2.71934,
+        "cpu_s": 12.67188,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2604,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 1689,
+            "per_layer": 438,
+            "postpass": 398
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 171,
+            "PostPass::GCodeEmit": 41,
+            "PostPass::GCodePostProcess": 83,
+            "PostPass::GCodeSerialize": 101
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 41,
+            "PostPass::LayerFinalization/com.core.part-cooling": 38,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 52,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 41,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 81,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 101
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 2.46821,
+        "cpu_s": 11.21875,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2358,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1693,
+            "per_layer": 434,
+            "postpass": 153
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 47,
+            "PostPass::GCodeEmit": 17,
+            "PostPass::GCodePostProcess": 83,
+            "PostPass::GCodeSerialize": 3
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 17,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 82,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 3
+          }
+        }
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline": {
+        "wall_s": 1.46723,
+        "cpu_s": 8.70312,
+        "gcode_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "gcode_bytes": 4225196,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1367,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 672,
+            "per_layer": 474,
+            "postpass": 144
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 41,
+            "PostPass::GCodeEmit": 11,
+            "PostPass::GCodePostProcess": 42,
+            "PostPass::GCodeSerialize": 48
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 10,
+            "PostPass::LayerFinalization/com.core.part-cooling": 9,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 9,
+            "PostPass::GCodeEmit/host:gcode_emit": 11,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 41,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 48
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 1.35676,
+        "cpu_s": 8.70312,
+        "gcode_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "gcode_bytes": 4225196,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1265,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 664,
+            "per_layer": 463,
+            "postpass": 65
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 12,
+            "PostPass::GCodeEmit": 6,
+            "PostPass::GCodePostProcess": 43,
+            "PostPass::GCodeSerialize": 2
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 9,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 2,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 6,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 42,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 2
+          }
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "wall_s": 2.79854,
+        "cpu_s": 12.64062,
+        "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+        "gcode_bytes": 8688377,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2683,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 1679,
+            "per_layer": 534,
+            "postpass": 396
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 169,
+            "PostPass::GCodeEmit": 45,
+            "PostPass::GCodePostProcess": 81,
+            "PostPass::GCodeSerialize": 100
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 40,
+            "PostPass::LayerFinalization/com.core.part-cooling": 39,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 50,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 45,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 80,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 98
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 2.54222,
+        "cpu_s": 12.64062,
+        "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+        "gcode_bytes": 8688377,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2437,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1675,
+            "per_layer": 532,
+            "postpass": 157
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 47,
+            "PostPass::GCodeEmit": 18,
+            "PostPass::GCodePostProcess": 86,
+            "PostPass::GCodeSerialize": 4
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 18,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 84,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 4
+          }
+        }
+      }
+    },
+    "base-classic-off": {
+      "baseline": {
+        "wall_s": 9.69771,
+        "cpu_s": 59.98438,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8274,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 5640,
+            "per_layer": 1852,
+            "postpass": 705
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 175,
+            "PostPass::GCodeEmit": 57,
+            "PostPass::GCodePostProcess": 217,
+            "PostPass::GCodeSerialize": 254
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 45,
+            "PostPass::LayerFinalization/com.core.part-cooling": 49,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 40,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 57,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 214,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 254
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 9.23611,
+        "cpu_s": 59.39062,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 7877,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5698,
+            "per_layer": 1810,
+            "postpass": 290
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 39,
+            "PostPass::GCodeEmit": 33,
+            "PostPass::GCodePostProcess": 204,
+            "PostPass::GCodeSerialize": 11
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 37,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 1,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 33,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 201,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 11
+          }
+        }
+      }
+    },
+    "base-classic-on": {
+      "baseline": {
+        "wall_s": 20.02179,
+        "cpu_s": 103.79688,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18537,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 14152,
+            "per_layer": 2281,
+            "postpass": 2021
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 650,
+            "PostPass::GCodeEmit": 404,
+            "PostPass::GCodePostProcess": 456,
+            "PostPass::GCodeSerialize": 509
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 170,
+            "PostPass::LayerFinalization/com.core.part-cooling": 158,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 163,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 158,
+            "PostPass::GCodeEmit/host:gcode_emit": 404,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 453,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 509
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 18.88028,
+        "cpu_s": 102.90625,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 17366,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14269,
+            "per_layer": 2276,
+            "postpass": 736
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 155,
+            "PostPass::GCodeEmit": 106,
+            "PostPass::GCodePostProcess": 452,
+            "PostPass::GCodeSerialize": 20
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 145,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 9,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 106,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 447,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 20
+          }
+        }
+      }
+    },
+    "base-arachne-off": {
+      "baseline": {
+        "wall_s": 10.07418,
+        "cpu_s": 65.60938,
+        "gcode_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "gcode_bytes": 21041068,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8673,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5633,
+            "per_layer": 2301,
+            "postpass": 658
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 161,
+            "PostPass::GCodeEmit": 54,
+            "PostPass::GCodePostProcess": 196,
+            "PostPass::GCodeSerialize": 246
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 40,
+            "PostPass::LayerFinalization/com.core.part-cooling": 40,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 40,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 40,
+            "PostPass::GCodeEmit/host:gcode_emit": 54,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 193,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 246
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 9.66947,
+        "cpu_s": 65.10938,
+        "gcode_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "gcode_bytes": 21041068,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8275,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5645,
+            "per_layer": 2267,
+            "postpass": 285
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 35,
+            "PostPass::GCodePostProcess": 200,
+            "PostPass::GCodeSerialize": 10
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 1,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 35,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 197,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 10
+          }
+        }
+      }
+    },
+    "base-arachne-on": {
+      "baseline": {
+        "wall_s": 20.67303,
+        "cpu_s": 108.8125,
+        "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+        "gcode_bytes": 39417439,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 19189,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14253,
+            "per_layer": 2839,
+            "postpass": 2014
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 686,
+            "PostPass::GCodeEmit": 404,
+            "PostPass::GCodePostProcess": 395,
+            "PostPass::GCodeSerialize": 527
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 179,
+            "PostPass::LayerFinalization/com.core.part-cooling": 163,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 172,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 170,
+            "PostPass::GCodeEmit/host:gcode_emit": 404,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 392,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 527
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 20.12121,
+        "cpu_s": 109.20312,
+        "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+        "gcode_bytes": 39417439,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18651,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14618,
+            "per_layer": 3073,
+            "postpass": 879
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 157,
+            "PostPass::GCodeEmit": 133,
+            "PostPass::GCodePostProcess": 528,
+            "PostPass::GCodeSerialize": 59
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 145,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 133,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 525,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 59
+          }
+        }
+      }
+    }
+  },
+  "ablation": {
+    "benchy-classic-off": {
+      "baseline": {
+        "wall_s": 1.39519,
+        "cpu_s": 7.67188,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1293,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 664,
+            "per_layer": 417,
+            "postpass": 138
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 39,
+            "PostPass::GCodeEmit": 10,
+            "PostPass::GCodePostProcess": 41,
+            "PostPass::GCodeSerialize": 46
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 9,
+            "PostPass::LayerFinalization/com.core.part-cooling": 9,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 9,
+            "PostPass::GCodeEmit/host:gcode_emit": 10,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 39,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 46
+          }
+        }
+      },
+      "pp2_only": {
+        "wall_s": 1.36586,
+        "cpu_s": 7.6875,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1271,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 676,
+            "per_layer": 430,
+            "postpass": 91
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 10,
+            "PostPass::GCodePostProcess": 40,
+            "PostPass::GCodeSerialize": 2
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 9,
+            "PostPass::LayerFinalization/com.core.part-cooling": 8,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 9,
+            "PostPass::GCodeEmit/host:gcode_emit": 10,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 39,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 2
+          }
+        }
+      },
+      "pp3_only": {
+        "wall_s": 1.37407,
+        "cpu_s": 7.625,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1280,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 682,
+            "per_layer": 389,
+            "postpass": 134
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 6,
+            "PostPass::GCodePostProcess": 42,
+            "PostPass::GCodeSerialize": 46
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 9,
+            "PostPass::LayerFinalization/com.core.part-cooling": 8,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 9,
+            "PostPass::GCodeEmit/host:gcode_emit": 6,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 41,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 46
+          }
+        }
+      },
+      "pp2_pp3_host_only": {
+        "wall_s": 1.32677,
+        "cpu_s": 7.65625,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1230,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 674,
+            "per_layer": 396,
+            "postpass": 88
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 6,
+            "PostPass::GCodePostProcess": 41,
+            "PostPass::GCodeSerialize": 2
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 9,
+            "PostPass::LayerFinalization/com.core.part-cooling": 8,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 8,
+            "PostPass::GCodeEmit/host:gcode_emit": 6,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 39,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 2
+          }
+        }
+      },
+      "pp1_only": {
+        "wall_s": 1.38454,
+        "cpu_s": 7.92188,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1286,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 674,
+            "per_layer": 429,
+            "postpass": 110
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 12,
+            "PostPass::GCodeEmit": 11,
+            "PostPass::GCodePostProcess": 41,
+            "PostPass::GCodeSerialize": 46
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 8,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 2,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 11,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 39,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 46
+          }
+        }
+      },
+      "full_pp1_pp2_pp3": {
+        "wall_s": 1.28576,
+        "cpu_s": 7.64062,
+        "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "gcode_bytes": 4077945,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 1190,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 667,
+            "per_layer": 385,
+            "postpass": 64
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 12,
+            "PostPass::GCodeEmit": 6,
+            "PostPass::GCodePostProcess": 42,
+            "PostPass::GCodeSerialize": 2
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 9,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 2,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 6,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 41,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 2
+          }
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "baseline": {
+        "wall_s": 2.69615,
+        "cpu_s": 12.1875,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2579,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1660,
+            "per_layer": 458,
+            "postpass": 386
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 166,
+            "PostPass::GCodeEmit": 41,
+            "PostPass::GCodePostProcess": 80,
+            "PostPass::GCodeSerialize": 98
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 38,
+            "PostPass::LayerFinalization/com.core.part-cooling": 38,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 49,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 41,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 79,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 98
+          }
+        }
+      },
+      "pp2_only": {
+        "wall_s": 2.59591,
+        "cpu_s": 11.67188,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2483,
+          "phase_ms": {
+            "validation": 4,
+            "prepass": 1663,
+            "per_layer": 443,
+            "postpass": 299
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 171,
+            "PostPass::GCodeEmit": 41,
+            "PostPass::GCodePostProcess": 81,
+            "PostPass::GCodeSerialize": 4
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 41,
+            "PostPass::LayerFinalization/com.core.part-cooling": 41,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 49,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 41,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 80,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 4
+          }
+        }
+      },
+      "pp3_only": {
+        "wall_s": 2.69016,
+        "cpu_s": 12.07812,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2586,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1703,
+            "per_layer": 443,
+            "postpass": 364
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 165,
+            "PostPass::GCodeEmit": 17,
+            "PostPass::GCodePostProcess": 83,
+            "PostPass::GCodeSerialize": 98
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 38,
+            "PostPass::LayerFinalization/com.core.part-cooling": 39,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 47,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 38,
+            "PostPass::GCodeEmit/host:gcode_emit": 17,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 81,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 98
+          }
+        }
+      },
+      "pp2_pp3_host_only": {
+        "wall_s": 2.57119,
+        "cpu_s": 10.85938,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2469,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1671,
+            "per_layer": 459,
+            "postpass": 265
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 162,
+            "PostPass::GCodeEmit": 17,
+            "PostPass::GCodePostProcess": 80,
+            "PostPass::GCodeSerialize": 4
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 38,
+            "PostPass::LayerFinalization/com.core.part-cooling": 37,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 46,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 17,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 79,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 4
+          }
+        }
+      },
+      "pp1_only": {
+        "wall_s": 2.61468,
+        "cpu_s": 11.9375,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2505,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 1672,
+            "per_layer": 482,
+            "postpass": 277
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 47,
+            "PostPass::GCodeEmit": 46,
+            "PostPass::GCodePostProcess": 83,
+            "PostPass::GCodeSerialize": 99
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 46,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 81,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 99
+          }
+        }
+      },
+      "full_pp1_pp2_pp3": {
+        "wall_s": 2.46428,
+        "cpu_s": 11.67188,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2361,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1683,
+            "per_layer": 446,
+            "postpass": 157
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 47,
+            "PostPass::GCodeEmit": 17,
+            "PostPass::GCodePostProcess": 87,
+            "PostPass::GCodeSerialize": 4
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 34,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 17,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 85,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 4
+          }
+        }
+      }
+    },
+    "base-classic-off": {
+      "baseline": {
+        "wall_s": 9.41488,
+        "cpu_s": 59.625,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 7967,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5434,
+            "per_layer": 1792,
+            "postpass": 662
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 161,
+            "PostPass::GCodeEmit": 54,
+            "PostPass::GCodePostProcess": 196,
+            "PostPass::GCodeSerialize": 249
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 41,
+            "PostPass::LayerFinalization/com.core.part-cooling": 39,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 39,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 41,
+            "PostPass::GCodeEmit/host:gcode_emit": 54,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 193,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 249
+          }
+        }
+      },
+      "pp2_only": {
+        "wall_s": 9.38385,
+        "cpu_s": 60.0,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 7954,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5631,
+            "per_layer": 1807,
+            "postpass": 437
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 162,
+            "PostPass::GCodeEmit": 57,
+            "PostPass::GCodePostProcess": 204,
+            "PostPass::GCodeSerialize": 11
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 42,
+            "PostPass::LayerFinalization/com.core.part-cooling": 39,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 41,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 39,
+            "PostPass::GCodeEmit/host:gcode_emit": 57,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 202,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 11
+          }
+        }
+      },
+      "pp3_only": {
+        "wall_s": 9.70329,
+        "cpu_s": 59.65625,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8258,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5647,
+            "per_layer": 1870,
+            "postpass": 662
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 173,
+            "PostPass::GCodeEmit": 32,
+            "PostPass::GCodePostProcess": 206,
+            "PostPass::GCodeSerialize": 249
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 42,
+            "PostPass::LayerFinalization/com.core.part-cooling": 45,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 41,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 42,
+            "PostPass::GCodeEmit/host:gcode_emit": 32,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 204,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 249
+          }
+        }
+      },
+      "pp2_pp3_host_only": {
+        "wall_s": 9.85988,
+        "cpu_s": 60.21875,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8446,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 6091,
+            "per_layer": 1869,
+            "postpass": 406
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 163,
+            "PostPass::GCodeEmit": 31,
+            "PostPass::GCodePostProcess": 200,
+            "PostPass::GCodeSerialize": 11
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 40,
+            "PostPass::LayerFinalization/com.core.part-cooling": 40,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 40,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 41,
+            "PostPass::GCodeEmit/host:gcode_emit": 31,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 197,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 11
+          }
+        }
+      },
+      "pp1_only": {
+        "wall_s": 9.69049,
+        "cpu_s": 59.79688,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 8282,
+          "phase_ms": {
+            "validation": 2,
+            "prepass": 5742,
+            "per_layer": 1911,
+            "postpass": 551
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 58,
+            "PostPass::GCodePostProcess": 207,
+            "PostPass::GCodeSerialize": 247
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 1,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 58,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 204,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 247
+          }
+        }
+      },
+      "full_pp1_pp2_pp3": {
+        "wall_s": 9.28669,
+        "cpu_s": 60.04688,
+        "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "gcode_bytes": 21230739,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 7852,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 5701,
+            "per_layer": 1789,
+            "postpass": 284
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 38,
+            "PostPass::GCodeEmit": 33,
+            "PostPass::GCodePostProcess": 203,
+            "PostPass::GCodeSerialize": 9
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 1,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 33,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 200,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 9
+          }
+        }
+      }
+    },
+    "base-classic-on": {
+      "baseline": {
+        "wall_s": 20.19271,
+        "cpu_s": 103.60938,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18696,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14085,
+            "per_layer": 2365,
+            "postpass": 2163
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 650,
+            "PostPass::GCodeEmit": 579,
+            "PostPass::GCodePostProcess": 465,
+            "PostPass::GCodeSerialize": 467
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 170,
+            "PostPass::LayerFinalization/com.core.part-cooling": 155,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 166,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 158,
+            "PostPass::GCodeEmit/host:gcode_emit": 579,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 463,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 467
+          }
+        }
+      },
+      "pp2_only": {
+        "wall_s": 20.70572,
+        "cpu_s": 104.34375,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 19090,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14704,
+            "per_layer": 2424,
+            "postpass": 1881
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 856,
+            "PostPass::GCodeEmit": 559,
+            "PostPass::GCodePostProcess": 439,
+            "PostPass::GCodeSerialize": 24
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 235,
+            "PostPass::LayerFinalization/com.core.part-cooling": 202,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 206,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 212,
+            "PostPass::GCodeEmit/host:gcode_emit": 559,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 436,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 24
+          }
+        }
+      },
+      "pp3_only": {
+        "wall_s": 19.71187,
+        "cpu_s": 104.6875,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18207,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14220,
+            "per_layer": 2265,
+            "postpass": 1643
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 655,
+            "PostPass::GCodeEmit": 104,
+            "PostPass::GCodePostProcess": 389,
+            "PostPass::GCodeSerialize": 494
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 170,
+            "PostPass::LayerFinalization/com.core.part-cooling": 158,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 166,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 159,
+            "PostPass::GCodeEmit/host:gcode_emit": 103,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 386,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 494
+          }
+        }
+      },
+      "pp2_pp3_host_only": {
+        "wall_s": 19.94692,
+        "cpu_s": 103.125,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18431,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14696,
+            "per_layer": 2346,
+            "postpass": 1306
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 645,
+            "PostPass::GCodeEmit": 105,
+            "PostPass::GCodePostProcess": 533,
+            "PostPass::GCodeSerialize": 21
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 169,
+            "PostPass::LayerFinalization/com.core.part-cooling": 155,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 162,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 158,
+            "PostPass::GCodeEmit/host:gcode_emit": 105,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 529,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 21
+          }
+        }
+      },
+      "pp1_only": {
+        "wall_s": 20.04884,
+        "cpu_s": 103.90625,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18484,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14451,
+            "per_layer": 2247,
+            "postpass": 1696
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 158,
+            "PostPass::GCodeEmit": 421,
+            "PostPass::GCodePostProcess": 484,
+            "PostPass::GCodeSerialize": 632
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 146,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 10,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 421,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 480,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 632
+          }
+        }
+      },
+      "full_pp1_pp2_pp3": {
+        "wall_s": 18.67196,
+        "cpu_s": 103.60938,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 17151,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14107,
+            "per_layer": 2296,
+            "postpass": 667
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 155,
+            "PostPass::GCodeEmit": 106,
+            "PostPass::GCodePostProcess": 385,
+            "PostPass::GCodeSerialize": 19
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 144,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 9,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 106,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 382,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 19
+          }
+        }
+      }
+    }
+  },
+  "profile_fuel": {
+    "benchy-classic-on": {
+      "baseline": {
+        "wall_s": 2.82796,
+        "cpu_s": 12.625,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2711,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1767,
+            "per_layer": 463,
+            "postpass": 400
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 170,
+            "PostPass::GCodeEmit": 42,
+            "PostPass::GCodePostProcess": 86,
+            "PostPass::GCodeSerialize": 101
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 41,
+            "PostPass::LayerFinalization/com.core.part-cooling": 39,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 51,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 38,
+            "PostPass::GCodeEmit/host:gcode_emit": 42,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 84,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 101
+          }
+        },
+        "qual": {
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0,
+          "code_1200_count": 0
+        },
+        "fuel_total": 20715429213,
+        "postpass_modules": {
+          "com.core.machine-gcode-emit": {
+            "calls": 1,
+            "total_fuel": 217712580,
+            "self_fuel": 217712580,
+            "total_wall_ns": 0
+          },
+          "com.core.skirt-brim": {
+            "calls": 1,
+            "total_fuel": 154510064,
+            "self_fuel": 154510064,
+            "total_wall_ns": 0
+          },
+          "com.core.part-cooling": {
+            "calls": 1,
+            "total_fuel": 151767925,
+            "self_fuel": 151767925,
+            "total_wall_ns": 0
+          },
+          "com.core.wipe-tower": {
+            "calls": 1,
+            "total_fuel": 147079430,
+            "self_fuel": 147079430,
+            "total_wall_ns": 0
+          },
+          "com.core.overhang-classifier-default": {
+            "calls": 1,
+            "total_fuel": 143931698,
+            "self_fuel": 143931698,
+            "total_wall_ns": 0
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 2.65318,
+        "cpu_s": 12.79688,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 2548,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 1758,
+            "per_layer": 464,
+            "postpass": 157
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 48,
+            "PostPass::GCodeEmit": 18,
+            "PostPass::GCodePostProcess": 86,
+            "PostPass::GCodeSerialize": 4
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 35,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 11,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 18,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 84,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 4
+          }
+        },
+        "qual": {
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0,
+          "code_1200_count": 0
+        },
+        "fuel_total": 20273948430,
+        "postpass_modules": {
+          "com.core.machine-gcode-emit": {
+            "calls": 1,
+            "total_fuel": 217712157,
+            "self_fuel": 217712157,
+            "total_wall_ns": 0
+          },
+          "com.core.part-cooling": {
+            "calls": 1,
+            "total_fuel": 143265718,
+            "self_fuel": 143265718,
+            "total_wall_ns": 0
+          },
+          "com.core.skirt-brim": {
+            "calls": 1,
+            "total_fuel": 11756765,
+            "self_fuel": 11756765,
+            "total_wall_ns": 0
+          },
+          "com.core.wipe-tower": {
+            "calls": 1,
+            "total_fuel": 195332,
+            "self_fuel": 195332,
+            "total_wall_ns": 0
+          },
+          "com.core.overhang-classifier-default": {
+            "calls": 1,
+            "total_fuel": 190215,
+            "self_fuel": 190215,
+            "total_wall_ns": 0
+          }
+        }
+      }
+    },
+    "base-classic-on": {
+      "baseline": {
+        "wall_s": 21.26744,
+        "cpu_s": 106.34375,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 19758,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14524,
+            "per_layer": 2590,
+            "postpass": 2553
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 785,
+            "PostPass::GCodeEmit": 546,
+            "PostPass::GCodePostProcess": 580,
+            "PostPass::GCodeSerialize": 641
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 175,
+            "PostPass::LayerFinalization/com.core.part-cooling": 170,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 206,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 232,
+            "PostPass::GCodeEmit/host:gcode_emit": 546,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 576,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 641
+          }
+        },
+        "qual": {
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0,
+          "code_1200_count": 0
+        },
+        "fuel_total": 156909063035,
+        "postpass_modules": {
+          "com.core.machine-gcode-emit": {
+            "calls": 1,
+            "total_fuel": 979003112,
+            "self_fuel": 979003112,
+            "total_wall_ns": 0
+          },
+          "com.core.part-cooling": {
+            "calls": 1,
+            "total_fuel": 628209478,
+            "self_fuel": 628209478,
+            "total_wall_ns": 0
+          },
+          "com.core.skirt-brim": {
+            "calls": 1,
+            "total_fuel": 606566904,
+            "self_fuel": 606566904,
+            "total_wall_ns": 0
+          },
+          "com.core.wipe-tower": {
+            "calls": 1,
+            "total_fuel": 599585406,
+            "self_fuel": 599585406,
+            "total_wall_ns": 0
+          },
+          "com.core.overhang-classifier-default": {
+            "calls": 1,
+            "total_fuel": 599380857,
+            "self_fuel": 599380857,
+            "total_wall_ns": 0
+          }
+        }
+      },
+      "candidate": {
+        "wall_s": 19.62404,
+        "cpu_s": 104.1875,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "inst": {
+          "degraded": false,
+          "fatal": 0,
+          "non_fatal": 0,
+          "code_1200": 0,
+          "slice_complete_ms": 18141,
+          "phase_ms": {
+            "validation": 3,
+            "prepass": 14853,
+            "per_layer": 2479,
+            "postpass": 720
+          },
+          "postpass_stage_ms": {
+            "PostPass::LayerFinalization": 162,
+            "PostPass::GCodeEmit": 111,
+            "PostPass::GCodePostProcess": 427,
+            "PostPass::GCodeSerialize": 18
+          },
+          "postpass_module_ms": {
+            "PostPass::LayerFinalization/com.core.overhang-classifier-default": 0,
+            "PostPass::LayerFinalization/com.core.part-cooling": 151,
+            "PostPass::LayerFinalization/com.core.skirt-brim": 9,
+            "PostPass::LayerFinalization/com.core.wipe-tower": 0,
+            "PostPass::GCodeEmit/host:gcode_emit": 111,
+            "PostPass::GCodePostProcess/com.core.machine-gcode-emit": 425,
+            "PostPass::GCodeSerialize/host:gcode_serialize": 18
+          }
+        },
+        "qual": {
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0,
+          "code_1200_count": 0
+        },
+        "fuel_total": 155082086727,
+        "postpass_modules": {
+          "com.core.machine-gcode-emit": {
+            "calls": 1,
+            "total_fuel": 979003326,
+            "self_fuel": 979003326,
+            "total_wall_ns": 0
+          },
+          "com.core.part-cooling": {
+            "calls": 1,
+            "total_fuel": 596805753,
+            "self_fuel": 596805753,
+            "total_wall_ns": 0
+          },
+          "com.core.skirt-brim": {
+            "calls": 1,
+            "total_fuel": 8897617,
+            "self_fuel": 8897617,
+            "total_wall_ns": 0
+          },
+          "com.core.wipe-tower": {
+            "calls": 1,
+            "total_fuel": 345949,
+            "self_fuel": 345949,
+            "total_wall_ns": 0
+          },
+          "com.core.overhang-classifier-default": {
+            "calls": 1,
+            "total_fuel": 341607,
+            "self_fuel": 341607,
+            "total_wall_ns": 0
+          }
+        }
+      }
+    }
+  }
+}

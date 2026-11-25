@@ -1,0 +1,985 @@
+diff --git a/crates/slicer-gcode/src/emit.rs b/crates/slicer-gcode/src/emit.rs
+index 608c20a7..caff4012 100644
+--- a/crates/slicer-gcode/src/emit.rs
++++ b/crates/slicer-gcode/src/emit.rs
+@@ -456,16 +456,42 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+         &self,
+         mut layer_irs: Vec<LayerCollectionIR>,
+     ) -> Result<GCodeIR, GCodeEmitError> {
+-        // Apply cross-layer tool rotation before classification and emission.
+-        // This rotates each layer's entity clusters so the first cluster's tool
+-        // matches the previous layer's ending tool, avoiding redundant T<n>
+-        // commands at every layer boundary. The WASM module always orders
+-        // clusters in ascending tool order (H1: module state doesn't survive
+-        // across calls), so the host performs the rotation post-dispatch. The
+-        // rotation is a no-op on single-tool layers; only a layer whose leading
+-        // cluster's tool differs from the previous layer's ending tool moves.
++        let t_total = std::time::Instant::now();
++        let t_rot = std::time::Instant::now();
+         apply_cross_layer_tool_rotation(&mut layer_irs);
+-        self.emit_from_reconciled_layers(&layer_irs)
++        let tool_rotation_ns = t_rot.elapsed().as_nanos() as u64;
++        let (res, emit_stats) = self.emit_from_reconciled_layers_probed(&layer_irs);
++        let t_drop = std::time::Instant::now();
++        drop(layer_irs);
++        let drop_layers_ns = t_drop.elapsed().as_nanos() as u64;
++        if std::env::var_os("T189_PROBE").is_some() {
++            if let Some((
++                emit_loop_ns,
++                layer_maps_ns,
++                simplify_ns,
++                emit_moves_ns,
++                annotations_scan_ns,
++                estimator_ns,
++                inject_m73_ns,
++                emitted_layers,
++                cmds_before_m73,
++                cmds_after_m73,
++                move_cmds,
++                travel_cmds,
++                retract_cmds,
++                raw_cmds,
++                points_in,
++                points_out,
++                annotations_total,
++            )) = emit_stats
++            {
++                eprintln!(
++                    "T189_PROBE {{\"kind\":\"gcode_emit\",\"total_ns\":{},\"tool_rotation_ns\":{tool_rotation_ns},\"emit_loop_ns\":{emit_loop_ns},\"layer_maps_ns\":{layer_maps_ns},\"simplify_ns\":{simplify_ns},\"emit_moves_ns\":{emit_moves_ns},\"annotations_scan_ns\":{annotations_scan_ns},\"estimator_ns\":{estimator_ns},\"inject_m73_ns\":{inject_m73_ns},\"drop_layers_ns\":{drop_layers_ns},\"emitted_layers\":{emitted_layers},\"cmds_before_m73\":{cmds_before_m73},\"cmds_after_m73\":{cmds_after_m73},\"move_cmds\":{move_cmds},\"travel_cmds\":{travel_cmds},\"retract_cmds\":{retract_cmds},\"raw_cmds\":{raw_cmds},\"points_in\":{points_in},\"points_out\":{points_out},\"annotations_total\":{annotations_total}}}",
++                    t_total.elapsed().as_nanos() as u64,
++                );
++            }
++        }
++        res
+     }
+ 
+     /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+@@ -476,14 +502,49 @@ impl GCodeEmitter for DefaultGCodeEmitter {
+ 
+ impl DefaultGCodeEmitter {
+     /// The emission walk itself, over already-rotated layers.
++    #[allow(dead_code)]
+     fn emit_from_reconciled_layers(
+         &self,
+         layer_irs: &[LayerCollectionIR],
+     ) -> Result<GCodeIR, GCodeEmitError> {
+-        // Count of layers that actually produce g-code moves. This drives
+-        // `; total layer number:` in the header and must equal the number of
+-        // emitted `;LAYER_CHANGE` markers (see skip below). Layers with no moves
+-        // are skipped so the viewer's layer list stays gap-free.
++        self.emit_from_reconciled_layers_probed(layer_irs).0
++    }
++
++    #[allow(clippy::type_complexity)]
++    fn emit_from_reconciled_layers_probed(
++        &self,
++        layer_irs: &[LayerCollectionIR],
++    ) -> (
++        Result<GCodeIR, GCodeEmitError>,
++        Option<(
++            u64,
++            u64,
++            u64,
++            u64,
++            u64,
++            u64,
++            u64,
++            u32,
++            usize,
++            usize,
++            usize,
++            usize,
++            usize,
++            usize,
++            usize,
++            usize,
++            usize,
++        )>,
++    ) {
++        let probe = std::env::var_os("T189_PROBE").is_some();
++        let t_loop = std::time::Instant::now();
++        let mut layer_maps_ns = 0u64;
++        let mut simplify_ns = 0u64;
++        let mut emit_moves_ns = 0u64;
++        let mut annotations_scan_ns = 0u64;
++        let mut points_in = 0usize;
++        let mut points_out = 0usize;
++        let mut annotations_total = 0usize;
+         let mut emitted_layer_count: u32 = 0;
+ 
+         // ExtrusionMode opens the stream, so machine_start_gcode can be
+@@ -613,6 +674,7 @@ impl DefaultGCodeEmitter {
+                 }
+             }
+ 
++            let t_maps = if probe { Some(std::time::Instant::now()) } else { None };
+             // Build lookup maps for tool_changes and z_hops by after_entity_index.
+             // Value is (tc_index_in_layer, &ToolChange) so the guard can report
+             // the 0-based tool_change_index for GCodeEmitError::MissingToolchangePurge.
+@@ -657,6 +719,10 @@ impl DefaultGCodeEmitter {
+                 .iter()
+                 .map(|sp| (sp.entity_id, &sp.factors))
+                 .collect();
++            if let Some(t) = t_maps {
++                layer_maps_ns += t.elapsed().as_nanos() as u64;
++            }
++            annotations_total += layer.annotations.len();
+ 
+             // Process each entity
+             let mut seen_entity_ids: std::collections::HashSet<u64> =
+@@ -720,6 +786,8 @@ impl DefaultGCodeEmitter {
+                 // Apply per-role polyline simplification (D-P + min-segment).
+                 // Extract XY mm-pairs for the helpers, then remap kept indices
+                 // back onto the original Point3WithWidth slice so metadata is preserved.
++                let t_simp = if probe { Some(std::time::Instant::now()) } else { None };
++                points_in += points.len();
+                 let tol = tolerance_for_role(role, &self.resolved_config);
+                 let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                 // Each surviving point keeps its ORIGINAL index so a per-point
+@@ -763,10 +831,15 @@ impl DefaultGCodeEmitter {
+                     } else {
+                         points.iter().enumerate().collect()
+                     };
++                points_out += simplified_points.len();
++                if let Some(t) = t_simp {
++                    simplify_ns += t.elapsed().as_nanos() as u64;
++                }
+ 
+                 // Per-point speed factors for this entity, if any.
+                 let profile = speed_profiles_by_entity.get(&entity.entity_id).copied();
+ 
++                let t_mv = if probe { Some(std::time::Instant::now()) } else { None };
+                 // Emit Move commands for each point in the path
+                 let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
+                 for (original_index, point) in simplified_points {
+@@ -790,6 +863,19 @@ impl DefaultGCodeEmitter {
+                     e_position += e_delta;
+                     *filament_per_tool.entry(current_tool).or_insert(0.0) += e_delta;
+ 
++                    let resolved_f = match self.resolve_extrusion_feedrate(
++                        role,
++                        current_tool,
++                        profile
++                            .and_then(|p| p.get(original_index).copied())
++                            .unwrap_or(entity.path.speed_factor),
++                        point.width,
++                        height_delta,
++                        point.flow_factor,
++                    ) {
++                        Ok(v) => v,
++                        Err(e) => return (Err(e), None),
++                    };
+                     commands.push(GCodeCommand::Move {
+                         x: Some(point.x),
+                         y: Some(point.y),
+@@ -806,23 +892,15 @@ impl DefaultGCodeEmitter {
+                         // present (fallback, never composition — see ADR-0052).
+                         // Zero-speed roles resolve here, where the active tool
+                         // and live move geometry are in scope (Phase C).
+-                        f: Some(
+-                            self.resolve_extrusion_feedrate(
+-                                role,
+-                                current_tool,
+-                                profile
+-                                    .and_then(|p| p.get(original_index).copied())
+-                                    .unwrap_or(entity.path.speed_factor),
+-                                point.width,
+-                                height_delta,
+-                                point.flow_factor,
+-                            )?,
+-                        ),
++                        f: Some(resolved_f),
+                         role: role.clone(),
+                     });
+ 
+                     prev_point = Some(point);
+                 }
++                if let Some(t) = t_mv {
++                    emit_moves_ns += t.elapsed().as_nanos() as u64;
++                }
+ 
+                 // Emit canonical retract/z-hop/travel/unretract sequence after this entity,
+                 // BEFORE any ToolChange. OrcaSlicer ordering: retract → z-hop → travel →
+@@ -899,10 +977,13 @@ impl DefaultGCodeEmitter {
+                             .any(|e| matches!(e.role, ExtrusionRole::WipeTower));
+ 
+                         if !has_wipe_in_layer {
+-                            return Err(GCodeEmitError::MissingToolchangePurge {
+-                                layer_index: layer.global_layer_index,
+-                                tool_change_index: *tc_index,
+-                            });
++                            return (
++                                Err(GCodeEmitError::MissingToolchangePurge {
++                                    layer_index: layer.global_layer_index,
++                                    tool_change_index: *tc_index,
++                                }),
++                                None,
++                            );
+                         }
+ 
+                         // Synthesize the pre-T<n> retract. The wipe-tower module's
+@@ -942,6 +1023,7 @@ impl DefaultGCodeEmitter {
+ 
+                 // 5. Emit Comment/Raw annotations attached to this entity index,
+                 // in the deterministic order they appear in `annotations`.
++                let t_ann = if probe { Some(std::time::Instant::now()) } else { None };
+                 for ann in layer
+                     .annotations
+                     .iter()
+@@ -956,6 +1038,9 @@ impl DefaultGCodeEmitter {
+                         }
+                     }
+                 }
++                if let Some(t) = t_ann {
++                    annotations_scan_ns += t.elapsed().as_nanos() as u64;
++                }
+ 
+                 // 6. Z-hop down (after tool change)
+                 if let Some(zh) = entity_z_hop {
+@@ -1002,15 +1087,19 @@ impl DefaultGCodeEmitter {
+             }
+         }
+ 
++        let emit_loop_ns = t_loop.elapsed().as_nanos() as u64;
+         // Build filament_used_mm vector (indexed by tool)
+         let max_tool = filament_per_tool.keys().max().copied().unwrap_or(0);
+         // Defense-in-depth: reject any tool index that would cause a multi-GB
+         // allocation regardless of how the garbage id got here (WI-4 guard).
+         if max_tool >= MAX_PLAUSIBLE_TOOLS {
+-            return Err(GCodeEmitError::ToolIndexOutOfRange {
+-                tool: max_tool,
+-                max: MAX_PLAUSIBLE_TOOLS - 1,
+-            });
++            return (
++                Err(GCodeEmitError::ToolIndexOutOfRange {
++                    tool: max_tool,
++                    max: MAX_PLAUSIBLE_TOOLS - 1,
++                }),
++                None,
++            );
+         }
+         let mut filament_used_mm = vec![0.0; (max_tool + 1) as usize];
+         for (tool, amount) in filament_per_tool {
+@@ -1021,6 +1110,29 @@ impl DefaultGCodeEmitter {
+             filament_used_mm.push(0.0);
+         }
+ 
++        let cmds_before_m73 = commands.len();
++        let mut move_cmds = 0usize;
++        let mut travel_cmds = 0usize;
++        let mut retract_cmds = 0usize;
++        let mut raw_cmds = 0usize;
++        if probe {
++            for c in &commands {
++                match c {
++                    GCodeCommand::Move { role, .. } => {
++                        move_cmds += 1;
++                        if matches!(role, ExtrusionRole::Custom(s) if s == "Travel") {
++                            travel_cmds += 1;
++                        }
++                    }
++                    GCodeCommand::Retract { .. } | GCodeCommand::Unretract { .. } => {
++                        retract_cmds += 1
++                    }
++                    GCodeCommand::Raw { .. } => raw_cmds += 1,
++                    _ => {}
++                }
++            }
++        }
++
+         // Estimate print time (packet 169 Step 2). Limits come from the
+         // emitter's resolved config (per-field fallback to defaults when the
+         // machine-limit keys are absent); per-tool filament diameters come
+@@ -1042,8 +1154,11 @@ impl DefaultGCodeEmitter {
+             },
+             ..Default::default()
+         };
++        let t_est = std::time::Instant::now();
+         let (estimate, elapsed) =
+             crate::estimator::estimate_print_with_elapsed(&gcode_ir, &limits, &tool_diameters);
++        let estimator_ns = t_est.elapsed().as_nanos() as u64;
++        let t_m73 = std::time::Instant::now();
+         if !self.resolved_config.disable_m73 {
+             crate::m73::inject_m73(&mut gcode_ir, &elapsed);
+         }
+@@ -1053,8 +1168,31 @@ impl DefaultGCodeEmitter {
+                 &estimate,
+                 &self.resolved_config.filament_density,
+             ));
++        let inject_m73_ns = t_m73.elapsed().as_nanos() as u64;
++        let cmds_after_m73 = gcode_ir.commands.len();
+         gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
+-        Ok(gcode_ir)
++        (
++            Ok(gcode_ir),
++            Some((
++                emit_loop_ns,
++                layer_maps_ns,
++                simplify_ns,
++                emit_moves_ns,
++                annotations_scan_ns,
++                estimator_ns,
++                inject_m73_ns,
++                emitted_layer_count,
++                cmds_before_m73,
++                cmds_after_m73,
++                move_cmds,
++                travel_cmds,
++                retract_cmds,
++                raw_cmds,
++                points_in,
++                points_out,
++                annotations_total,
++            )),
++        )
+     }
+ }
+ 
+diff --git a/crates/slicer-gcode/src/serialize.rs b/crates/slicer-gcode/src/serialize.rs
+index df27c14d..d466964c 100644
+--- a/crates/slicer-gcode/src/serialize.rs
++++ b/crates/slicer-gcode/src/serialize.rs
+@@ -841,8 +841,11 @@ impl Default for ThumbnailAwareSerializer {
+ 
+ impl GCodeSerializer for ThumbnailAwareSerializer {
+     fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
++        let probe = std::env::var_os("T189_PROBE").is_some();
++        let t_total = std::time::Instant::now();
+         let base = self.inner.serialize_gcode(gcode_ir)?;
+ 
++        let t_wrap = std::time::Instant::now();
+         // 1. Insert THUMBNAIL_BLOCK immediately after HEADER_BLOCK_END (if thumbnail present).
+         let base = if let Some(ref entries) = self.thumbnails {
+             let sentinel = "; HEADER_BLOCK_END\n";
+@@ -869,7 +872,8 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
+         let slot_count = gcode_ir.metadata.filament_used_mm.len();
+         let default_csv = filament_colour_csv(slot_count);
+         let colour_csv = resolve_filament_colour_csv(&self.raw_config, slot_count);
+-        let base = if colour_csv != default_csv {
++        let colour_rewritten = colour_csv != default_csv;
++        let base = if colour_rewritten {
+             base.replace(
+                 &format!("; filament_colour = {default_csv}"),
+                 &format!("; filament_colour = {colour_csv}"),
+@@ -881,20 +885,34 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
+         } else {
+             base
+         };
++        let wrapper_thumb_colour_ns = t_wrap.elapsed().as_nanos() as u64;
+ 
++        let t_cfg = std::time::Instant::now();
+         // 3. Append CONFIG_BLOCK at the end of the output, with the per-filament
+         // colour list sized to the tools in use (drives the OrcaSlicer preview).
+         let config_block = serialize_config_block(&self.raw_config, &colour_csv, self.flavor);
+         let mut result = base;
+         result.push_str(&config_block);
++        let config_block_ns = t_cfg.elapsed().as_nanos() as u64;
++        if probe {
++            eprintln!(
++                "T189_PROBE {{\"kind\":\"gcode_serialize_wrapper\",\"total_ns\":{},\"wrapper_thumb_colour_ns\":{wrapper_thumb_colour_ns},\"config_block_ns\":{config_block_ns},\"colour_rewritten\":{colour_rewritten},\"has_thumbs\":{},\"output_bytes\":{}}}",
++                t_total.elapsed().as_nanos() as u64,
++                self.thumbnails.is_some(),
++                result.len(),
++            );
++        }
+         Ok(result)
+     }
+ }
+ 
+ impl GCodeSerializer for DefaultGCodeSerializer {
+     fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
++        let probe = std::env::var_os("T189_PROBE").is_some();
++        let t_total = std::time::Instant::now();
+         let mut output = String::new();
+ 
++        let t_z = std::time::Instant::now();
+         // Compute max Z height (mm) from the GCodeIR commands.
+         // Z fields in Move commands are already in mm (f32).
+         let computed_z: f32 = gcode_ir
+@@ -915,7 +933,9 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+         } else {
+             self.max_z_height_floor_mm
+         };
++        let max_z_ns = t_z.elapsed().as_nanos() as u64;
+ 
++        let t_hdr = std::time::Instant::now();
+         // Emit HEADER_BLOCK as the first thing in the file (AC-3 through AC-6,
+         // OrcaSlicer parity: GCode.cpp:2644-2704).
+         output.push_str(&serialize_header_block(
+@@ -935,6 +955,15 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+             self.top_surface_line_width,
+             self.support_line_width,
+         ));
++        let header_widths_ns = t_hdr.elapsed().as_nanos() as u64;
++
++        let t_cmds = std::time::Instant::now();
++        let mut move_cmds = 0usize;
++        let mut x_cnt = 0usize;
++        let mut y_cnt = 0usize;
++        let mut z_cnt = 0usize;
++        let mut e_cnt = 0usize;
++        let mut f_cnt = 0usize;
+ 
+         // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
+         // which always stores absolute E values).  Only used in relative mode to
+@@ -954,20 +983,25 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                     role,
+                     ..
+                 } => {
++                    move_cmds += 1;
+                     // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
+                     let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                     let cmd = if is_travel { "G0" } else { "G1" };
+                     write!(output, "{cmd}").unwrap();
+                     if let Some(x_val) = x {
++                        x_cnt += 1;
+                         write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
+                     }
+                     if let Some(y_val) = y {
++                        y_cnt += 1;
+                         write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
+                     }
+                     if let Some(z_val) = z {
++                        z_cnt += 1;
+                         write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
+                     }
+                     if let Some(e_val) = e {
++                        e_cnt += 1;
+                         if self.relative {
+                             let abs_e = *e_val as f64;
+                             let delta = abs_e - e_accumulator;
+@@ -978,6 +1012,7 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                         }
+                     }
+                     if let Some(f_val) = f {
++                        f_cnt += 1;
+                         write!(output, " F{}", format_coord(*f_val)).unwrap();
+                     }
+                     writeln!(output).unwrap();
+@@ -1077,6 +1112,16 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+             }
+         }
+ 
++        let commands_loop_ns = t_cmds.elapsed().as_nanos() as u64;
++        if probe {
++            eprintln!(
++                "T189_PROBE {{\"kind\":\"gcode_serialize_inner\",\"total_ns\":{},\"max_z_ns\":{max_z_ns},\"header_widths_ns\":{header_widths_ns},\"commands_loop_ns\":{commands_loop_ns},\"cmds\":{},\"output_bytes\":{},\"move_cmds\":{move_cmds},\"x_cnt\":{x_cnt},\"y_cnt\":{y_cnt},\"z_cnt\":{z_cnt},\"e_cnt\":{e_cnt},\"f_cnt\":{f_cnt},\"relative\":{}}}",
++                t_total.elapsed().as_nanos() as u64,
++                gcode_ir.commands.len(),
++                output.len(),
++                self.relative,
++            );
++        }
+         Ok(output)
+     }
+ }
+diff --git a/crates/slicer-runtime/src/postpass.rs b/crates/slicer-runtime/src/postpass.rs
+index c8b86a62..a4e9dba6 100644
+--- a/crates/slicer-runtime/src/postpass.rs
++++ b/crates/slicer-runtime/src/postpass.rs
+@@ -294,10 +294,18 @@ pub fn execute_postpass_with_owned_capture(
+     // geometry without modifying ordered_entities. The layers arrive owned;
+     // reconciling in place avoids the historical whole-print `to_vec` copy.
+     let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs;
++    let t_rec = std::time::Instant::now();
+     let travel_f = emitter.travel_feedrate_mm_per_min();
+     for layer in &mut reconciled_layers {
+         slicer_gcode::reconcile_finalization_travel(layer, travel_f);
+     }
++    if std::env::var_os("T189_PROBE").is_some() {
++        eprintln!(
++            "T189_PROBE {{\"kind\":\"postpass_reconcile\",\"reconcile_ns\":{},\"layers\":{}}}",
++            t_rec.elapsed().as_nanos() as u64,
++            reconciled_layers.len(),
++        );
++    }
+ 
+     // Step 1b: Emit initial GCodeIR from (reconciled) layers.
+     //
+diff --git a/crates/slicer-runtime/src/run.rs b/crates/slicer-runtime/src/run.rs
+index 0d33bbb0..627835c1 100644
+--- a/crates/slicer-runtime/src/run.rs
++++ b/crates/slicer-runtime/src/run.rs
+@@ -2210,23 +2210,23 @@ fn run_slice_shared(
+ 
+     let wallclock_ms = t0.elapsed().as_millis() as u64;
+ 
++    let t_lcnt = std::time::Instant::now();
+     // Derive layer_count: count layer-change markers in gcode (best-effort proxy).
+     let layer_count = pipeline_output
+         .gcode_text
+         .lines()
+         .filter(|l| l.starts_with(";LAYER_CHANGE") || l.starts_with("; layer"))
+         .count() as u32;
++    let layer_count_scan_ns = t_lcnt.elapsed().as_nanos() as u64;
+ 
+-    // slice_stats + slice_complete (packet 169 Step 3): slice_stats is
+-    // emitted whenever the slice produced a G-code artifact (including
+-    // degraded-but-successful runs), strictly before the success-only,
+-    // exactly-once slice_complete (docs/09 §Required Events). On fatal
+-    // failure the stream ends at the error event with neither. The whole-print
+-    // numbers come from `estimate_print` over the final post-postprocess
+-    // `GCodeIR` surfaced by `crate::postpass::take_final_gcode_ir` — no
+-    // estimator math is re-implemented here.
++    let mut second_estimate_ns = 0u64;
++    let mut gcode_ir_drop_ns = 0u64;
++    let mut final_cmds = 0usize;
+     let stats = crate::postpass::take_final_gcode_ir().map(|ir| {
++        final_cmds = ir.commands.len();
++        let t_est = std::time::Instant::now();
+         let estimate = estimate_print(&ir, &estimator_limits, &stats_tool_diameters);
++        second_estimate_ns = t_est.elapsed().as_nanos() as u64;
+         // Weight is summed per tool, each priced with its own filament's
+         // density (Orca `filament_density` is `coFloats`, one entry per
+         // filament — canonical reads it as `filament_density.get_at(m_id)` in
+@@ -2246,7 +2246,7 @@ fn run_slice_shared(
+                 })
+                 .sum::<f64>()
+         });
+-        SliceStatsInputs {
++        let out = SliceStatsInputs {
+             gcode_prediction_seconds: estimate.total_time_s.round() as u64,
+             // Weight only when filament_density (g/cm³) is configured; the
+             // event key is omitted otherwise (never 0, never null). The
+@@ -2257,8 +2257,17 @@ fn run_slice_shared(
+             first_layer_height_mm: stats_first_layer_height_mm,
+             extruded_volume_mm3: estimate.extruded_volume_mm3,
+             toolchange_count: estimate.toolchange_count,
+-        }
++        };
++        let t_drop = std::time::Instant::now();
++        drop(ir);
++        gcode_ir_drop_ns = t_drop.elapsed().as_nanos() as u64;
++        out
+     });
++    if std::env::var_os("T189_PROBE").is_some() {
++        eprintln!(
++            "T189_PROBE {{\"kind\":\"run_tail\",\"layer_count_scan_ns\":{layer_count_scan_ns},\"second_estimate_ns\":{second_estimate_ns},\"gcode_ir_drop_ns\":{gcode_ir_drop_ns},\"final_cmds\":{final_cmds}}}"
++        );
++    }
+     // `profile_summary` precedes `slice_stats` / `slice_complete`: the
+     // terminal events stay terminal, so a consumer that stops reading at
+     // `slice_complete` never misses the profile (ADR-0055).
+diff --git a/crates/slicer-wasm-host/src/dispatch.rs b/crates/slicer-wasm-host/src/dispatch.rs
+index 15f499ec..18fc02ad 100644
+--- a/crates/slicer-wasm-host/src/dispatch.rs
++++ b/crates/slicer-wasm-host/src/dispatch.rs
+@@ -1688,6 +1688,8 @@ impl WasmRuntimeDispatcher {
+             reason: "no compiled WASM component available".to_string(),
+         })?;
+ 
++        let t_total = std::time::Instant::now();
++        let t_linker = std::time::Instant::now();
+         let _lease = instance_pool.acquire();
+         let engine = self.engine.wasmtime_engine();
+ 
+@@ -1732,7 +1734,9 @@ impl WasmRuntimeDispatcher {
+                 phase: DispatchPhase::ContextCreation,
+                 reason: format!("failed to push finalization output resource: {e}"),
+             })?;
++        let linker_store_ns = t_linker.elapsed().as_nanos() as u64;
+ 
++        let t_push_views = std::time::Instant::now();
+         let mut layer_handles = Vec::with_capacity(layers.len());
+         for layer in layers {
+             let h = store
+@@ -1747,7 +1751,9 @@ impl WasmRuntimeDispatcher {
+                 })?;
+             layer_handles.push(own(h));
+         }
++        let push_views_ns = t_push_views.elapsed().as_nanos() as u64;
+ 
++        let t_inst = std::time::Instant::now();
+         let bindings = host::LayerFinalizationModule::instantiate(
+             &mut store,
+             component.wasmtime_component(),
+@@ -1763,7 +1769,9 @@ impl WasmRuntimeDispatcher {
+                 slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+             ),
+         })?;
++        let instantiate_ns = t_inst.elapsed().as_nanos() as u64;
+ 
++        let t_call = std::time::Instant::now();
+         let call_result = bindings
+             .slicer_finalization_layer_finalization_layer_finalization()
+             .call_run(
+@@ -1779,6 +1787,7 @@ impl WasmRuntimeDispatcher {
+                 phase: DispatchPhase::TypedExportCall,
+                 reason: e.to_string(),
+             })?;
++        let call_run_ns = t_call.elapsed().as_nanos() as u64;
+ 
+         if let Some(reason) = store.data().finalization_write_denial.clone() {
+             return Err(DispatchError {
+@@ -1806,7 +1815,42 @@ impl WasmRuntimeDispatcher {
+ 
+         stash_profile(&mut store);
+ 
+-        Ok(store.data_mut().drain_finalization_output_builder())
++        let host_oe_calls = store.data().t189_oe_calls;
++        let host_oe_ns = store.data().t189_oe_ns;
++        let host_other_view_calls = store.data().t189_other_view_calls;
++        let pushes = store.data_mut().drain_finalization_output_builder();
++        let t_drop = std::time::Instant::now();
++        drop(bindings);
++        drop(store);
++        drop(linker);
++        let store_drop_ns = t_drop.elapsed().as_nanos() as u64;
++        if std::env::var_os("T189_PROBE").is_some() {
++            let total_entities: usize = layers.iter().map(|l| l.ordered_entities.len()).sum();
++            let total_points: usize = layers
++                .iter()
++                .flat_map(|l| l.ordered_entities.iter())
++                .map(|e| e.path.points.len())
++                .sum();
++            let wall_entities: usize = layers
++                .iter()
++                .flat_map(|l| l.ordered_entities.iter())
++                .filter(|e| {
++                    matches!(
++                        e.role,
++                        slicer_ir::ExtrusionRole::OuterWall
++                            | slicer_ir::ExtrusionRole::InnerWall
++                            | slicer_ir::ExtrusionRole::ThinWall
++                    )
++                })
++                .count();
++            eprintln!(
++                "T189_PROBE {{\"kind\":\"fin_dispatch\",\"module\":\"{module_id}\",\"total_ns\":{},\"linker_store_ns\":{linker_store_ns},\"push_views_ns\":{push_views_ns},\"instantiate_ns\":{instantiate_ns},\"call_run_ns\":{call_run_ns},\"store_drop_ns\":{store_drop_ns},\"host_oe_calls\":{host_oe_calls},\"host_oe_ns\":{host_oe_ns},\"host_other_view_calls\":{host_other_view_calls},\"pushes_count\":{},\"layers\":{},\"entities\":{total_entities},\"wall_entities\":{wall_entities},\"points\":{total_points}}}",
++                t_total.elapsed().as_nanos() as u64,
++                pushes.len(),
++                layers.len(),
++            );
++        }
++        Ok(pushes)
+     }
+ 
+     // ── Typed postpass-world dispatch ──────────────────────────────────
+@@ -1845,6 +1889,8 @@ impl WasmRuntimeDispatcher {
+             }
+         };
+ 
++        let t_total = std::time::Instant::now();
++        let t_linker = std::time::Instant::now();
+         let _lease = instance_pool.acquire();
+         let engine = self.engine.wasmtime_engine();
+ 
+@@ -1928,12 +1974,16 @@ impl WasmRuntimeDispatcher {
+                 )
+             }
+         };
++        let linker_inst_ns = t_linker.elapsed().as_nanos() as u64;
+ 
++        let t_conv = std::time::Instant::now();
+         let postpass_commands: Vec<_> = commands
+             .iter()
+             .map(convert_gcode_command_to_postpass_wit)
+             .collect();
++        let convert_in_ns = t_conv.elapsed().as_nanos() as u64;
+ 
++        let t_call = std::time::Instant::now();
+         let call_result = bindings
+             .slicer_postpass_gcode_postprocess_gcode_postprocess()
+             .call_run(
+@@ -1942,6 +1992,8 @@ impl WasmRuntimeDispatcher {
+                 own(output_handle),
+                 own(config_handle),
+             );
++        let call_run_ns = t_call.elapsed().as_nanos() as u64;
++        let host_push_calls = store.data().t189_gcode_push_calls;
+         let runtime_reads = store.data().runtime_reads.clone();
+         self.stash_postpass_batch_calls(store.data_mut());
+         self.stash_postpass_profile(&mut store);
+@@ -1951,6 +2003,7 @@ impl WasmRuntimeDispatcher {
+ 
+         match call_result {
+             Ok(Ok(())) => {
++                let t_out = std::time::Instant::now();
+                 let output = match crate::marshal::collect_postpass_output(
+                     &store.data().gcode_output.commands,
+                 ) {
+@@ -1968,6 +2021,21 @@ impl WasmRuntimeDispatcher {
+                         );
+                     }
+                 };
++                let collect_out_ns = t_out.elapsed().as_nanos() as u64;
++                let out_cmds = output.as_ref().map(|v| v.len()).unwrap_or(0);
++                let t_drop = std::time::Instant::now();
++                drop(postpass_commands);
++                drop(bindings);
++                drop(store);
++                drop(linker);
++                let drop_ns = t_drop.elapsed().as_nanos() as u64;
++                if std::env::var_os("T189_PROBE").is_some() {
++                    eprintln!(
++                        "T189_PROBE {{\"kind\":\"gcode_postprocess\",\"module\":\"{module_id}\",\"total_ns\":{},\"linker_inst_ns\":{linker_inst_ns},\"convert_in_ns\":{convert_in_ns},\"call_run_ns\":{call_run_ns},\"collect_out_ns\":{collect_out_ns},\"drop_ns\":{drop_ns},\"host_push_calls\":{host_push_calls},\"in_cmds\":{},\"out_cmds\":{out_cmds}}}",
++                        t_total.elapsed().as_nanos() as u64,
++                        commands.len(),
++                    );
++                }
+                 (Ok(output), runtime_reads)
+             }
+             Ok(Err(module_err)) => (
+@@ -4353,9 +4421,24 @@ fn apply_finalization_pushes(
+     use slicer_ir::LayerEntityIdGen;
+     use slicer_sdk::traits::{FinalizationOutputBuilder, SyntheticLayerData};
+ 
++    let t_apply_total = std::time::Instant::now();
+     let mut sdk_builder = FinalizationOutputBuilder::new();
+     let mut legacy_synthetic_layers: Vec<(f32, Vec<slicer_ir::ExtrusionPath3D>)> = Vec::new();
+     let push_count = pushes.len();
++    let mut modify_count = 0usize;
++    let mut ann_count = 0usize;
++    let mut entity_push_count = 0usize;
++    for push in &pushes {
++        match push {
++            host::FinalizationBuilderPush::ModifyEntity { .. } => modify_count += 1,
++            host::FinalizationBuilderPush::Annotation(_, _) => ann_count += 1,
++            host::FinalizationBuilderPush::EntityToLayer { .. }
++            | host::FinalizationBuilderPush::EntityToLayerWithPriority { .. } => {
++                entity_push_count += 1
++            }
++            _ => {}
++        }
++    }
+     // A stream of annotations plus append-only entity pushes has no fallible
+     // merge op: annotations only need every target layer to exist, priority
+     // pushes cannot fail, and the order-lock pass is guarded below. Such a
+@@ -4482,19 +4565,21 @@ fn apply_finalization_pushes(
+     // except the final order-lock globalisation pass. When every tag is already
+     // global (and valid), that pass writes nothing either, so `apply_to` would
+     // be a true no-op and the whole-print rollback clone can be skipped.
++    let t_lock = std::time::Instant::now();
+     let lock_remap_noop = order_lock_remap_is_noop(layers);
++    let order_lock_scan_ns = t_lock.elapsed().as_nanos() as u64;
+     if push_count == 0 && lock_remap_noop {
++        if std::env::var_os("T189_PROBE").is_some() {
++            eprintln!(
++                "T189_PROBE {{\"kind\":\"fin_apply\",\"module\":\"{module_id}\",\"apply_ns\":{},\"order_lock_scan_ns\":{order_lock_scan_ns},\"rollback_clone_ns\":0,\"sdk_apply_ns\":0,\"replace_drop_ns\":0,\"pushes_count\":0,\"modify_count\":0,\"ann_count\":0,\"entity_push_count\":0,\"infallible_stream\":{infallible_stream},\"took_rollback_clone\":false}}",
++                t_apply_total.elapsed().as_nanos() as u64,
++            );
++        }
+         return Ok(slicer_ir::FinalizationOutput::Success);
+     }
+ 
+-    // Append-only fast path: `apply_to` can only append annotations/entities and
+-    // sort touched layers here (no fallible merge op), and the order-lock pass is
+-    // a proven no-op, so applying directly to the stage-local working copy is
+-    // infallible and needs no rollback clone. Streams with modify/sort/insert/
+-    // synthetic ops keep the clone that
+-    // `malformed_finalization_merge_rolls_back_prior_entity_push_on_both_transports`
+-    // pins.
+     if infallible_stream && lock_remap_noop {
++        let t_sdk = std::time::Instant::now();
+         sdk_builder
+             .apply_to(layers)
+             .map_err(|msg| slicer_ir::FinalizationError::FatalModule {
+@@ -4502,10 +4587,20 @@ fn apply_finalization_pushes(
+                 module_id: module_id.to_string(),
+                 message: format!("finalization merge failed: {msg}"),
+             })?;
++        let sdk_apply_ns = t_sdk.elapsed().as_nanos() as u64;
++        if std::env::var_os("T189_PROBE").is_some() {
++            eprintln!(
++                "T189_PROBE {{\"kind\":\"fin_apply\",\"module\":\"{module_id}\",\"apply_ns\":{},\"order_lock_scan_ns\":{order_lock_scan_ns},\"rollback_clone_ns\":0,\"sdk_apply_ns\":{sdk_apply_ns},\"replace_drop_ns\":0,\"pushes_count\":{push_count},\"modify_count\":{modify_count},\"ann_count\":{ann_count},\"entity_push_count\":{entity_push_count},\"infallible_stream\":true,\"took_rollback_clone\":false}}",
++                t_apply_total.elapsed().as_nanos() as u64,
++            );
++        }
+         return Ok(slicer_ir::FinalizationOutput::Success);
+     }
+ 
++    let t_clone = std::time::Instant::now();
+     let mut candidate = layers.clone();
++    let rollback_clone_ns = t_clone.elapsed().as_nanos() as u64;
++    let t_sdk = std::time::Instant::now();
+     sdk_builder.apply_to(&mut candidate).map_err(|msg| {
+         slicer_ir::FinalizationError::FatalModule {
+             stage_id: stage_id.clone(),
+@@ -4513,6 +4608,7 @@ fn apply_finalization_pushes(
+             message: format!("finalization merge failed: {msg}"),
+         }
+     })?;
++    let sdk_apply_ns = t_sdk.elapsed().as_nanos() as u64;
+ 
+     for (z, paths) in legacy_synthetic_layers {
+         let new_index = candidate.len() as u32;
+@@ -4545,7 +4641,15 @@ fn apply_finalization_pushes(
+         });
+     }
+ 
++    let t_rep = std::time::Instant::now();
+     *layers = candidate;
++    let replace_drop_ns = t_rep.elapsed().as_nanos() as u64;
++    if std::env::var_os("T189_PROBE").is_some() {
++        eprintln!(
++            "T189_PROBE {{\"kind\":\"fin_apply\",\"module\":\"{module_id}\",\"apply_ns\":{},\"order_lock_scan_ns\":{order_lock_scan_ns},\"rollback_clone_ns\":{rollback_clone_ns},\"sdk_apply_ns\":{sdk_apply_ns},\"replace_drop_ns\":{replace_drop_ns},\"pushes_count\":{push_count},\"modify_count\":{modify_count},\"ann_count\":{ann_count},\"entity_push_count\":{entity_push_count},\"infallible_stream\":{infallible_stream},\"took_rollback_clone\":true}}",
++            t_apply_total.elapsed().as_nanos() as u64,
++        );
++    }
+     Ok(slicer_ir::FinalizationOutput::Success)
+ }
+ 
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index ba325ad9..e6bc83a4 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -1431,6 +1431,13 @@ pub struct HostExecutionContext {
+     /// stack when it folds, and tolerates a malformed stream anyway; this is
+     /// the cheaper first line of defence.
+     pub(crate) profile_stack: Vec<u32>,
++
++    // T189 observation-only probe counters (reverted before resolution).
++    pub(crate) t189_oe_calls: u64,
++    pub(crate) t189_oe_ns: u64,
++    pub(crate) t189_other_view_calls: u64,
++    pub(crate) t189_builder_calls: u64,
++    pub(crate) t189_gcode_push_calls: u64,
+ }
+ 
+ impl wasmtime_wasi::WasiView for HostExecutionContext {
+@@ -1566,6 +1573,11 @@ impl HostExecutionContextBuilder {
+             host_entry_fuel: 0,
+             profile_marks: Vec::new(),
+             profile_stack: Vec::new(),
++            t189_oe_calls: 0,
++            t189_oe_ns: 0,
++            t189_other_view_calls: 0,
++            t189_builder_calls: 0,
++            t189_gcode_push_calls: 0,
+         }
+     }
+ }
+@@ -4998,12 +5010,14 @@ mod finalization_impls {
+             &mut self,
+             self_: Resource<fm::LayerCollectionView>,
+         ) -> wasmtime::Result<u32> {
++            self.t189_other_view_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+             Ok(data.layer_index)
+         }
+         fn z(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<f32> {
++            self.t189_other_view_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+@@ -5013,6 +5027,7 @@ mod finalization_impls {
+             &mut self,
+             self_: Resource<fm::LayerCollectionView>,
+         ) -> wasmtime::Result<u32> {
++            self.t189_other_view_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+@@ -5022,6 +5037,7 @@ mod finalization_impls {
+             &mut self,
+             self_: Resource<fm::LayerCollectionView>,
+         ) -> wasmtime::Result<Vec<fm::ToolChangeView>> {
++            self.t189_other_view_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+@@ -5041,10 +5057,12 @@ mod finalization_impls {
+             &mut self,
+             self_: Resource<fm::LayerCollectionView>,
+         ) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
++            let t0 = Instant::now();
++            self.t189_oe_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+-            Ok(data
++            let out: Vec<fm::PrintEntityView> = data
+                 .ordered_entities
+                 .iter()
+                 .map(|entity| fm::PrintEntityView {
+@@ -5059,12 +5077,15 @@ mod finalization_impls {
+                     },
+                     topo_order: entity.topo_order,
+                 })
+-                .collect())
++                .collect();
++            self.t189_oe_ns += t0.elapsed().as_nanos() as u64;
++            Ok(out)
+         }
+         fn z_hops(
+             &mut self,
+             self_: Resource<fm::LayerCollectionView>,
+         ) -> wasmtime::Result<Vec<fm::ZHopView>> {
++            self.t189_other_view_calls += 1;
+             self.runtime_reads.push(String::from("LayerCollectionIR"));
+             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+             let data = self.table.get(&typed)?;
+@@ -5537,6 +5558,7 @@ mod postpass_impls {
+             _: Resource<ppm::GcodeOutputBuilder>,
+             cmd: ppm::GcodeMoveCmd,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+@@ -5556,6 +5578,7 @@ mod postpass_impls {
+             speed: f32,
+             mode: ppm::RetractMode,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Retract {
+@@ -5572,6 +5595,7 @@ mod postpass_impls {
+             speed: f32,
+             mode: ppm::RetractMode,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Unretract {
+@@ -5586,6 +5610,7 @@ mod postpass_impls {
+             _: Resource<ppm::GcodeOutputBuilder>,
+             value: u8,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::FanSpeed(value));
+@@ -5598,6 +5623,7 @@ mod postpass_impls {
+             celsius: f32,
+             wait: bool,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Temperature {
+@@ -5614,6 +5640,7 @@ mod postpass_impls {
+             from_tool: u32,
+             to_tool: u32,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::ToolChange {
+@@ -5628,6 +5655,7 @@ mod postpass_impls {
+             _: Resource<ppm::GcodeOutputBuilder>,
+             text: String,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Comment(text));
+@@ -5638,6 +5666,7 @@ mod postpass_impls {
+             _: Resource<ppm::GcodeOutputBuilder>,
+             text: String,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::Raw(text));
+@@ -5649,6 +5678,7 @@ mod postpass_impls {
+             after_entity_index: u32,
+             hop_height: f32,
+         ) -> wasmtime::Result<Result<(), String>> {
++            self.t189_gcode_push_calls += 1;
+             self.gcode_output
+                 .commands
+                 .push(GcodeCommandCollected::ZHop {

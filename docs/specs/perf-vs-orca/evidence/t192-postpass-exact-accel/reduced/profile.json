@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "cells": {
+    "base-arachne-on": {
+      "baseline": {
+        "fuel_total": 124390412936,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 599421111,
+          "com.core.overhang-classifier-default": 599408245,
+          "com.core.skirt-brim": 606475661,
+          "com.core.part-cooling": 626671926
+        },
+        "lf_total_fuel": 2431976943,
+        "machine_gcode_emit_fuel": 975615419
+      },
+      "candidate": {
+        "fuel_total": 122566934547,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 381956,
+          "com.core.overhang-classifier-default": 378297,
+          "com.core.skirt-brim": 8911651,
+          "com.core.part-cooling": 596745694
+        },
+        "lf_total_fuel": 606417598,
+        "machine_gcode_emit_fuel": 975616532
+      },
+      "lf_fuel_delta": -1825559345,
+      "lf_fuel_saving_pct": 75.06482946947906,
+      "machine_gcode_emit_fuel_delta": 1113
+    },
+    "base-classic-on": {
+      "baseline": {
+        "fuel_total": 137296677126,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 599754510,
+          "com.core.overhang-classifier-default": 599380679,
+          "com.core.skirt-brim": 606566738,
+          "com.core.part-cooling": 628209603
+        },
+        "lf_total_fuel": 2433911530,
+        "machine_gcode_emit_fuel": 979003166
+      },
+      "candidate": {
+        "fuel_total": 135470885011,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 382195,
+          "com.core.overhang-classifier-default": 378234,
+          "com.core.skirt-brim": 8935782,
+          "com.core.part-cooling": 596703604
+        },
+        "lf_total_fuel": 606399815,
+        "machine_gcode_emit_fuel": 979003060
+      },
+      "lf_fuel_delta": -1827511715,
+      "lf_fuel_saving_pct": 75.0853797467322,
+      "machine_gcode_emit_fuel_delta": -106
+    },
+    "benchy-arachne-on": {
+      "baseline": {
+        "fuel_total": 17964538116,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 149395154,
+          "com.core.overhang-classifier-default": 146283632,
+          "com.core.skirt-brim": 156506441,
+          "com.core.part-cooling": 153998423
+        },
+        "lf_total_fuel": 606183650,
+        "machine_gcode_emit_fuel": 222873374
+      },
+      "candidate": {
+        "fuel_total": 17515958191,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 213018,
+          "com.core.overhang-classifier-default": 208127,
+          "com.core.skirt-brim": 11615794,
+          "com.core.part-cooling": 145467498
+        },
+        "lf_total_fuel": 157504437,
+        "machine_gcode_emit_fuel": 222868155
+      },
+      "lf_fuel_delta": -448679213,
+      "lf_fuel_saving_pct": 74.0170430198835,
+      "machine_gcode_emit_fuel_delta": -5219
+    },
+    "benchy-classic-on": {
+      "baseline": {
+        "fuel_total": 18439132766,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 147163866,
+          "com.core.overhang-classifier-default": 143931611,
+          "com.core.skirt-brim": 154510051,
+          "com.core.part-cooling": 151767923
+        },
+        "lf_total_fuel": 597373451,
+        "machine_gcode_emit_fuel": 217711932
+      },
+      "candidate": {
+        "fuel_total": 17998664576,
+        "lf_modules_fuel": {
+          "com.core.wipe-tower": 213094,
+          "com.core.overhang-classifier-default": 207953,
+          "com.core.skirt-brim": 11728036,
+          "com.core.part-cooling": 143211750
+        },
+        "lf_total_fuel": 155360833,
+        "machine_gcode_emit_fuel": 218642733
+      },
+      "lf_fuel_delta": -442012618,
+      "lf_fuel_saving_pct": 73.99267866023727,
+      "machine_gcode_emit_fuel_delta": 930801
+    }
+  }
+}

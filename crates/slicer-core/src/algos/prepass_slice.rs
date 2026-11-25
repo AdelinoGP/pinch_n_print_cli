@@ -89,7 +89,12 @@ impl std::error::Error for LayerSliceError {}
 /// (e.g. slicing a translated object at a global-space layer Z would miss the
 /// mesh entirely). For an identity transform this is a vertex-wise copy, so
 /// slice output is bit-identical.
-fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
+///
+/// Public because `PrePass::SupportAnalysis` takes the same world-space
+/// cross-section at each layer's print plane for
+/// `SupportAnalysisIR::print_plane_occupancy`; the exact-Z query service the
+/// host gate validates with uses the identical transform.
+pub fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: object
             .mesh
@@ -409,6 +414,10 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
     // unit-normalized, deduped by quantized angle (first-seen wins).
     let mut edges: Vec<(f64, f64)> = Vec::with_capacity(floating.len());
     let mut candidates: Vec<(i64, f64, f64)> = Vec::new();
+    // First-seen dedup by key; the set only replaces the linear `any` scan,
+    // so `candidates` keeps the identical order and contents.
+    let mut seen_keys: std::collections::HashSet<i64> =
+        std::collections::HashSet::with_capacity(floating.len());
     for (from, to) in &floating {
         let dx = (to.x - from.x) as f64;
         let dy = (to.y - from.y) as f64;
@@ -428,7 +437,7 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
         let nx = if nx == 0.0 { 0.0 } else { nx };
         let ny = if ny == 0.0 { 0.0 } else { ny };
         let key = (ny.atan2(nx) * ORIENTATION_QUANTIZATION_SCALE).ceil() as i64;
-        if !candidates.iter().any(|&(k, _, _)| k == key) {
+        if seen_keys.insert(key) {
             candidates.push((key, nx, ny));
         }
     }
@@ -437,15 +446,37 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
         return principal_minor_axis_deg(&overhang);
     }
 
-    // Minimal-cost candidate; exact-cost ties resolve to the smallest
-    // quantized-angle key (ADR-0061).
+    let (_, nx, ny) = min_cost_bridging_candidate(&edges, &candidates);
+
+    // Return direction = winning normal flipped: parallel to the winning
+    // floating edge, in degrees mod 180, half-open [0, 180).
+    direction_deg(ny, -nx)
+}
+
+/// Exact scoring objective of [`detect_bridging_direction_deg`]: the sum of
+/// `|edge . n|` over every floating edge, in edge order. Both the brute-force
+/// reference and the pruned selector call this one function, so the value a
+/// candidate is ranked by is bit-for-bit the same in either path.
+fn bridging_candidate_cost(edges: &[(f64, f64)], nx: f64, ny: f64) -> f64 {
+    edges
+        .iter()
+        .map(|&(dx, dy)| (dx * nx + dy * ny).abs())
+        .sum()
+}
+
+/// Brute-force reference selector: the minimal-cost candidate, exact-cost ties
+/// resolved to the smallest quantized-angle key (ADR-0061). `O(C × E)`.
+///
+/// Kept as the oracle [`min_cost_bridging_candidate`] is tested against.
+#[doc(hidden)]
+pub fn min_cost_bridging_candidate_reference(
+    edges: &[(f64, f64)],
+    candidates: &[(i64, f64, f64)],
+) -> (i64, f64, f64) {
     let mut best: Option<(i64, f64, f64)> = None; // (key, nx, ny) at min cost
     let mut best_cost = f64::INFINITY;
-    for &(key, nx, ny) in &candidates {
-        let cost: f64 = edges
-            .iter()
-            .map(|&(dx, dy)| (dx * nx + dy * ny).abs())
-            .sum();
+    for &(key, nx, ny) in candidates {
+        let cost = bridging_candidate_cost(edges, nx, ny);
         let wins = match best {
             None => true,
             Some((best_key, _, _)) => cost < best_cost || (cost == best_cost && key < best_key),
@@ -455,11 +486,103 @@ pub fn detect_bridging_direction_deg(to_cover: &[ExPolygon], anchors: &[ExPolygo
             best_cost = cost;
         }
     }
-    let (_, nx, ny) = best.expect("candidates is non-empty");
+    best.expect("candidates is non-empty")
+}
 
-    // Return direction = winning normal flipped: parallel to the winning
-    // floating edge, in degrees mod 180, half-open [0, 180).
-    direction_deg(ny, -nx)
+/// Same selection as [`min_cost_bridging_candidate_reference`], without its
+/// `O(C × E)` scan.
+///
+/// The cost `Σ|e·n|` is a piecewise-linear function of the candidate angle, so
+/// after sorting the edges by their direction folded into `[0, π)` it can be
+/// evaluated for every candidate from prefix sums in `O(log E)`. That value is
+/// only an *estimate*: it sums in a different order and classifies edge signs
+/// by angle, so it can differ from the reference cost in the last bits. It is
+/// therefore used purely as a filter. Every candidate whose estimate lies
+/// within `2 × tol` of the smallest estimate is re-scored with the exact
+/// reference cost ([`bridging_candidate_cost`]) and the winner is picked from
+/// those by the reference rule.
+///
+/// Exactness: `tol` bounds `|estimate - reference|` for every candidate (both
+/// differ from the real-number cost by at most a few ulps per edge of the
+/// total edge length `L`, and `tol = 16 (E + 8) ε L` is several times that
+/// bound). If `w` is the reference winner and `c*` the candidate with the
+/// smallest estimate, then `est(w) <= ref(w) + tol <= ref(c*) + tol <=
+/// est(c*) + 2 tol`, so `w` is always among the re-scored candidates. The
+/// reference rule is a lexicographic `(cost, key)` minimum (keys are unique
+/// after dedup), so restricting it to any subset that contains `w` returns
+/// `w`.
+#[doc(hidden)]
+pub fn min_cost_bridging_candidate(
+    edges: &[(f64, f64)],
+    candidates: &[(i64, f64, f64)],
+) -> (i64, f64, f64) {
+    // Small inputs: the scan is already cheap and the filter cannot pay for
+    // its sort.
+    if candidates.len() <= 4 || edges.len() <= 8 {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
+    // Fold each edge into the upper half-plane; `|e·n|` is invariant under
+    // `e -> -e`.
+    let fold = |x: f64, y: f64| -> (f64, f64) {
+        if y < 0.0 || (y == 0.0 && x < 0.0) {
+            (-x, -y)
+        } else {
+            (x, y)
+        }
+    };
+    let mut folded: Vec<(f64, f64, f64)> = Vec::with_capacity(edges.len());
+    let mut total_length = 0.0_f64;
+    for &(dx, dy) in edges {
+        let (fx, fy) = fold(dx, dy);
+        total_length += dx.hypot(dy);
+        folded.push((fy.atan2(fx), fx, fy));
+    }
+    if !total_length.is_finite() {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    folded.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut prefix_x = Vec::with_capacity(folded.len() + 1);
+    let mut prefix_y = Vec::with_capacity(folded.len() + 1);
+    prefix_x.push(0.0_f64);
+    prefix_y.push(0.0_f64);
+    let (mut sum_x, mut sum_y) = (0.0_f64, 0.0_f64);
+    for &(_, fx, fy) in &folded {
+        sum_x += fx;
+        sum_y += fy;
+        prefix_x.push(sum_x);
+        prefix_y.push(sum_y);
+    }
+    let estimates: Vec<f64> = candidates
+        .iter()
+        .map(|&(_, nx, ny)| {
+            let (tx, ty) = fold(nx, ny);
+            let theta = ty.atan2(tx);
+            // Edges with folded angle within a quarter turn of `theta` have
+            // `f·t >= 0`; the rest contribute `-f·t`.
+            let (pos_x, pos_y) = if theta <= HALF_PI {
+                let k = folded.partition_point(|&(a, _, _)| a <= theta + HALF_PI);
+                (prefix_x[k], prefix_y[k])
+            } else {
+                let k = folded.partition_point(|&(a, _, _)| a < theta - HALF_PI);
+                (sum_x - prefix_x[k], sum_y - prefix_y[k])
+            };
+            (pos_x - (sum_x - pos_x)) * tx + (pos_y - (sum_y - pos_y)) * ty
+        })
+        .collect();
+    let tol = 16.0 * (edges.len() as f64 + 8.0) * f64::EPSILON * total_length;
+    let min_estimate = estimates.iter().copied().fold(f64::INFINITY, f64::min);
+    if !min_estimate.is_finite() || !tol.is_finite() {
+        return min_cost_bridging_candidate_reference(edges, candidates);
+    }
+    let cutoff = min_estimate + 2.0 * tol;
+    let contenders: Vec<(i64, f64, f64)> = candidates
+        .iter()
+        .zip(&estimates)
+        .filter(|&(_, &estimate)| estimate <= cutoff)
+        .map(|(&candidate, _)| candidate)
+        .collect();
+    min_cost_bridging_candidate_reference(edges, &contenders)
 }
 
 // ============================================================================
@@ -516,22 +639,36 @@ const SAFETY_OFFSET_ARC_TOLERANCE_MM: f32 = 0.05;
 const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
 
 /// Resolve the external-perimeter extrusion width (mm) the way canonical's
-/// `flow(frExternalPerimeter).scaled_width()` resolves it, mirroring
-/// `resolve_contact_params` exactly: the `outer_wall_line_width` extension when
-/// it carries an absolute width, else the typed `line_width`, else
+/// `flow(frExternalPerimeter).scaled_width()` resolves it: a **positive**
+/// absolute `outer_wall_line_width`, else the typed `line_width`, else
 /// [`DEFAULT_LINE_WIDTH_MM`].
-fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
+///
+/// The positivity test is load-bearing, not defensive. Canonical's "auto" form
+/// is spelled as a literal `0` (`outer_wall_line_width = 0`), and `Flow`
+/// resolves it to the profile's `line_width` before any classifier sees it. A
+/// resolver that returned the literal zero would not "use canonical's width",
+/// it would disable every consumer's opening: both this crate's bridge opening
+/// (`0.1 x width`) and `PrePass::ShellClassification`'s top/bottom opening run
+/// at radius zero and delete nothing (measured on the shell side at t166:
+/// 5,201,451 points in, 5,201,451 out, 6.8 ms for 974 calls).
+///
+/// **This is the single resolution policy for both call sites** — the bridge
+/// classifier here and `resolve_opening_params`
+/// (`crates/slicer-runtime/src/slice_postprocess_prepass.rs`). A percentage
+/// form is left to the perimeter modules (they resolve it against the nozzle)
+/// and falls back here, matching `resolve_contact_params`.
+pub fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
     let typed_line_width = if config.line_width > 0.0 {
         config.line_width as f32
     } else {
         DEFAULT_LINE_WIDTH_MM
     };
     match config.extensions.get("outer_wall_line_width") {
-        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Float(value)) if *value > 0.0 => *value as f32,
         Some(ConfigValue::FloatOrPercent {
             value,
             is_percent: false,
-        }) => *value as f32,
+        }) if *value > 0.0 => *value as f32,
         _ => typed_line_width,
     }
 }
@@ -539,6 +676,29 @@ fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
 // ============================================================================
 // batch_slice_objects_by_layer
 // ============================================================================
+
+/// Canonical slice plane of one object layer: the **midpoint** of the layer's
+/// own band, `0.5 × (lo + hi)`, not its print top.
+///
+/// Canonical `new_layers` (`PrintObjectSlice.cpp`) stores `slice_z =
+/// compute_slice_z(...)`, which is `0.5 × (lo + hi)` whenever ZAA is off, and
+/// slices at that plane while `layer.z` (the print top, `hi + zmin`) drives
+/// every downstream consumer. `effective_layer_height` is the band width
+/// `hi − lo`: the uniform step, the profile step for a variable-height
+/// schedule, or the catch-up span for a bridged region, so this one rule
+/// covers all three.
+///
+/// A non-finite or non-positive band (a hand-built layer plan from a focused
+/// test or a legacy fixture) falls back to the print top — the pre-midpoint
+/// behaviour — rather than producing a NaN plane. Production plans always
+/// carry a positive band.
+pub fn layer_sample_plane_z(layer_z: f32, effective_layer_height: f32) -> f32 {
+    if effective_layer_height.is_finite() && effective_layer_height > 0.0 {
+        layer_z - 0.5 * effective_layer_height
+    } else {
+        layer_z
+    }
+}
 
 /// Pre-slice every object mesh referenced across `global_layers` in one
 /// `slice_mesh_ex` call per object, instead of one call per (layer, object)
@@ -548,19 +708,40 @@ fn resolve_external_perimeter_width_mm(config: &ResolvedConfig) -> f32 {
 /// O(layer-count × triangle-count) instead of O(triangle-count +
 /// intersections). Returns raw (pre-closing-radius) polygons keyed by
 /// `(global_layer_index, object_id)`.
+///
+/// Each object is sampled at its **layer midpoint** ([`layer_sample_plane_z`]), not
+/// at the global layer's print top.
 pub fn batch_slice_objects_by_layer(
     mesh: &MeshIR,
     global_layers: &[GlobalLayer],
 ) -> HashMap<u32, HashMap<ObjectId, Vec<ExPolygon>>> {
     let mut layers_and_zs_by_object: HashMap<ObjectId, (Vec<u32>, Vec<f32>)> = HashMap::new();
     for layer in global_layers {
+        // One plane per (global layer, object). Every region of an object at one
+        // global plane shares that object's layer band by planner construction
+        // (the default planner stamps one `effective_layer_height` on all of a
+        // plane's proposals). Slicing is per object, so a future planner that
+        // disagreed would leave no single canonical midpoint; the widest band
+        // wins deterministically so the plane is never taken above the object's
+        // own midpoint.
+        let mut band_by_object: HashMap<&ObjectId, f32> = HashMap::new();
         for active in &layer.active_regions {
+            band_by_object
+                .entry(&active.object_id)
+                .and_modify(|band| {
+                    if active.effective_layer_height > *band {
+                        *band = active.effective_layer_height;
+                    }
+                })
+                .or_insert(active.effective_layer_height);
+        }
+        for (object_id, band) in band_by_object {
             let entry = layers_and_zs_by_object
-                .entry(active.object_id.clone())
+                .entry(object_id.clone())
                 .or_default();
             if entry.0.last() != Some(&layer.index) {
                 entry.0.push(layer.index);
-                entry.1.push(layer.z);
+                entry.1.push(layer_sample_plane_z(layer.z, band));
             }
         }
     }
@@ -601,8 +782,9 @@ pub struct PrepassSliceCache<'a> {
 // execute_prepass_slice_single_layer
 // ============================================================================
 
-/// Produce the `SliceIR` for `layer` by slicing every referenced object mesh
-/// at `layer.z`.
+/// Produce the `SliceIR` for `layer` by slicing every referenced object mesh at
+/// that object layer's **midpoint** (canonical `compute_slice_z`), while
+/// `SliceIR::z` keeps the layer print top.
 pub fn execute_prepass_slice_single_layer(
     mesh: &MeshIR,
     layer: &GlobalLayer,
@@ -689,7 +871,11 @@ fn execute_prepass_slice_single_layer_impl(
         let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
             Some(cached) => cached.clone(),
             None => {
-                let mut sliced = slice_mesh_ex(&object_world_mesh(object), &[layer.z]);
+                // No batch cache (direct call / test harness): sample this
+                // object layer at its canonical midpoint. `layer.z` stays the
+                // print top recorded on the resulting `SliceIR`.
+                let plane_z = layer_sample_plane_z(layer.z, active.effective_layer_height);
+                let mut sliced = slice_mesh_ex(&object_world_mesh(object), &[plane_z]);
                 sliced.pop().unwrap_or_default()
             }
         };
@@ -813,5 +999,48 @@ mod tests {
         let config = ResolvedConfig::default();
         assert_eq!(config.line_width, 0.0, "fixture precondition");
         assert_eq!(resolve_external_perimeter_width_mm(&config), 0.4);
+    }
+
+    /// The matched job authors `outer_wall_line_width = 0`, canonical's **auto**
+    /// sentinel. Reading it literally is not "using canonical's width": the
+    /// bridge opening runs at `0.1 x 0 = 0` and deletes every unsupported
+    /// sliver it exists to strip (t168). The resolver must fall through to the
+    /// typed width, and the resulting opening radius must be positive.
+    #[test]
+    fn external_perimeter_width_treats_zero_extension_as_auto() {
+        let mut config = ResolvedConfig {
+            line_width: 0.4,
+            ..ResolvedConfig::default()
+        };
+        config
+            .extensions
+            .insert("outer_wall_line_width".to_owned(), ConfigValue::Float(0.0));
+        let width = resolve_external_perimeter_width_mm(&config);
+        assert_eq!(
+            width, 0.4,
+            "the zero sentinel must fall through to line_width"
+        );
+        assert!(
+            0.1 * width > 0.0,
+            "the bridge opening radius must be positive for the auto sentinel"
+        );
+    }
+
+    /// A zero-literal in the `FloatOrPercent` absolute form is the same
+    /// sentinel and takes the same fallback.
+    #[test]
+    fn external_perimeter_width_treats_zero_percent_form_as_auto() {
+        let mut config = ResolvedConfig {
+            line_width: 0.42,
+            ..ResolvedConfig::default()
+        };
+        config.extensions.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: false,
+            },
+        );
+        assert_eq!(resolve_external_perimeter_width_mm(&config), 0.42);
     }
 }

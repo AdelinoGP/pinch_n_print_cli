@@ -5,14 +5,15 @@
 //! absent from a default `-p slicer-core` run by design.
 
 use slicer_core::perimeter_utils::{
-    expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
+    expolygon_to_path3d, overhang_quartile_from_distance, point_in_any_polygon,
+    signed_distance_to_boundary,
 };
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
 
 struct SpatialFixture {
     boundary: Vec<ExPolygon>,
-    overhang_bands: Vec<QuartileBand>,
+    /// Producer-resolved band width behind the distance-derived quartile.
+    overhang_band_width_mm: f32,
     bridge_areas: Vec<ExPolygon>,
     path_contour: Polygon,
 }
@@ -43,16 +44,6 @@ fn expolygon_mm(contour: &[(f32, f32)], holes: &[&[(f32, f32)]]) -> ExPolygon {
     }
 }
 
-fn quartile_band(quartile: u8, polygons: &[&[(f32, f32)]]) -> QuartileBand {
-    QuartileBand {
-        quartile,
-        polygons: polygons
-            .iter()
-            .map(|ring| expolygon_mm(ring, &[]))
-            .collect(),
-    }
-}
-
 fn adversarial_fixture() -> SpatialFixture {
     let computed_endpoint = (0.1_f32 + 0.2_f32) * 10.0_f32;
     let boundary = vec![
@@ -72,14 +63,7 @@ fn adversarial_fixture() -> SpatialFixture {
         expolygon_mm(&[(50.0, 50.0), (50.0, 50.0)], &[]),
         expolygon_mm(&[], &[]),
     ];
-    let overhang_bands = vec![
-        quartile_band(2, &[&[(-1.5, -1.5), (1.5, -1.5), (1.5, 1.5), (-1.5, 1.5)]]),
-        quartile_band(4, &[&[(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]]),
-        quartile_band(
-            1,
-            &[&[(19.0, -1.0), (21.0, -1.0), (21.0, 1.0), (19.0, 1.0)]],
-        ),
-    ];
+    let overhang_band_width_mm = 0.4;
     let mut bridge_areas = vec![expolygon_mm(
         &[(-3.0, -3.0), (3.0, -3.0), (3.0, 3.0), (-3.0, 3.0)],
         &[],
@@ -105,7 +89,7 @@ fn adversarial_fixture() -> SpatialFixture {
 
     SpatialFixture {
         boundary,
-        overhang_bands,
+        overhang_band_width_mm,
         bridge_areas,
         path_contour,
     }
@@ -142,24 +126,14 @@ fn collect_legacy(fixture: &SpatialFixture) -> Observed {
         .into_iter()
         .map(|(x, y)| signed_distance_to_boundary(x, y, &fixture.boundary))
         .collect();
+    // Ticket 142: the quartile oracle is the signed-distance bucket.
     let quartiles = query_points()
         .into_iter()
         .map(|(x, y)| {
-            fixture
-                .overhang_bands
-                .iter()
-                .filter(|band| {
-                    band.polygons.iter().any(|polygon| {
-                        slicer_ir::point_in_polygon_winding(
-                            polygon,
-                            f64::from(x),
-                            f64::from(y),
-                            0.0,
-                        )
-                    })
-                })
-                .map(|band| band.quartile)
-                .max()
+            overhang_quartile_from_distance(
+                signed_distance_to_boundary(x, y, &fixture.boundary),
+                fixture.overhang_band_width_mm,
+            )
         })
         .collect();
     let bridges = bridge_points()
@@ -173,14 +147,14 @@ fn collect_legacy(fixture: &SpatialFixture) -> Observed {
                 &fixture.path_contour,
                 0.2,
                 width,
-                &fixture.overhang_bands,
+                fixture.overhang_band_width_mm,
                 &fixture.boundary,
             )
         })
         .collect();
     let nonplanar_paths = path_widths()
         .into_iter()
-        .map(|width| expolygon_to_path3d(&fixture.path_contour, 0.2, width, &[], &fixture.boundary))
+        .map(|width| expolygon_to_path3d(&fixture.path_contour, 0.2, width, 0.0, &fixture.boundary))
         .collect();
 
     Observed {
@@ -196,7 +170,7 @@ fn collect_legacy(fixture: &SpatialFixture) -> Observed {
 fn collect_indexed(fixture: &SpatialFixture) -> Observed {
     let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
         &fixture.boundary,
-        &fixture.overhang_bands,
+        fixture.overhang_band_width_mm,
         &fixture.bridge_areas,
     );
     let distances = query_points()
@@ -403,7 +377,7 @@ fn unconsumed_mode_issues_no_annotation_queries() {
     let fixture = adversarial_fixture();
     let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
         &fixture.boundary,
-        &fixture.overhang_bands,
+        fixture.overhang_band_width_mm,
         &fixture.bridge_areas,
     );
     let planar = slicer_core::perimeter_spatial::expolygon_to_path3d_indexed(
@@ -496,9 +470,13 @@ fn exact_queries_match_legacy() {
         "pure legacy mode must not count fallbacks"
     );
     assert_eq!(
-        actual.quartiles[1],
+        actual.quartiles[1], None,
+        "an interior point sits inside the previous layer, so it has no quartile"
+    );
+    assert_eq!(
+        actual.quartiles[3],
         Some(4),
-        "overlapping bands use maximum quartile"
+        "a far exterior point lands in the most severe quartile"
     );
     assert_eq!(actual.bridges[0], true, "strictly interior bridge point");
     assert_eq!(
@@ -558,7 +536,7 @@ fn fallback_paths_are_nonvacuous() {
         slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
             let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
                 &fixture.boundary,
-                &fixture.overhang_bands,
+                fixture.overhang_band_width_mm,
                 &fixture.bridge_areas,
             );
             [
@@ -590,7 +568,7 @@ fn fallback_paths_are_nonvacuous() {
     let (empty_distance, empty_counters) =
         slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
             let context =
-                slicer_core::perimeter_spatial::PerimeterSpatialContext::new(&[], &[], &[]);
+                slicer_core::perimeter_spatial::PerimeterSpatialContext::new(&[], 0.0, &[]);
             context.signed_distance_to_boundary(0.0, 0.0)
         });
     assert_eq!(
@@ -605,7 +583,7 @@ fn fallback_paths_are_nonvacuous() {
     let edge_less_boundary = vec![expolygon_mm(&[], &[])];
     let edge_less_fixture = SpatialFixture {
         boundary: edge_less_boundary,
-        overhang_bands: Vec::new(),
+        overhang_band_width_mm: 0.0,
         bridge_areas: Vec::new(),
         path_contour: fixture.path_contour,
     };
@@ -613,7 +591,7 @@ fn fallback_paths_are_nonvacuous() {
         slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
             let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
                 &edge_less_fixture.boundary,
-                &edge_less_fixture.overhang_bands,
+                edge_less_fixture.overhang_band_width_mm,
                 &edge_less_fixture.bridge_areas,
             );
             let finite_distance = context.signed_distance_to_boundary(0.0, 0.0);
@@ -658,7 +636,7 @@ fn fallback_paths_are_nonvacuous() {
         &edge_less_fixture.path_contour,
         0.2,
         0.4,
-        &[],
+        0.0,
         &edge_less_fixture.boundary,
     );
     assert_paths_bits(&[expected_path], &[observed.3], "edge-less fallback path");
@@ -730,7 +708,7 @@ fn fallback_paths_are_nonvacuous() {
         slicer_core::perimeter_spatial::diagnostics::with_counters(true, false, || {
             let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
                 &[],
-                &[],
+                0.0,
                 &overflow_bridge_areas,
             );
             context.is_bridge(&Point2 { x: 0, y: 0 })
@@ -747,7 +725,7 @@ fn fallback_paths_are_nonvacuous() {
                     &[(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)],
                     &[],
                 )],
-                &[],
+                0.0,
                 &[],
             );
             (
@@ -776,7 +754,7 @@ fn fallback_paths_are_nonvacuous() {
         slicer_core::perimeter_spatial::diagnostics::with_counters(true, true, || {
             let context = slicer_core::perimeter_spatial::PerimeterSpatialContext::new(
                 &fixture.boundary,
-                &fixture.overhang_bands,
+                fixture.overhang_band_width_mm,
                 &fixture.bridge_areas,
             );
             (
@@ -786,16 +764,10 @@ fn fallback_paths_are_nonvacuous() {
             )
         });
     let expected_fault_distance = signed_distance_to_boundary(0.0, 0.0, &fixture.boundary);
-    let expected_fault_quartile = fixture
-        .overhang_bands
-        .iter()
-        .filter(|band| {
-            band.polygons
-                .iter()
-                .any(|polygon| slicer_ir::point_in_polygon_winding(polygon, 0.0, 0.0, 0.0))
-        })
-        .map(|band| band.quartile)
-        .max();
+    let expected_fault_quartile = overhang_quartile_from_distance(
+        signed_distance_to_boundary(0.0, 0.0, &fixture.boundary),
+        fixture.overhang_band_width_mm,
+    );
     let expected_fault_bridge = point_in_any_polygon(&point_mm(0.0, 0.0), &fixture.bridge_areas);
     assert_eq!(
         fault_results.0.to_bits(),

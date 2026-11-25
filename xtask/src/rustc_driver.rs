@@ -153,8 +153,22 @@ pub(crate) fn driver_dir(ws_root: &Path) -> PathBuf {
 /// pass that spelling to a command successfully in some contexts but not in
 /// all executable-launch contexts, so keep the wrapper-facing paths in the
 /// ordinary drive-letter form.
-fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+///
+/// This is not only about launching executables: a verbatim path in
+/// `CARGO_TARGET_DIR` propagates into every build script's `OUT_DIR`, and from
+/// there into the argument vector of any external compiler a build script
+/// drives.  MSVC's `cl.exe` mis-parses `-c \\?\D:\...\out\mimalloc-static.cc`
+/// as the UNC path `\\mimalloc-static.cc` and fails with
+/// `c1xx: fatal error C1083` (measured through the accelerated dist's host
+/// build until 2026-11-17, where the target dir was `ws_root.join("target")`
+/// and `ws_root` came from `canonicalize`).
+pub(crate) fn strip_verbatim_prefix(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
+    // `\\?\UNC\server\share` is the verbatim spelling of `\\server\share`;
+    // flattening it to `UNC\server\share` would name a relative path.
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
     PathBuf::from(text.strip_prefix(r"\\?\").unwrap_or(&text))
 }
 

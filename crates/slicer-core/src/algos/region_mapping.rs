@@ -849,7 +849,15 @@ pub fn execute_region_mapping_inner(
                         if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                             continue;
                         }
-                        let polygons = crate::slice_mesh_ex(&mv.mesh, &[layer.z])
+                        // Modifier footprints are sampled on the same plane as
+                        // the object cross-section (canonical `compute_slice_z`),
+                        // or the Tier-2 ids derived here would not match the
+                        // staged footprint.
+                        let plane_z = crate::algos::prepass_slice::layer_sample_plane_z(
+                            layer.z,
+                            region.effective_layer_height,
+                        );
+                        let polygons = crate::slice_mesh_ex(&mv.mesh, &[plane_z])
                             .into_iter()
                             .next()
                             .unwrap_or_default();
@@ -936,7 +944,15 @@ pub fn execute_region_mapping_inner(
                 objects
                     .iter()
                     .find(|object| object.id == region.object_id)
-                    .map(|object| modifier_footprint_groups(object, layer.z))
+                    .map(|object| {
+                        modifier_footprint_groups(
+                            object,
+                            crate::algos::prepass_slice::layer_sample_plane_z(
+                                layer.z,
+                                region.effective_layer_height,
+                            ),
+                        )
+                    })
                     .unwrap_or_default()
             };
 

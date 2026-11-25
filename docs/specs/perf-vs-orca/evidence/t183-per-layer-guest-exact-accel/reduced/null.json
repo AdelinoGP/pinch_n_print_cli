@@ -1,0 +1,64 @@
+{
+  "benchy-classic-off": {
+    "pairs": 3,
+    "wall_any_pair_pct": 1.8558173142436414,
+    "wall_median_pct": 0.9002754548398433,
+    "cpu_any_pair_pct": 5.272407732864675,
+    "cpu_median_pct": 1.8281535648994516
+  },
+  "benchy-classic-on": {
+    "pairs": 3,
+    "wall_any_pair_pct": 1.3917013016778403,
+    "wall_median_pct": 0.6778256703080042,
+    "cpu_any_pair_pct": 2.7563395810363835,
+    "cpu_median_pct": 1.3963480128893664
+  },
+  "benchy-arachne-off": {
+    "pairs": 3,
+    "wall_any_pair_pct": 1.7480989758999224,
+    "wall_median_pct": 1.223987036180375,
+    "cpu_any_pair_pct": 5.88235294117647,
+    "cpu_median_pct": 2.2508038585209005
+  },
+  "benchy-arachne-on": {
+    "pairs": 3,
+    "wall_any_pair_pct": 3.3272227667330365,
+    "wall_median_pct": 3.286544183248752,
+    "cpu_any_pair_pct": 2.34375,
+    "cpu_median_pct": 1.881188118811881
+  },
+  "base-classic-off": {
+    "pairs": 3,
+    "wall_any_pair_pct": 1.5269898339768744,
+    "wall_median_pct": 0.9045872317716896,
+    "cpu_any_pair_pct": 1.1812812358019082,
+    "cpu_median_pct": 0.5030871255431054
+  },
+  "base-classic-on": {
+    "pairs": 3,
+    "wall_any_pair_pct": 0.9957779387458102,
+    "wall_median_pct": 0.8526812267688675,
+    "cpu_any_pair_pct": 2.669060442848594,
+    "cpu_median_pct": 0.21448999046711154
+  },
+  "base-arachne-off": {
+    "pairs": 3,
+    "wall_any_pair_pct": 3.561441471432737,
+    "wall_median_pct": 0.49221235573249456,
+    "cpu_any_pair_pct": 0.7857294542365683,
+    "cpu_median_pct": 0.19112338076024635
+  },
+  "base-arachne-on": {
+    "pairs": 3,
+    "wall_any_pair_pct": 4.293530086973175,
+    "wall_median_pct": 0.5913990549388718,
+    "cpu_any_pair_pct": 1.658019399954884,
+    "cpu_median_pct": 1.4677215915606008
+  },
+  "_worst": {
+    "wall_any_pair_pct": 4.293530086973175,
+    "wall_median_pct": 3.286544183248752,
+    "cpu_any_pair_pct": 5.88235294117647,
+    "cpu_median_pct": 2.2508038585209005
+  }
+}

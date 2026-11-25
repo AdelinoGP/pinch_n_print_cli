@@ -888,3 +888,110 @@ fn test_offset_mixed_groups() {
         "Mixed groups should produce output paths"
     );
 }
+
+// ---------------------------------------------------------------------------
+// OrcaSlicer OffsetConcaveCrossing tests (t172)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_offset_concave_crossing_eliminates_three_point_loops_and_rounds() {
+    // Dense 32-gon (radius 100_000, edge length ~19_603) eroded inward by 2_000.
+    // Every vertex is concave under inward offset (`sin_a * delta < 0`) and
+    // satisfies `4 * x^2 <= edge_len^2`, so canonical `OffsetConcaveCrossing`
+    // emits exactly 1 rounded crossing point per vertex instead of a 3-point
+    // concave loop (96 raw points -> 32 raw points).
+    let n = 32usize;
+    let radius = 100_000.0_f64;
+    let poly: Path64 = (0..n)
+        .map(|i| {
+            let theta = 2.0 * constants::PI * (i as f64) / (n as f64);
+            Point64::new(
+                (radius * theta.cos()).round() as i64,
+                (radius * theta.sin()).round() as i64,
+            )
+        })
+        .collect();
+
+    let delta = -2_000.0_f64;
+    let mut co = ClipperOffset::new(3.0, 0.0, false, false);
+    co.add_path(&poly, JoinType::Miter, EndType::Polygon);
+    co.temp_lim = 2.0 / (co.miter_limit * co.miter_limit);
+    co.delta = delta;
+    co.do_group_offset(0);
+
+    assert_eq!(co.solution.len(), 1);
+    assert_eq!(
+        co.solution[0].len(),
+        n,
+        "OffsetConcaveCrossing must emit 1 crossing point per concave vertex (got {}, unpatched emits {})",
+        co.solution[0].len(),
+        3 * n
+    );
+
+    // Verify exact canonical rounding at every vertex (not truncation).
+    let raw = &co.solution[0];
+    let path_in = &co.groups[0].paths_in[0];
+    let mut k = path_in.len() - 1;
+    for j in 0..path_in.len() {
+        let cos_a = crate::core::dot_product_two_vectors(co.norms[j], co.norms[k]);
+        let q = co.group_delta / (1.0 + cos_a);
+        let expected = Point64::new(
+            (path_in[j].x as f64 + (co.norms[k].x + co.norms[j].x) * q).round() as i64,
+            (path_in[j].y as f64 + (co.norms[k].y + co.norms[j].y) * q).round() as i64,
+        );
+        assert_eq!(
+            raw[j], expected,
+            "vertex {j} must match canonical rounded crossing"
+        );
+        k = j;
+    }
+
+    // Public API check: execute() preserves the exact 32-vertex eroded polygon.
+    let mut pub_co = ClipperOffset::new(3.0, 0.0, false, false);
+    pub_co.add_path(&poly, JoinType::Miter, EndType::Polygon);
+    let mut out = Paths64::new();
+    pub_co.execute(delta, &mut out);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].len(), n);
+}
+
+#[test]
+fn test_offset_concave_crossing_respects_short_edge_and_callback_guards() {
+    // 1. Short-edge guard: 4 * x^2 > dist_sqr must fall back to the 3-point join.
+    // Right-angle square of side 1_000 eroded by 600 => x = 600, 4*x^2 = 1_440_000 > 1_000_000.
+    let small_square = vec![
+        Point64::new(0, 0),
+        Point64::new(1_000, 0),
+        Point64::new(1_000, 1_000),
+        Point64::new(0, 1_000),
+    ];
+    let mut co_short = ClipperOffset::new(3.0, 0.0, false, false);
+    co_short.add_path(&small_square, JoinType::Miter, EndType::Polygon);
+    co_short.temp_lim = 2.0 / (co_short.miter_limit * co_short.miter_limit);
+    co_short.delta = -600.0;
+    co_short.do_group_offset(0);
+    assert_eq!(
+        co_short.solution[0].len(),
+        12,
+        "short edges (4x^2 > dist^2) must fall back to 3-point concave joins"
+    );
+
+    // 2. Delta-callback guard: variable-delta offset must bypass OffsetConcaveCrossing.
+    let big_square = vec![
+        Point64::new(0, 0),
+        Point64::new(100_000, 0),
+        Point64::new(100_000, 100_000),
+        Point64::new(0, 100_000),
+    ];
+    let mut co_cb = ClipperOffset::new(3.0, 0.0, false, false);
+    co_cb.add_path(&big_square, JoinType::Miter, EndType::Polygon);
+    co_cb.delta_callback = Some(Box::new(|_, _, _, _| -1_000.0));
+    co_cb.temp_lim = 2.0 / (co_cb.miter_limit * co_cb.miter_limit);
+    co_cb.delta = 1.0;
+    co_cb.do_group_offset(0);
+    assert_eq!(
+        co_cb.solution[0].len(),
+        12,
+        "delta_callback must bypass OffsetConcaveCrossing"
+    );
+}

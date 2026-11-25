@@ -1,0 +1,8 @@
+benchy-classic-off: exit=0 wall=5.080s (attribution only) sha=90638bf3ea9e ref_match=True
+benchy-classic-on: exit=0 wall=9.285s (attribution only) sha=711c6334e397 ref_match=True
+benchy-arachne-off: exit=0 wall=5.100s (attribution only) sha=2ba5d84ccf3c ref_match=True
+benchy-arachne-on: exit=0 wall=11.779s (attribution only) sha=a972b0f2c25a ref_match=True
+base-classic-off: exit=0 wall=43.920s (attribution only) sha=b3b4ac5e885c ref_match=True
+base-classic-on: exit=0 wall=119.644s (attribution only) sha=4e31a2db368f ref_match=True
+base-arachne-off: exit=0 wall=46.774s (attribution only) sha=6b865d4a2cb8 ref_match=True
+base-arachne-on: exit=0 wall=118.451s (attribution only) sha=62d6eedc02e5 ref_match=True

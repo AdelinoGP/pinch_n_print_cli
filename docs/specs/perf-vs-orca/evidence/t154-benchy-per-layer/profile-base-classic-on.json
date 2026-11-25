@@ -1,0 +1,393 @@
+{
+ "cell": "base-classic-on",
+ "elapsed_ms": 87904,
+ "fuel_total": 652524562380,
+ "wall_total_ns": 687427002800,
+ "modules": [
+  {
+   "module_id": "com.core.tree-support",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 397179522681,
+   "total_wall_ns": 2125126200,
+   "self_fuel": 384617845840,
+   "self_wall_ns": 608406100,
+   "scopes": [
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 1023,
+     "self_fuel": 11586445228,
+     "self_wall_ns": 1406704100
+    },
+    {
+     "scope": "polygon_ops::offset",
+     "calls": 174,
+     "self_fuel": 975231613,
+     "self_wall_ns": 110016000
+    }
+   ]
+  },
+  {
+   "module_id": "com.core.classic-perimeters",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 142544932946,
+   "total_wall_ns": 15208440700,
+   "self_fuel": 109995727686,
+   "self_wall_ns": 11528687100,
+   "scopes": [
+    {
+     "scope": "polygon_ops::offset2_ex",
+     "calls": 1486,
+     "self_fuel": 32549205260,
+     "self_wall_ns": 3679753600
+    }
+   ]
+  },
+  {
+   "module_id": "com.core.tree-support-planner",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 61244154585,
+   "total_wall_ns": 0,
+   "self_fuel": 61244154585,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.infill-linker",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 38111850424,
+   "total_wall_ns": 2604927100,
+   "self_fuel": 38110288939,
+   "self_wall_ns": 2601917600,
+   "scopes": [
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 761,
+     "self_fuel": 1561485,
+     "self_wall_ns": 3009500
+    }
+   ]
+  },
+  {
+   "module_id": "com.core.seam-planner-default",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 3988097871,
+   "total_wall_ns": 0,
+   "self_fuel": 3988097871,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.gyroid-infill",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 1235042395,
+   "total_wall_ns": 0,
+   "self_fuel": 1235042395,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.machine-gcode-emit",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 982149134,
+   "total_wall_ns": 0,
+   "self_fuel": 982149134,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.seam-placer",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 688055644,
+   "total_wall_ns": 0,
+   "self_fuel": 688055644,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.part-cooling",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 637980772,
+   "total_wall_ns": 0,
+   "self_fuel": 637980772,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.skirt-brim",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 614296378,
+   "total_wall_ns": 0,
+   "self_fuel": 614296378,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.wipe-tower",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 607491782,
+   "total_wall_ns": 0,
+   "self_fuel": 607491782,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.overhang-classifier-default",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 607338213,
+   "total_wall_ns": 0,
+   "self_fuel": 607338213,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.rectilinear-infill",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 587953159,
+   "total_wall_ns": 0,
+   "self_fuel": 587953159,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.wave-overhangs",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 553543533,
+   "total_wall_ns": 0,
+   "self_fuel": 553543533,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.lightning-infill",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 526199867,
+   "total_wall_ns": 0,
+   "self_fuel": 526199867,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.top-surface-ironing",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 506617420,
+   "total_wall_ns": 0,
+   "self_fuel": 506617420,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.raft-default",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 497086644,
+   "total_wall_ns": 0,
+   "self_fuel": 497086644,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.traditional-support-planner",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 398937394,
+   "total_wall_ns": 0,
+   "self_fuel": 398937394,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.fuzzy-skin",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 389933204,
+   "total_wall_ns": 0,
+   "self_fuel": 389933204,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.path-optimization-default",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 332247585,
+   "total_wall_ns": 0,
+   "self_fuel": 332247585,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.support-surface-ironing",
+   "unit": "fuel",
+   "calls": 496,
+   "total_fuel": 286632653,
+   "total_wall_ns": 0,
+   "self_fuel": 286632653,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "com.core.layer-planner-default",
+   "unit": "fuel",
+   "calls": 1,
+   "total_fuel": 4498096,
+   "total_wall_ns": 0,
+   "self_fuel": 4498096,
+   "self_wall_ns": 0,
+   "scopes": []
+  },
+  {
+   "module_id": "host:native",
+   "unit": "wall_ns",
+   "calls": 171250,
+   "total_fuel": 0,
+   "total_wall_ns": 371711792700,
+   "self_fuel": 0,
+   "self_wall_ns": 5173600,
+   "scopes": [
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 111611,
+     "self_fuel": 0,
+     "self_wall_ns": 291195888700
+    },
+    {
+     "scope": "polygon_ops::offset",
+     "calls": 59639,
+     "self_fuel": 0,
+     "self_wall_ns": 80510730400
+    }
+   ]
+  },
+  {
+   "module_id": "host:support_analysis",
+   "unit": "wall_ns",
+   "calls": 4918,
+   "total_fuel": 0,
+   "total_wall_ns": 172857820900,
+   "self_fuel": 0,
+   "self_wall_ns": 125000,
+   "scopes": [
+    {
+     "scope": "polygon_ops::offset",
+     "calls": 1229,
+     "self_fuel": 0,
+     "self_wall_ns": 139169613500
+    },
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 3689,
+     "self_fuel": 0,
+     "self_wall_ns": 33688082400
+    }
+   ]
+  },
+  {
+   "module_id": "host:shell_classification",
+   "unit": "wall_ns",
+   "calls": 9425,
+   "total_fuel": 0,
+   "total_wall_ns": 121206514900,
+   "self_fuel": 0,
+   "self_wall_ns": 248500,
+   "scopes": [
+    {
+     "scope": "polygon_ops::offset",
+     "calls": 4211,
+     "self_fuel": 0,
+     "self_wall_ns": 107413598200
+    },
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 4768,
+     "self_fuel": 0,
+     "self_wall_ns": 10743223200
+    },
+    {
+     "scope": "polygon_ops::closing_ex",
+     "calls": 446,
+     "self_fuel": 0,
+     "self_wall_ns": 3049445000
+    }
+   ]
+  },
+  {
+   "module_id": "host:slice",
+   "unit": "wall_ns",
+   "calls": 2954,
+   "total_fuel": 0,
+   "total_wall_ns": 16526266700,
+   "self_fuel": 0,
+   "self_wall_ns": 77500,
+   "scopes": [
+    {
+     "scope": "polygon_ops::offset",
+     "calls": 1487,
+     "self_fuel": 0,
+     "self_wall_ns": 13255193000
+    },
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 981,
+     "self_fuel": 0,
+     "self_wall_ns": 2716665500
+    },
+    {
+     "scope": "polygon_ops::offset2_ex",
+     "calls": 486,
+     "self_fuel": 0,
+     "self_wall_ns": 554330700
+    }
+   ]
+  },
+  {
+   "module_id": "host:mesh_analysis",
+   "unit": "wall_ns",
+   "calls": 49,
+   "total_fuel": 0,
+   "total_wall_ns": 2947986600,
+   "self_fuel": 0,
+   "self_wall_ns": 1200,
+   "scopes": [
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 49,
+     "self_fuel": 0,
+     "self_wall_ns": 2947985400
+    }
+   ]
+  },
+  {
+   "module_id": "host:overhang_annotation",
+   "unit": "wall_ns",
+   "calls": 495,
+   "total_fuel": 0,
+   "total_wall_ns": 2176621000,
+   "self_fuel": 0,
+   "self_wall_ns": 11700,
+   "scopes": [
+    {
+     "scope": "polygon_ops::clip_polygons",
+     "calls": 495,
+     "self_fuel": 0,
+     "self_wall_ns": 2176609300
+    }
+   ]
+  }
+ ]
+}

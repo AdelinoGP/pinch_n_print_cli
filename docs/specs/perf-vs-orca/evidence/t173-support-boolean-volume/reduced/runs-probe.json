@@ -1,0 +1,49 @@
+{
+ "schema": 1,
+ "tag": "probe",
+ "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\release\\pnp_cli.exe",
+ "exe_sha256": "871fb8ee39f6348329330452b49773f5cf753da583d6f9f5d14152c6ade36522",
+ "cells": {
+  "base-classic-on": {
+   "cell": "base-classic-on",
+   "exit_code": 0,
+   "gcode_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+   "reference_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+   "reference_match": true,
+   "stderr": "target\\t173-probe-runs\\probe\\base-classic-on.stderr.txt"
+  },
+  "base-arachne-on": {
+   "cell": "base-arachne-on",
+   "exit_code": 0,
+   "gcode_sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+   "reference_sha256": "adf87012b498f717689331b0003d39ba9d3dc446e541d7ab58acaae35d2a18c0",
+   "reference_match": true,
+   "stderr": "target\\t173-probe-runs\\probe\\base-arachne-on.stderr.txt"
+  },
+  "benchy-classic-on": {
+   "cell": "benchy-classic-on",
+   "exit_code": 0,
+   "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "reference_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+   "reference_match": true,
+   "stderr": "target\\t173-probe-runs\\probe\\benchy-classic-on.stderr.txt"
+  },
+  "benchy-arachne-on": {
+   "cell": "benchy-arachne-on",
+   "exit_code": 0,
+   "gcode_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "reference_sha256": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+   "reference_match": true,
+   "stderr": "target\\t173-probe-runs\\probe\\benchy-arachne-on.stderr.txt"
+  },
+  "base-classic-off": {
+   "cell": "base-classic-off",
+   "exit_code": 0,
+   "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "reference_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+   "reference_match": true,
+   "stderr": "target\\t173-probe-runs\\probe\\base-classic-off.stderr.txt"
+  }
+ },
+ "notes": "probe + --profile attribution only; neither instrument is a wall claim"
+}

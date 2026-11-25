@@ -67,10 +67,28 @@ pub fn prepare_regions(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            let overhang_areas = overhang_quartile_polygons
-                .iter()
-                .flat_map(|band| band.polygons.iter().cloned())
-                .collect();
+            let overhang_areas = surface_classification
+                .and_then(|classification| {
+                    classification
+                        .overhang_areas
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|areas| {
+                    let prefiltered: Vec<ExPolygon> = areas
+                        .iter()
+                        .filter(|polygon| {
+                            region_bbox.is_some_and(|bbox| bbox_overlaps(bbox, polygon))
+                        })
+                        .cloned()
+                        .collect();
+                    if prefiltered.is_empty() {
+                        Vec::new()
+                    } else {
+                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons)
+                    }
+                })
+                .unwrap_or_default();
             let prev_layer_boundary = surface_classification
                 .and_then(|classification| {
                     classification
@@ -80,12 +98,16 @@ pub fn prepare_regions(
                 })
                 .cloned()
                 .unwrap_or_default();
+            let overhang_band_width_mm = surface_classification
+                .map(|classification| classification.overhang_band_width_mm)
+                .unwrap_or(0.0);
 
             PreparedRegionData {
                 needs_support,
                 surface_group,
                 overhang_quartile_polygons,
                 overhang_areas,
+                overhang_band_width_mm,
                 prev_layer_boundary,
             }
         })

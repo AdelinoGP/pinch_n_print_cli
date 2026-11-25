@@ -135,3 +135,65 @@ fn successive_batches_accumulate_as_separate_entries() {
         "each batch is its own entry, in call order"
     );
 }
+
+/// `clip-polygons-batch` routes large `Union` requests (`> k`) through
+/// `union_spatial_tree` while leaving `Difference` untouched and preserving
+/// input request order.
+#[test]
+fn clip_polygons_batch_large_union_and_difference_preserve_order_and_geometry() {
+    use slicer_wasm_host::host::layer_perimeters::slicer::types::geometry as g;
+
+    let mesh = mesh_fixture(vec![flat_plate_object("plate", 0.0, identity_transform())]);
+    let mut ctx = ctx_with_mesh("batch-audit.clip", mesh);
+
+    let wit_square = |x0: i64, y0: i64, size: i64| g::ExPolygon {
+        contour: g::Polygon {
+            points: vec![
+                g::Point2 { x: x0, y: y0 },
+                g::Point2 {
+                    x: x0 + size,
+                    y: y0,
+                },
+                g::Point2 {
+                    x: x0 + size,
+                    y: y0 + size,
+                },
+                g::Point2 {
+                    x: x0,
+                    y: y0 + size,
+                },
+            ],
+        },
+        holes: Vec::new(),
+    };
+
+    // 12 overlapping squares (> DEFAULT_SPATIAL_UNION_CHUNK_SIZE = 8) merge into
+    // one connected contour spanning x in [0, 650_000].
+    let discs: Vec<g::ExPolygon> = (0..12i64)
+        .map(|i| wit_square(i * 50_000, i * 50_000, 100_000))
+        .collect();
+    let req_union = phs::ClipRequest {
+        subject: discs[..1].to_vec(),
+        clip: discs[1..].to_vec(),
+        op: phs::ClipOperation::Union,
+    };
+    let req_diff = phs::ClipRequest {
+        subject: vec![wit_square(0, 0, 200_000)],
+        clip: vec![wit_square(50_000, 50_000, 100_000)],
+        op: phs::ClipOperation::Difference,
+    };
+
+    let results = phs::Host::clip_polygons_batch(&mut ctx, vec![req_union, req_diff])
+        .expect("batched clip should not error");
+    assert_eq!(results.len(), 2, "one result per request, in input order");
+    assert_eq!(
+        results[0].len(),
+        1,
+        "12 overlapping squares merge into 1 contour"
+    );
+    let xs: Vec<i64> = results[0][0].contour.points.iter().map(|p| p.x).collect();
+    assert_eq!(*xs.iter().min().unwrap(), 0);
+    assert_eq!(*xs.iter().max().unwrap(), 650_000);
+    assert_eq!(results[1].len(), 1, "difference yields 1 frame");
+    assert_eq!(results[1][0].holes.len(), 1, "difference punches 1 hole");
+}

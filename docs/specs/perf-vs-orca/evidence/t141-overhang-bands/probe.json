@@ -1,0 +1,116 @@
+{
+  "ticket": "141",
+  "probe": {
+    "env": "PNP_PROBE_OVERHANG_BANDS=1",
+    "patch": "probe.patch",
+    "binary": "target/release/pnp_cli.exe built from HEAD 10114830 with probe.patch applied",
+    "reports": "[t141] stage_wall_ms=... band_thread_ms=... band_layers=... overhang_layers=... offsets=... clips=...",
+    "clip_counter_scope": "whole-layer booleans inside the cumulative stage (3 intersections + 3 differences per band layer); the 3 band-subtraction differences are not counted"
+  },
+  "stage_rows": [
+    {
+      "run": "base-classic-off-p1",
+      "cell": "base-classic-off",
+      "fixture": "tmp/base.stl",
+      "stage_wall_ms": 9558.2,
+      "band_thread_ms": 111973.5,
+      "band_layers": 486,
+      "overhang_layers": 486,
+      "offset_calls": 1458,
+      "clip_calls": 2916
+    },
+    {
+      "run": "base-classic-off-p2",
+      "cell": "base-classic-off",
+      "fixture": "tmp/base.stl",
+      "stage_wall_ms": 10583.4,
+      "band_thread_ms": 123499.0,
+      "band_layers": 486,
+      "overhang_layers": 486,
+      "offset_calls": 1458,
+      "clip_calls": 2916
+    },
+    {
+      "run": "base-classic-off-p3-fresh-guests",
+      "cell": "base-classic-off",
+      "fixture": "tmp/base.stl",
+      "stage_wall_ms": 8963.9,
+      "band_thread_ms": 103510.9,
+      "band_layers": 486,
+      "overhang_layers": 486,
+      "offset_calls": 1458,
+      "clip_calls": 2916
+    },
+    {
+      "run": "base-arachne-off",
+      "cell": "base-arachne-off",
+      "fixture": "tmp/base.stl",
+      "stage_wall_ms": 9449.9,
+      "band_thread_ms": 109555.2,
+      "band_layers": 486,
+      "overhang_layers": 486,
+      "offset_calls": 1458,
+      "clip_calls": 2916
+    },
+    {
+      "run": "base-classic-on",
+      "cell": "base-classic-on",
+      "fixture": "tmp/base.stl",
+      "stage_wall_ms": 11195.3,
+      "band_thread_ms": 130740.9,
+      "band_layers": 486,
+      "overhang_layers": 486,
+      "offset_calls": 1458,
+      "clip_calls": 2916
+    },
+    {
+      "run": "benchy-classic-off",
+      "cell": "benchy-classic-off",
+      "fixture": "tmp/3dbenchy.stl",
+      "stage_wall_ms": 954.3,
+      "band_thread_ms": 7972.5,
+      "band_layers": 239,
+      "overhang_layers": 239,
+      "offset_calls": 717,
+      "clip_calls": 1434
+    },
+    {
+      "run": "benchy-classic-on",
+      "cell": "benchy-classic-on",
+      "fixture": "tmp/3dbenchy.stl",
+      "stage_wall_ms": 816.9,
+      "band_thread_ms": 6313.3,
+      "band_layers": 239,
+      "overhang_layers": 239,
+      "offset_calls": 717,
+      "clip_calls": 1434
+    }
+  ],
+  "timed_uninstrumented_wall_s": {
+    "base-classic-off": 39.924,
+    "base-classic-off-fresh-guests": 40.627,
+    "base-arachne-off": 39.365,
+    "benchy-classic-off": 4.372
+  },
+  "reference_wall_s_t139_scoreboard": {
+    "benchy-classic-off": 4.424,
+    "benchy-classic-on": 7.878,
+    "benchy-arachne-off": 4.429,
+    "benchy-arachne-on": 7.891,
+    "base-classic-off": 36.142,
+    "base-classic-on": 92.554,
+    "base-arachne-off": 35.942,
+    "base-arachne-on": 93.553
+  },
+  "required_cut_pct_t139_scoreboard": {
+    "benchy-classic-off": 57.8,
+    "benchy-classic-on": 69.3,
+    "benchy-arachne-off": 56.1,
+    "benchy-arachne-on": 67.6,
+    "base-classic-off": 65.5,
+    "base-classic-on": 76.1,
+    "base-arachne-off": 63.7,
+    "base-arachne-on": 75.6
+  },
+  "offset_share_of_native_work_t84": 0.854
+}

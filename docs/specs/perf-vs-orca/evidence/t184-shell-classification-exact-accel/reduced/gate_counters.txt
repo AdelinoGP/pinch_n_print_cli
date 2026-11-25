@@ -1,0 +1,8 @@
+benchy-classic-off sha=4c67ef0b internal bridge gate prep_layers=18 clusters=6 recomputed=10 speculation_misses=0
+benchy-classic-on sha=a8c93535 internal bridge gate prep_layers=18 clusters=6 recomputed=10 speculation_misses=0
+benchy-arachne-off sha=fd631384 internal bridge gate prep_layers=18 clusters=6 recomputed=10 speculation_misses=0
+benchy-arachne-on sha=7a8d87ae internal bridge gate prep_layers=18 clusters=6 recomputed=10 speculation_misses=0
+base-classic-off sha=02ffa2d6 internal bridge gate prep_layers=44 clusters=26 recomputed=7 speculation_misses=0
+base-classic-on sha=7e115231 internal bridge gate prep_layers=44 clusters=26 recomputed=7 speculation_misses=0
+base-arachne-off sha=e806296f internal bridge gate prep_layers=44 clusters=26 recomputed=7 speculation_misses=0
+base-arachne-on sha=da1e41d4 internal bridge gate prep_layers=44 clusters=26 recomputed=7 speculation_misses=0

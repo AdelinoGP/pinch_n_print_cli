@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "t182_active": {
+    "benchy-classic-off": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+    "benchy-classic-on": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+    "benchy-arachne-off": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+    "benchy-arachne-on": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+    "base-classic-off": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+    "base-classic-on": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+    "base-arachne-off": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+    "base-arachne-on": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031"
+  },
+  "manifest": {
+    "baseline-accelerated": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-baseline-accelerated\\pnp_cli-accelerated.exe",
+      "exe_sha256": "3af8e37dd9b02bd249c5946c85087415dfb24e485243f8c0065860721e661837",
+      "exe_bytes": 48562176,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-baseline-accelerated\\modules",
+      "modules_tree_sha256": "d758a6c95ee719a9a3ebbfb7875f643e32fcebdebf25fca13116658b905782cb",
+      "tree_support_wasm_sha256": "bd13830a37ca3f7d5f542014f0477d22199905c14c913bbdc1ac471cc3af8a50",
+      "infill_linker_wasm_sha256": "606d6ced0dcc403b0c4a0725bde796d15896e07718a1bce8789b2d37da37f08e"
+    },
+    "baseline-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-baseline\\pnp_cli-ordinary.exe",
+      "exe_sha256": "b8e7a710a42d3397d9eae12559a0b4b8756ee2ba1cff39f10a53a91508121ddf",
+      "exe_bytes": 48536064,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-baseline\\modules",
+      "modules_tree_sha256": "f1dc40806cfaa23e641e3451260dff884de4c0fd936c7b73dfcaa8f8cad1e72d",
+      "tree_support_wasm_sha256": "ae528d5db4a72af5d83912664159b8da820749977e10ec2e63e92934aa9a1d88",
+      "infill_linker_wasm_sha256": "2a5a17f2798e4bb65187e017169193b76172e955d9be5a89f2fa2c0c1f330334"
+    },
+    "candidate-accelerated": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-candidate-accelerated\\pnp_cli-accelerated.exe",
+      "exe_sha256": "e23a254f8f8bd8731693f1be64ecf7f57cecdfa81793caa8ef130bc2ea7e2763",
+      "exe_bytes": 48619520,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-candidate-accelerated\\modules",
+      "modules_tree_sha256": "718d7892616e39f46727c0fb22c9b0c7ef3292bcc74973f3c8d12857f45a7336",
+      "tree_support_wasm_sha256": "a84e5799234d078bfd1628d36419cdc41e69a59b0d748cf5e43d9550a6465562",
+      "infill_linker_wasm_sha256": "c935fbf595607fb7d8b0dd38a7195a46964f1dd1fd4013056a4047cc2f0e9d45"
+    },
+    "candidate-host-baseline-modules": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-candidate\\pnp_cli-ordinary.exe",
+      "exe_sha256": "79a61cecfba1b6b6a867cdb2bf0a82a6939ed7fbc1c1a043e38881c9151c82a5",
+      "exe_bytes": 48612864,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-baseline\\modules",
+      "modules_tree_sha256": "f1dc40806cfaa23e641e3451260dff884de4c0fd936c7b73dfcaa8f8cad1e72d",
+      "tree_support_wasm_sha256": "ae528d5db4a72af5d83912664159b8da820749977e10ec2e63e92934aa9a1d88",
+      "infill_linker_wasm_sha256": "2a5a17f2798e4bb65187e017169193b76172e955d9be5a89f2fa2c0c1f330334"
+    },
+    "candidate-ordinary": {
+      "exe_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-candidate\\pnp_cli-ordinary.exe",
+      "exe_sha256": "79a61cecfba1b6b6a867cdb2bf0a82a6939ed7fbc1c1a043e38881c9151c82a5",
+      "exe_bytes": 48612864,
+      "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\t184-candidate\\modules",
+      "modules_tree_sha256": "6823f914fa6f48e85d9b29c24d2faa93852f7e0e204fea8802b110fc4fd0d1ea",
+      "tree_support_wasm_sha256": "0ff34938da270addc8c5905e8e094bec2c0e6ad70c08d4966d4e3933f5cee26a",
+      "infill_linker_wasm_sha256": "92bb05ae4a54c548043070d7b880671e6378c97e4365af855d7e0a311c28563d"
+    }
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "baseline-ordinary": {
+        "sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "bytes": 4077945,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+        "bytes": 4077945,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-classic-on": {
+      "baseline-ordinary": {
+        "sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "bytes": 8544099,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "bytes": 8544099,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-arachne-off": {
+      "baseline-ordinary": {
+        "sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "bytes": 4225196,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+        "bytes": 4225196,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "benchy-arachne-on": {
+      "baseline-ordinary": {
+        "sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+        "bytes": 8688377,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+        "bytes": 8688377,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-classic-off": {
+      "baseline-ordinary": {
+        "sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "bytes": 21230739,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+        "bytes": 21230739,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-classic-on": {
+      "baseline-ordinary": {
+        "sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "bytes": 39605478,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "bytes": 39605478,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-arachne-off": {
+      "baseline-ordinary": {
+        "sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "bytes": 21041068,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+        "bytes": 21041068,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    },
+    "base-arachne-on": {
+      "baseline-ordinary": {
+        "sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+        "bytes": 39417439,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      },
+      "candidate-ordinary": {
+        "sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+        "bytes": 39417439,
+        "exit_code": 0,
+        "degraded": false,
+        "code_1200_count": 0
+      }
+    }
+  },
+  "accelerated": {
+    "benchy-classic-off": {
+      "baseline-accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "candidate-accelerated": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73"
+    },
+    "benchy-classic-on": {
+      "baseline-accelerated": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+      "candidate-accelerated": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c"
+    },
+    "benchy-arachne-off": {
+      "baseline-accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "candidate-accelerated": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1"
+    },
+    "benchy-arachne-on": {
+      "baseline-accelerated": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+      "candidate-accelerated": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8"
+    },
+    "base-classic-off": {
+      "baseline-accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "candidate-accelerated": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab"
+    },
+    "base-classic-on": {
+      "baseline-accelerated": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "candidate-accelerated": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee"
+    },
+    "base-arachne-off": {
+      "baseline-accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "candidate-accelerated": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c"
+    },
+    "base-arachne-on": {
+      "baseline-accelerated": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+      "candidate-accelerated": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031"
+    }
+  },
+  "diagnostics": {
+    "total_runs_checked": 448,
+    "nonzero_exit_runs": 0,
+    "degraded_runs": 0,
+    "fatal_error_runs": 0,
+    "non_fatal_error_runs": 0,
+    "code_1200_total": 0,
+    "hash_mismatches": 0
+  }
+}

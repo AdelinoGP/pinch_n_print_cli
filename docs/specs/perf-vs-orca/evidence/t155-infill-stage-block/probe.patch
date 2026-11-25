@@ -1,0 +1,482 @@
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index 078ec32d..b9537cb9 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -901,6 +901,37 @@ impl Default for SupportToolSelection {
+     }
+ }
+ 
++// t155 temporary probe — attribution only; removed after the take and preserved
++// in `docs/specs/perf-vs-orca/evidence/t155-infill-stage-block/probe.patch`.
++struct T155ProbeInner {
++    last: std::time::Instant,
++    stage: String,
++    module: String,
++    layer: u32,
++}
++
++fn t155_probe_new(stage: &str, module: &str, layer: u32) -> Option<T155ProbeInner> {
++    std::env::var_os("PNP_T155_PROBE").map(|_| T155ProbeInner {
++        last: std::time::Instant::now(),
++        stage: stage.to_owned(),
++        module: module.to_owned(),
++        layer,
++    })
++}
++
++fn t155_probe_mark(probe: &mut Option<T155ProbeInner>, site: &str) {
++    use std::io::Write;
++    let Some(inner) = probe.as_mut() else { return };
++    let now = std::time::Instant::now();
++    let us = now.duration_since(inner.last).as_micros();
++    inner.last = now;
++    let line = format!(
++        "{{\"event\":\"probe\",\"site\":\"{site}\",\"stage\":\"{}\",\"module\":\"{}\",\"layer\":{},\"us\":{us}}}\n",
++        inner.stage, inner.module, inner.layer
++    );
++    let _ = std::io::stderr().write_all(line.as_bytes());
++}
++
+ /// Prepare only the region projection consumed by the current layer export.
+ /// Stages that marshal only perimeter IR (or no region view at all) do not pay
+ /// for the corresponding derived-region allocation.
+@@ -1055,6 +1086,14 @@ fn execute_single_layer_inner(
+             } else {
+                 None
+             };
++            // t155 probe-only decline gate (t127's transfer method): skip the
++            // first Infill dispatch and watch the stage block move.
++            if std::env::var_os("PNP_T155_DECLINE_RAFT").is_some()
++                && stage.stage_id.as_str() == "Layer::Infill"
++                && module.module_id().as_str() == "com.core.raft-default"
++            {
++                continue;
++            }
+             // Skip before instrumentation so an ineligible module remains absent
+             // from the instrumentation and audit log.
+             if selection
+@@ -1065,6 +1104,12 @@ fn execute_single_layer_inner(
+             }
+ 
+             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), module.module_id());
++            let mut t155_probe = t155_probe_new(
++                &stage.stage_id,
++                module.module_id().as_str(),
++                layer.index,
++            );
++            t155_probe_mark(&mut t155_probe, "bracket_start");
+ 
+             // Build the IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+             // CompiledModuleLive borrows from CompiledModule for the duration of this call.
+@@ -1085,6 +1130,7 @@ fn execute_single_layer_inner(
+             prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
+             let prepared_regions = arena.prepared_regions();
+             let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
++            t155_probe_mark(&mut t155_probe, "prep_views");
+             let input = LayerStageInput {
+                 selection,
+                 mesh: Arc::clone(blackboard.mesh()),
+@@ -1109,8 +1155,10 @@ fn execute_single_layer_inner(
+             };
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
++            t155_probe_mark(&mut t155_probe, "input_ctor");
+ 
+             let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++            t155_probe_mark(&mut t155_probe, "run_stage");
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+diff --git a/crates/slicer-runtime/src/region_partition.rs b/crates/slicer-runtime/src/region_partition.rs
+index 0645e004..9f391408 100644
+--- a/crates/slicer-runtime/src/region_partition.rs
++++ b/crates/slicer-runtime/src/region_partition.rs
+@@ -313,6 +313,7 @@ pub fn sync_perimeter_infill_areas_into_slice(
+              (host built-in PrePass::Slice must commit before Layer::Perimeters runs)"
+             ),
+         })?;
++    let t155_before = t155_slice_read_digest(&slice);
+ 
+     // Borrow perimeter immutably — we only read infill_areas off it.
+     let perimeter = match arena.perimeter() {
+@@ -513,6 +514,22 @@ pub fn sync_perimeter_infill_areas_into_slice(
+         message,
+     })?;
+ 
++    // t155 probe: prove the fill-polygon sync leaves the prepared-region
++    // derivation's read fields (`polygons`, `nonplanar_surface`, region order)
++    // untouched, so a memo preserved across it can never be stale.
++    {
++        use std::io::Write;
++        if std::env::var_os("PNP_T155_PROBE").is_some() {
++            let after = t155_slice_read_digest(&slice);
++            let changed = u64::from(after != t155_before);
++            let line = format!(
++                "{{\"event\":\"probe\",\"site\":\"sync_audit\",\"stage\":\"Layer::Perimeters\",\"module\":\"host:region_partition\",\"layer\":{layer_index},\"us\":{changed},\"points_before\":{},\"points_after\":{}}}\n",
++                t155_before.1, after.1
++            );
++            let _ = std::io::stderr().write_all(line.as_bytes());
++        }
++    }
++
+     arena
+         .set_slice(slice)
+         .map_err(|source| LayerStageError::ArenaCommit { source })?;
+@@ -520,6 +537,33 @@ pub fn sync_perimeter_infill_areas_into_slice(
+     Ok(())
+ }
+ 
++/// t155 probe digest of the fields `prepare_regions` reads off a staged slice.
++fn t155_slice_read_digest(slice: &slicer_ir::SliceIR) -> (u64, usize) {
++    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
++    let mut points: usize = 0;
++    for region in &slice.regions {
++        hash = (hash ^ region.region_id as u64).wrapping_mul(0x100_0000_01b3);
++        hash = (hash ^ region.object_id.len() as u64).wrapping_mul(0x100_0000_01b3);
++        hash = (hash ^ u64::from(region.nonplanar_surface.is_some()))
++            .wrapping_mul(0x100_0000_01b3);
++        for polygon in &region.polygons {
++            for point in &polygon.contour.points {
++                hash = (hash ^ point.x as u64).wrapping_mul(0x100_0000_01b3);
++                hash = (hash ^ point.y as u64).wrapping_mul(0x100_0000_01b3);
++                points += 1;
++            }
++            for hole in &polygon.holes {
++                for point in &hole.points {
++                    hash = (hash ^ point.x as u64).wrapping_mul(0x100_0000_01b3);
++                    hash = (hash ^ point.y as u64).wrapping_mul(0x100_0000_01b3);
++                    points += 1;
++                }
++            }
++        }
++    }
++    (hash, points)
++}
++
+ /// Packet 132 modifier region split.
+ ///
+ /// For every `SlicedRegion` flagged with `MODIFIER_FOOTPRINT_REGION_ID`, find
+diff --git a/crates/slicer-sdk/src/views.rs b/crates/slicer-sdk/src/views.rs
+index d4be6d11..71c50151 100644
+--- a/crates/slicer-sdk/src/views.rs
++++ b/crates/slicer-sdk/src/views.rs
+@@ -368,10 +368,31 @@ impl SliceRegionView {
+         &self,
+         surface_classification: Option<&SurfaceClassificationIR>,
+     ) -> bool {
++        let t155_t0 = std::time::Instant::now();
++        let mut t155_footprints: usize = 0;
++        let mut t155_bbox_hITS: usize = 0;
++        let t155_region_box = t155_region_bbox(&self.polygons);
++        macro_rules! t155_finish {
++            ($value:expr, $attempts:expr) => {{
++                if std::env::var_os("PNP_T155_PROBE").is_some() {
++                    use std::io::Write;
++                    let line = format!(
++                        "{{\"event\":\"probe\",\"site\":\"ns_call\",\"stage\":\"sdk:derive_needs_support\",\"module\":\"host:sdk\",\"layer\":{},\"us\":{},\"footprints\":{},\"bbox_hits\":{},\"value\":{}}}\n",
++                        self.z as u32,
++                        t155_t0.elapsed().as_micros(),
++                        t155_footprints,
++                        t155_bbox_hITS,
++                        u8::from($value)
++                    );
++                    let _ = std::io::stderr().write_all(line.as_bytes());
++                }
++                $value
++            }};
++        }
+         let Some(object) = surface_classification
+             .and_then(|classification| classification.per_object.get(&self.object_id))
+         else {
+-            return true;
++            return t155_finish!(true, 0);
+         };
+ 
+         let non_empty_footprints = object
+@@ -382,10 +403,18 @@ impl SliceRegionView {
+         let mut found_non_empty_footprint = false;
+         for overhang in non_empty_footprints {
+             found_non_empty_footprint = true;
++            t155_footprints += 1;
++            // Count the footprints a bbox prefilter would still have to test.
++            let t155_footprint_bbox = t155_region_bbox(&overhang.xy_footprint);
++            if let (Some(a), Some(b)) = (t155_region_box, t155_footprint_bbox) {
++                if a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3 {
++                    t155_bbox_hITS += 1;
++                }
++            }
+             if !slicer_core::polygon_ops::intersection_ex(&self.polygons, &overhang.xy_footprint)
+                 .is_empty()
+             {
+-                return true;
++                return t155_finish!(true, t155_footprints);
+             }
+         }
+ 
+@@ -980,3 +1009,27 @@ pub struct OrderedEntityView {
+     /// Optional stable ordering lock carried by the extrusion path.
+     pub order_lock: Option<u64>,
+ }
++
++/// t155 probe: axis-aligned bbox of an ExPolygon set, as (min_x, min_y, max_x, max_y).
++fn t155_region_bbox(polygons: &[slicer_ir::ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++    let mut bbox: Option<(i64, i64, i64, i64)> = None;
++    for polygon in polygons {
++        for point in polygon
++            .contour
++            .points
++            .iter()
++            .chain(polygon.holes.iter().flat_map(|hole| hole.points.iter()))
++        {
++            bbox = Some(match bbox {
++                None => (point.x, point.y, point.x, point.y),
++                Some((min_x, min_y, max_x, max_y)) => (
++                    min_x.min(point.x),
++                    min_y.min(point.y),
++                    max_x.max(point.x),
++                    max_y.max(point.y),
++                ),
++            });
++        }
++    }
++    bbox
++}
+diff --git a/crates/slicer-wasm-host/src/dispatch.rs b/crates/slicer-wasm-host/src/dispatch.rs
+index 15f499ec..e0bb0106 100644
+--- a/crates/slicer-wasm-host/src/dispatch.rs
++++ b/crates/slicer-wasm-host/src/dispatch.rs
+@@ -33,6 +33,37 @@ use crate::traits::{
+     FinalizationStageRunner, LayerStageRunner, PostpassStageRunner, PrepassStageRunner,
+ };
+ 
++// t155 temporary probe — attribution only; removed after the take and preserved
++// in `docs/specs/perf-vs-orca/evidence/t155-infill-stage-block/probe.patch`.
++struct T155ProbeInner {
++    last: std::time::Instant,
++    stage: String,
++    module: String,
++    layer: u32,
++}
++
++fn t155_probe_new(stage: &str, module: &str, layer: u32) -> Option<T155ProbeInner> {
++    std::env::var_os("PNP_T155_PROBE").map(|_| T155ProbeInner {
++        last: std::time::Instant::now(),
++        stage: stage.to_owned(),
++        module: module.to_owned(),
++        layer,
++    })
++}
++
++fn t155_probe_mark(probe: &mut Option<T155ProbeInner>, site: &str) {
++    use std::io::Write;
++    let Some(inner) = probe.as_mut() else { return };
++    let now = std::time::Instant::now();
++    let us = now.duration_since(inner.last).as_micros();
++    inner.last = now;
++    let line = format!(
++        "{{\"event\":\"probe\",\"site\":\"{site}\",\"stage\":\"{}\",\"module\":\"{}\",\"layer\":{},\"us\":{us}}}\n",
++        inner.stage, inner.module, inner.layer
++    );
++    let _ = std::io::stderr().write_all(line.as_bytes());
++}
++
+ thread_local! {
+     /// Per-worker-thread slot holding the wasm linear-memory sample
+     /// `(initial_bytes, peak_bytes)` from the most recent
+@@ -543,9 +574,12 @@ impl WasmRuntimeDispatcher {
+     ) -> Result<HostExecutionContext, DispatchError> {
+         use slicer_schema::export_for_stage_id;
+         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
++        let mut t155_probe = t155_probe_new(stage_id, module_id, layer_index);
++        t155_probe_mark(&mut t155_probe, "dl_entry");
+ 
+         // Acquire pool slot for concurrency control (RAII — released on drop).
+         let _lease = instance_pool.acquire();
++        t155_probe_mark(&mut t155_probe, "dl_acquire");
+ 
+         let engine = self.engine.wasmtime_engine();
+ 
+@@ -603,6 +637,7 @@ impl WasmRuntimeDispatcher {
+                     reason: "no compiled WASM component available".to_string(),
+                 })?;
+                 let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
++                t155_probe_mark(&mut t155_probe, "dl_linker");
+                 let ctx = HostExecutionContextBuilder::new(
+                     module_id.to_string(),
+                     envelope_floor,
+@@ -623,6 +658,7 @@ impl WasmRuntimeDispatcher {
+                 let bindings =
+                     host::layer_infill::LayerModule::instantiate(&mut store, component, &linker)
+                         .map_err(mk_inst_err)?;
++                t155_probe_mark(&mut t155_probe, "dl_instantiate");
+                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                 let region_handles = push_slice_regions(
+                     &mut store,
+@@ -635,6 +671,7 @@ impl WasmRuntimeDispatcher {
+                     false,
+                 )
+                 .map_err(mk_ctx_err)?;
++                t155_probe_mark(&mut t155_probe, "dl_push_regions");
+                 let config_handle = store
+                     .data_mut()
+                     .push_config_view(host::config_view_to_data(&effective_config_view))
+@@ -674,6 +711,7 @@ impl WasmRuntimeDispatcher {
+                         own(config_handle),
+                     )
+                     .map_err(mk_call_err)?;
++                t155_probe_mark(&mut t155_probe, "dl_call");
+                 Ok((call_result, store, mem_initial_bytes))
+             }
+             "Layer::InfillPostProcess" => {
+@@ -1283,6 +1321,7 @@ impl WasmRuntimeDispatcher {
+ 
+         stash_batch_calls(store.data_mut());
+         stash_profile(store.store);
++        t155_probe_mark(&mut t155_probe, "dl_return");
+ 
+         Ok(store.into_data())
+     }
+@@ -3173,6 +3212,8 @@ impl WasmRuntimeDispatcher {
+         preparation_failure: &mut Option<Arc<crate::preparation::PreparationFailure>>,
+     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+         let module_id_str = module.module_id.as_str();
++        let mut t155_probe = t155_probe_new(stage_id, module_id_str, layer.index);
++        t155_probe_mark(&mut t155_probe, "rs_entry");
+         let selection = input
+             .selection
+             .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+@@ -3260,6 +3301,7 @@ impl WasmRuntimeDispatcher {
+         }
+         let authored_coloring_ctx =
+             build_dispatch_authored_coloring_context(selection, &config_fields_per_region);
++        t155_probe_mark(&mut t155_probe, "rs_selection");
+         let transport = crate::marshal::transport::assemble_layer_transport_for_stage(
+             selection,
+             layer.index,
+@@ -3270,6 +3312,7 @@ impl WasmRuntimeDispatcher {
+             input.surface_classification,
+             stage_export != "Layer::PerimetersPostProcess",
+         );
++        t155_probe_mark(&mut t155_probe, "rs_transport");
+         if let Some(entry) = &module.native_entry {
+             let stage_export = slicer_schema::stage_by_id(stage_id)
+                 .map(|s| s.stage_id)
+@@ -3339,6 +3382,7 @@ impl WasmRuntimeDispatcher {
+         }
+         let (envelope_floor, envelope_height) =
+             derive_layer_output_envelope_from_input(layer, input.slice);
++        t155_probe_mark(&mut t155_probe, "rs_envelope");
+ 
+         macro_rules! dispatch {
+             ($store:expr, $component:expr) => {
+@@ -3441,15 +3485,18 @@ impl WasmRuntimeDispatcher {
+             }
+         };
+ 
++        t155_probe_mark(&mut t155_probe, "rs_dispatch");
+         // Deconstruct HostExecutionContext → Option<LayerStageCommit>.
+-        deconstruct_layer_ctx(
++        let t155_commit = deconstruct_layer_ctx(
+             stage_id,
+             module_id_str,
+             layer.index,
+             input.support_plan.as_deref(),
+             ctx,
+             Some(&authored_coloring_ctx),
+-        )
++        );
++        t155_probe_mark(&mut t155_probe, "rs_commit");
++        t155_commit
+     }
+ }
+ 
+diff --git a/crates/slicer-wasm-host/src/marshal/prepared.rs b/crates/slicer-wasm-host/src/marshal/prepared.rs
+index d781f44b..8ba2de5d 100644
+--- a/crates/slicer-wasm-host/src/marshal/prepared.rs
++++ b/crates/slicer-wasm-host/src/marshal/prepared.rs
+@@ -8,6 +8,30 @@
+ 
+ use slicer_ir::{ExPolygon, PreparedRegionData, QuartileBand, SliceIR, SlicedRegion};
+ 
++// t155 temporary probe — attribution only; removed after the take and preserved
++// in `docs/specs/perf-vs-orca/evidence/t155-infill-stage-block/probe.patch`.
++struct T155ProbeInner {
++    last: std::time::Instant,
++}
++
++fn t155_probe_new() -> Option<T155ProbeInner> {
++    std::env::var_os("PNP_T155_PROBE").map(|_| T155ProbeInner {
++        last: std::time::Instant::now(),
++    })
++}
++
++fn t155_probe_mark(probe: &mut Option<T155ProbeInner>, site: &str, layer: u32) {
++    use std::io::Write;
++    let Some(inner) = probe.as_mut() else { return };
++    let now = std::time::Instant::now();
++    let us = now.duration_since(inner.last).as_micros();
++    inner.last = now;
++    let line = format!(
++        "{{\"event\":\"probe\",\"site\":\"{site}\",\"stage\":\"PrePass::PrepareRegions\",\"module\":\"host:prepare_regions\",\"layer\":{layer},\"us\":{us}}}\n"
++    );
++    let _ = std::io::stderr().write_all(line.as_bytes());
++}
++
+ /// Prepare derived data for regions in the same order as `regions`.
+ #[must_use]
+ pub fn prepare_regions(
+@@ -15,11 +39,14 @@ pub fn prepare_regions(
+     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+     global_layer_index: u32,
+ ) -> Vec<PreparedRegionData> {
++    let mut t155_probe = t155_probe_new();
+     let result = regions
+         .iter()
+         .map(|region| {
++            t155_probe_mark(&mut t155_probe, "pr_region_start", global_layer_index);
+             let view = slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new());
+             let needs_support = view.derive_needs_support(surface_classification);
++            t155_probe_mark(&mut t155_probe, "pr_needs_support", global_layer_index);
+             let surface_group = region.nonplanar_surface.and_then(|surface_group_id| {
+                 surface_classification
+                     .and_then(|classification| classification.per_object.get(&region.object_id))
+@@ -31,6 +58,7 @@ pub fn prepare_regions(
+                     })
+                     .cloned()
+             });
++            t155_probe_mark(&mut t155_probe, "pr_surface_group", global_layer_index);
+ 
+             let region_bbox = expolygons_bbox(&region.polygons);
+             let overhang_quartile_polygons = surface_classification
+@@ -67,6 +95,7 @@ pub fn prepare_regions(
+                         .collect::<Vec<_>>()
+                 })
+                 .unwrap_or_default();
++            t155_probe_mark(&mut t155_probe, "pr_quartile", global_layer_index);
+             let overhang_areas = surface_classification
+                 .and_then(|classification| {
+                     classification
+@@ -89,6 +118,7 @@ pub fn prepare_regions(
+                     }
+                 })
+                 .unwrap_or_default();
++            t155_probe_mark(&mut t155_probe, "pr_overhang_areas", global_layer_index);
+             let prev_layer_boundary = surface_classification
+                 .and_then(|classification| {
+                     classification
+@@ -98,6 +128,7 @@ pub fn prepare_regions(
+                 })
+                 .cloned()
+                 .unwrap_or_default();
++            t155_probe_mark(&mut t155_probe, "pr_prev_boundary", global_layer_index);
+             let overhang_band_width_mm = surface_classification
+                 .map(|classification| classification.overhang_band_width_mm)
+                 .unwrap_or(0.0);
+@@ -112,6 +143,7 @@ pub fn prepare_regions(
+             }
+         })
+         .collect();
++    t155_probe_mark(&mut t155_probe, "pr_return", global_layer_index);
+     result
+ }
+ 

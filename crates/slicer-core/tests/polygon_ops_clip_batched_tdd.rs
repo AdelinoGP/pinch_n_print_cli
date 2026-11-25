@@ -274,6 +274,38 @@ fn batch_matches_per_path_on_a_realistic_scan_field() {
     batch_matches_per_path(&boundary, &subjects);
 }
 
+#[test]
+fn batch_matches_per_path_on_coincident_crossing_and_multi_hole_stress() {
+    let boundary = [expoly(
+        &[(0, 0), (4000, 0), (4000, 3000), (0, 3000)],
+        &[
+            &[(600, 600), (1400, 600), (1400, 1400), (600, 1400)],
+            &[(2200, 1200), (3200, 1200), (3200, 2200), (2200, 2200)],
+        ],
+    )];
+    // Deliberately include identical duplicate subjects, collinear overlaps,
+    // reversed collinear overlaps, X-crossings, multi-hole zigzags, and empty/1-pt slots.
+    let subjects = vec![
+        polyline(&[(-200, 1000), (4200, 1000)]),
+        polyline(&[(-200, 1000), (4200, 1000)]), // exact duplicate
+        polyline(&[(4200, 1000), (-200, 1000)]), // reversed duplicate
+        polyline(&[(500, 1000), (2500, 1000)]),  // strict sub-interval overlap
+        Vec::new(),
+        polyline(&[(1000, 1000)]),
+        polyline(&[
+            (-100, 200),
+            (1000, 1800),
+            (2700, 400),
+            (2700, 2600),
+            (4100, 1700),
+        ]),
+        polyline(&[(100, 2600), (3900, 400)]), // crosses zigzag and both holes
+        polyline(&[(0, 1500), (4000, 1500)]),
+        polyline(&[(1000, -100), (1000, 3100)]), // vertical through first hole
+    ];
+    batch_matches_per_path(&boundary, &subjects);
+}
+
 fn sorted_paths(mut paths: Vec<Vec<slicer_ir::Point2>>) -> Vec<Vec<slicer_ir::Point2>> {
     paths.sort_by_key(|path| {
         path.iter()

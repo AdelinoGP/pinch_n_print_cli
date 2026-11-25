@@ -1,0 +1,158 @@
+{
+  "cells": {
+    "base-arachne-off": {
+      "baseline_raft_default_calls": 495,
+      "baseline_raft_default_p50_ms": 62,
+      "baseline_raft_default_thread_ms": 31800,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715",
+      "infill_max_calls": 495,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 495,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "6b865d4a2cb892daa3172add3e3677e0dc35192bcedd0acbc463abca7064d715"
+    },
+    "base-arachne-on": {
+      "baseline_raft_default_calls": 495,
+      "baseline_raft_default_p50_ms": 61,
+      "baseline_raft_default_thread_ms": 30986,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13",
+      "infill_max_calls": 495,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 495,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "62d6eedc02e5db972928f830104aab95c3598f6df6407159cb5438adb35bef13"
+    },
+    "base-classic-off": {
+      "baseline_raft_default_calls": 495,
+      "baseline_raft_default_p50_ms": 63,
+      "baseline_raft_default_thread_ms": 32547,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef",
+      "infill_max_calls": 495,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 495,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "b3b4ac5e885c7f637b98f79eca21901a41d85739627d4dcb40820663c15e90ef"
+    },
+    "base-classic-on": {
+      "baseline_raft_default_calls": 495,
+      "baseline_raft_default_p50_ms": 62,
+      "baseline_raft_default_thread_ms": 30920,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e",
+      "infill_max_calls": 495,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 495,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "4e31a2db368ff80f388512211ae824b9660342a465c87f093f6182023e34eb4e"
+    },
+    "benchy-arachne-off": {
+      "baseline_raft_default_calls": 240,
+      "baseline_raft_default_p50_ms": 4,
+      "baseline_raft_default_thread_ms": 1260,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380",
+      "infill_max_calls": 240,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 240,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "2ba5d84ccf3c8deea6f39f4977dd71221faaecde9987d1699b361a5366e86380"
+    },
+    "benchy-arachne-on": {
+      "baseline_raft_default_calls": 240,
+      "baseline_raft_default_p50_ms": 5,
+      "baseline_raft_default_thread_ms": 1503,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e",
+      "infill_max_calls": 240,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 240,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "a972b0f2c25a988e667ecf5a5b3d6c3f5ba87f5c8872733c2a4b4e5d51a9695e"
+    },
+    "benchy-classic-off": {
+      "baseline_raft_default_calls": 240,
+      "baseline_raft_default_p50_ms": 4,
+      "baseline_raft_default_thread_ms": 1180,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008",
+      "infill_max_calls": 240,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 240,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "90638bf3ea9e592d573b223c3eb9af64473efe804578d2478adfbbc5f0e67008"
+    },
+    "benchy-classic-on": {
+      "baseline_raft_default_calls": 240,
+      "baseline_raft_default_p50_ms": 4,
+      "baseline_raft_default_thread_ms": 1171,
+      "gcode_matches_reference": true,
+      "gcode_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556",
+      "infill_max_calls": 240,
+      "infill_modules_observed": [
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.rectilinear-infill",
+        "com.core.top-surface-ironing",
+        "com.core.wave-overhangs"
+      ],
+      "layers": 240,
+      "raft_default_calls": 0,
+      "raft_default_thread_ms": 0,
+      "reference_sha256": "711c6334e397e5ae6911b15bfc71d42add9e93822cddd0a29391db6ef531d556"
+    }
+  },
+  "note": "Attribution only: one candidate instrumented pass per cell. Baseline call counts and thread sums are ticket 126's committed instrumented pass, not a same-run control.",
+  "ticket": "127"
+}

@@ -1,0 +1,36 @@
+{
+  "note": "Active matched-job reference set after t182 (2026-11-22). Implementing host-side `slicer_core::polygon_ops::union_spatial_tree` (`crates/slicer-core/src/polygon_ops_spatial_union.rs`, selected winner `worker-k8`: `DEFAULT_SPATIAL_UNION_CHUNK_SIZE = 8`, `DEFAULT_SPATIAL_UNION_NESTED_PAR = false`) and wiring it strictly into batched `ClipOperation::Union` dispatch (`crates/slicer-wasm-host/src/host.rs::clip_polygons_batch` and native fallback `crates/slicer-sdk/src/host_batch.rs::clip_polygons_batch` when `subject.len() + clip.len() > 8`) leaves all 4 supports-off cells byte-identical to t175 (and t172), because `enable_support: false` never calls `clip_polygons_batch`. Only the 4 supports-on cells move, strictly inside `Support` (zero `Support interface` movement, zero part-geometry movement across all 1,226,364 non-support G1 motion lines checked — 0 XY mismatches, max cumulative |dE| <= 0.00048 mm): `benchy-classic-on` and `benchy-arachne-on` (+3 B, 0 lines, `Support` -0.01777 mm = -0.000022 %); `base-classic-on` and `base-arachne-on` (-56 B, -1 line, `Support` -0.24238 mm = -0.000062 %). Caused by `vendor/clipper2-rust/src/engine.rs::add_new_intersect_node` distant-scanbeam clamping plus sub-micron k=8 hierarchical integer-grid associativity rounding (<= 0.949 um base / <= 0.400 um benchy Hausdorff proven in t178). Landed by explicit human KEEP ruling on 2026-11-22. Baseline reproduced t175's active set 8/8 on both ordinary and accelerated arms (16/16), and candidate ordinary is byte-identical to candidate accelerated 8/8 (16/16 total). Superseded: only the 4 supports-on cells from t175.",
+  "active_set": {
+    "benchy-classic-off": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+    "benchy-classic-on": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+    "benchy-arachne-off": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+    "benchy-arachne-on": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+    "base-classic-off": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+    "base-classic-on": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+    "base-arachne-off": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+    "base-arachne-on": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031"
+  },
+  "bytes": {
+    "benchy-classic-off": 4077945,
+    "benchy-classic-on": 8544099,
+    "benchy-arachne-off": 4225196,
+    "benchy-arachne-on": 8688377,
+    "base-classic-off": 21230739,
+    "base-classic-on": 39605478,
+    "base-arachne-off": 21041068,
+    "base-arachne-on": 39417439
+  },
+  "superseded_set": {
+    "benchy-classic-on": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+    "benchy-arachne-on": "2869186c31a7d57e2b8e3a2edfd624623b54af43155efb8c5b68863fafd2a13c",
+    "base-classic-on": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+    "base-arachne-on": "f77633affab2fbea4f3b3b546aa564ba1a151a457fd20b2c4991f34526a58d5c"
+  },
+  "unchanged_from_t175": [
+    "benchy-classic-off",
+    "benchy-arachne-off",
+    "base-classic-off",
+    "base-arachne-off"
+  ],
+  "accelerated_arm": "byte-identical to the ordinary arm in 8/8 cells (16/16 including the baseline arm)"
+}

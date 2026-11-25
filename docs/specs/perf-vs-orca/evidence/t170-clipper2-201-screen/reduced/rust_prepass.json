@@ -1,0 +1,3424 @@
+{
+  "corpus_sha256": "74c2b553659d71d67d6327b766fa929280eec520d6dafdf6317213c2084260a0",
+  "case_count": 118,
+  "method": "forward+reverse, 10 repeats median per case",
+  "engines": {
+    "rust_base": "t170-rust-driver-base.exe",
+    "rust_patched": "t170-rust-driver-patched.exe",
+    "v250_decim": "driver-v250-baseline.exe"
+  },
+  "by_site": {
+    "IB_CAND_POS": {
+      "n": 16,
+      "sum_ms": {
+        "rust_base": 0.2319,
+        "rust_patched": 0.1381,
+        "v250_decim": 0.1598
+      },
+      "rust_base_over_v250": 1.4512,
+      "rust_patched_over_v250": 0.8642,
+      "patch_gain": 1.6792,
+      "median_rel_area_vs_v250": {
+        "rust_base": 2e-05,
+        "rust_patched": 2.1e-05
+      }
+    },
+    "IB_DEEP_NEG": {
+      "n": 16,
+      "sum_ms": {
+        "rust_base": 123.3646,
+        "rust_patched": 62.0416,
+        "v250_decim": 47.5741
+      },
+      "rust_base_over_v250": 2.5931,
+      "rust_patched_over_v250": 1.3041,
+      "patch_gain": 1.9884,
+      "median_rel_area_vs_v250": {
+        "rust_base": 4.4e-05,
+        "rust_patched": 4.3e-05
+      }
+    },
+    "IB_DEEP_POS": {
+      "n": 24,
+      "sum_ms": {
+        "rust_base": 1202.7443,
+        "rust_patched": 649.2193,
+        "v250_decim": 583.7282
+      },
+      "rust_base_over_v250": 2.0605,
+      "rust_patched_over_v250": 1.1122,
+      "patch_gain": 1.8526,
+      "median_rel_area_vs_v250": {
+        "rust_base": 5e-06,
+        "rust_patched": 5e-06
+      }
+    },
+    "SH_OPEN_BOT_CANON": {
+      "n": 15,
+      "sum_ms": {
+        "rust_base": 95.4608,
+        "rust_patched": 46.0808,
+        "v250_decim": 35.3583
+      },
+      "rust_base_over_v250": 2.6998,
+      "rust_patched_over_v250": 1.3033,
+      "patch_gain": 2.0716,
+      "median_rel_area_vs_v250": {
+        "rust_base": 3.2e-05,
+        "rust_patched": 4.5e-05
+      }
+    },
+    "SH_OPEN_BOT_LEGACY": {
+      "n": 15,
+      "sum_ms": {
+        "rust_base": 237.1861,
+        "rust_patched": 162.4692,
+        "v250_decim": 158.77
+      },
+      "rust_base_over_v250": 1.4939,
+      "rust_patched_over_v250": 1.0233,
+      "patch_gain": 1.4599,
+      "median_rel_area_vs_v250": {
+        "rust_base": 3.3e-05,
+        "rust_patched": 6e-05
+      }
+    },
+    "SH_OPEN_TOP_CANON": {
+      "n": 16,
+      "sum_ms": {
+        "rust_base": 108.5491,
+        "rust_patched": 53.6506,
+        "v250_decim": 43.4761
+      },
+      "rust_base_over_v250": 2.4968,
+      "rust_patched_over_v250": 1.234,
+      "patch_gain": 2.0233,
+      "median_rel_area_vs_v250": {
+        "rust_base": 4.2e-05,
+        "rust_patched": 6.7e-05
+      }
+    },
+    "SH_OPEN_TOP_LEGACY": {
+      "n": 16,
+      "sum_ms": {
+        "rust_base": 310.2029,
+        "rust_patched": 197.409,
+        "v250_decim": 202.258
+      },
+      "rust_base_over_v250": 1.5337,
+      "rust_patched_over_v250": 0.976,
+      "patch_gain": 1.5714,
+      "median_rel_area_vs_v250": {
+        "rust_base": 1.6e-05,
+        "rust_patched": 1.6e-05
+      }
+    }
+  },
+  "cases": [
+    {
+      "case_index": 0,
+      "site": "IB_CAND_POS",
+      "layer": 22,
+      "opcode": 0,
+      "in_verts": 21,
+      "rust_base": {
+        "median_ns": 6350,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166448.5,
+        "out_hash": "ca63457b8e6cd16c"
+      },
+      "rust_patched": {
+        "median_ns": 4000,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100166170.0,
+        "out_hash": "08d47908aeee7fbf"
+      },
+      "v250_decim": {
+        "median_ns": 4900,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 100160758.2609,
+        "out_hash": "7bd99dec43a71904"
+      }
+    },
+    {
+      "case_index": 1,
+      "site": "IB_CAND_POS",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 3,
+      "rust_base": {
+        "median_ns": 950,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436.0,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "rust_patched": {
+        "median_ns": 950,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48276436.0,
+        "out_hash": "9bad95800c9c2f4a"
+      },
+      "v250_decim": {
+        "median_ns": 1400,
+        "out_paths": 1,
+        "out_verts": 5,
+        "out_area_u2": 48277034.11825,
+        "out_hash": "a2372ebef1d40d6b"
+      }
+    },
+    {
+      "case_index": 2,
+      "site": "IB_CAND_POS",
+      "layer": 45,
+      "opcode": 0,
+      "in_verts": 6,
+      "rust_base": {
+        "median_ns": 1400,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565.0,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "rust_patched": {
+        "median_ns": 1350,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53259565.0,
+        "out_hash": "88ba662fcf597b5f"
+      },
+      "v250_decim": {
+        "median_ns": 1900,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53256318.35865,
+        "out_hash": "9fe07fdc054edff7"
+      }
+    },
+    {
+      "case_index": 3,
+      "site": "IB_CAND_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 179,
+      "rust_base": {
+        "median_ns": 120350,
+        "out_paths": 1,
+        "out_verts": 153,
+        "out_area_u2": 700660471.0,
+        "out_hash": "0ae619101dc5c020"
+      },
+      "rust_patched": {
+        "median_ns": 66800,
+        "out_paths": 1,
+        "out_verts": 152,
+        "out_area_u2": 700657178.5,
+        "out_hash": "3b08c6206a86c8ea"
+      },
+      "v250_decim": {
+        "median_ns": 73800,
+        "out_paths": 1,
+        "out_verts": 155,
+        "out_area_u2": 700653594.3219,
+        "out_hash": "c33f1d564e46f910"
+      }
+    },
+    {
+      "case_index": 4,
+      "site": "IB_CAND_POS",
+      "layer": 47,
+      "opcode": 0,
+      "in_verts": 70,
+      "rust_base": {
+        "median_ns": 17700,
+        "out_paths": 1,
+        "out_verts": 61,
+        "out_area_u2": 291614941.0,
+        "out_hash": "910598d13eca24b5"
+      },
+      "rust_patched": {
+        "median_ns": 11700,
+        "out_paths": 1,
+        "out_verts": 61,
+        "out_area_u2": 291610501.0,
+        "out_hash": "b0856d205e1f59a2"
+      },
+      "v250_decim": {
+        "median_ns": 12900,
+        "out_paths": 1,
+        "out_verts": 62,
+        "out_area_u2": 291614686.82585,
+        "out_hash": "481cc531fd2beb12"
+      }
+    },
+    {
+      "case_index": 5,
+      "site": "IB_CAND_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 4,
+      "rust_base": {
+        "median_ns": 1550,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "rust_patched": {
+        "median_ns": 1150,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49396445.5,
+        "out_hash": "3816cac13ac3e1cb"
+      },
+      "v250_decim": {
+        "median_ns": 1700,
+        "out_paths": 1,
+        "out_verts": 6,
+        "out_area_u2": 49392008.6425,
+        "out_hash": "c6ca2b31526abf56"
+      }
+    },
+    {
+      "case_index": 6,
+      "site": "IB_CAND_POS",
+      "layer": 69,
+      "opcode": 0,
+      "in_verts": 17,
+      "rust_base": {
+        "median_ns": 2900,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047625.0,
+        "out_hash": "4b99dac715dc99f7"
+      },
+      "rust_patched": {
+        "median_ns": 2450,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67047635.5,
+        "out_hash": "503f7af907a028fd"
+      },
+      "v250_decim": {
+        "median_ns": 3400,
+        "out_paths": 1,
+        "out_verts": 19,
+        "out_area_u2": 67046127.87725,
+        "out_hash": "a50b263bc075bf44"
+      }
+    },
+    {
+      "case_index": 7,
+      "site": "IB_CAND_POS",
+      "layer": 87,
+      "opcode": 0,
+      "in_verts": 53,
+      "rust_base": {
+        "median_ns": 8950,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139102703.0,
+        "out_hash": "a32949f05241d928"
+      },
+      "rust_patched": {
+        "median_ns": 6650,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139102797.5,
+        "out_hash": "20aa73c1dcb9db51"
+      },
+      "v250_decim": {
+        "median_ns": 8600,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 139099575.15015,
+        "out_hash": "e9ecd4dac3d3e5a0"
+      }
+    },
+    {
+      "case_index": 8,
+      "site": "IB_CAND_POS",
+      "layer": 117,
+      "opcode": 0,
+      "in_verts": 8,
+      "rust_base": {
+        "median_ns": 1400,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53682089.5,
+        "out_hash": "b196b704191bfb35"
+      },
+      "rust_patched": {
+        "median_ns": 1300,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53682089.5,
+        "out_hash": "b196b704191bfb35"
+      },
+      "v250_decim": {
+        "median_ns": 2000,
+        "out_paths": 1,
+        "out_verts": 8,
+        "out_area_u2": 53685480.07415,
+        "out_hash": "c9baf989dd8d6f9d"
+      }
+    },
+    {
+      "case_index": 9,
+      "site": "IB_CAND_POS",
+      "layer": 163,
+      "opcode": 0,
+      "in_verts": 11,
+      "rust_base": {
+        "median_ns": 2200,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732.0,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "rust_patched": {
+        "median_ns": 2100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72266732.0,
+        "out_hash": "289ec535ea3ac69c"
+      },
+      "v250_decim": {
+        "median_ns": 3100,
+        "out_paths": 1,
+        "out_verts": 16,
+        "out_area_u2": 72271641.9708,
+        "out_hash": "31f14726f6959437"
+      }
+    },
+    {
+      "case_index": 10,
+      "site": "IB_CAND_POS",
+      "layer": 164,
+      "opcode": 0,
+      "in_verts": 27,
+      "rust_base": {
+        "median_ns": 5350,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722.0,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "rust_patched": {
+        "median_ns": 5300,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118236722.0,
+        "out_hash": "c6562383c2fad66f"
+      },
+      "v250_decim": {
+        "median_ns": 6150,
+        "out_paths": 1,
+        "out_verts": 26,
+        "out_area_u2": 118235649.66285,
+        "out_hash": "976ce8226644078f"
+      }
+    },
+    {
+      "case_index": 11,
+      "site": "IB_CAND_POS",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 43,
+      "rust_base": {
+        "median_ns": 9300,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142268135.5,
+        "out_hash": "6cf6b0d5b8a2a3c4"
+      },
+      "rust_patched": {
+        "median_ns": 6100,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142267937.5,
+        "out_hash": "4c5b24488c9ce102"
+      },
+      "v250_decim": {
+        "median_ns": 7250,
+        "out_paths": 1,
+        "out_verts": 43,
+        "out_area_u2": 142270661.9708,
+        "out_hash": "00ca9285cfc2f14e"
+      }
+    },
+    {
+      "case_index": 12,
+      "site": "IB_CAND_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 14,
+      "rust_base": {
+        "median_ns": 2800,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84101202.5,
+        "out_hash": "4a83e8d0f987fbe8"
+      },
+      "rust_patched": {
+        "median_ns": 2350,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84101105.5,
+        "out_hash": "1630db5da90f4aae"
+      },
+      "v250_decim": {
+        "median_ns": 3250,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 84103358.40655,
+        "out_hash": "9aafad851a5ed115"
+      }
+    },
+    {
+      "case_index": 13,
+      "site": "IB_CAND_POS",
+      "layer": 328,
+      "opcode": 0,
+      "in_verts": 32,
+      "rust_base": {
+        "median_ns": 8300,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126687618.0,
+        "out_hash": "27c56646c6d52ae3"
+      },
+      "rust_patched": {
+        "median_ns": 4650,
+        "out_paths": 1,
+        "out_verts": 31,
+        "out_area_u2": 126687911.5,
+        "out_hash": "1851034d192b07ba"
+      },
+      "v250_decim": {
+        "median_ns": 6150,
+        "out_paths": 1,
+        "out_verts": 32,
+        "out_area_u2": 126686308.62645,
+        "out_hash": "19bac65b7c4a4ae7"
+      }
+    },
+    {
+      "case_index": 14,
+      "site": "IB_CAND_POS",
+      "layer": 355,
+      "opcode": 0,
+      "in_verts": 37,
+      "rust_base": {
+        "median_ns": 10100,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175670108.0,
+        "out_hash": "01c953d1e5e0c51d"
+      },
+      "rust_patched": {
+        "median_ns": 5300,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 175670337.5,
+        "out_hash": "6d51935daddbeb8b"
+      },
+      "v250_decim": {
+        "median_ns": 6650,
+        "out_paths": 1,
+        "out_verts": 36,
+        "out_area_u2": 175667011.1904,
+        "out_hash": "9b553d5d205cee0b"
+      }
+    },
+    {
+      "case_index": 15,
+      "site": "IB_CAND_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 87,
+      "rust_base": {
+        "median_ns": 32300,
+        "out_paths": 1,
+        "out_verts": 82,
+        "out_area_u2": 455727734.5,
+        "out_hash": "6a3059441d14e805"
+      },
+      "rust_patched": {
+        "median_ns": 15950,
+        "out_paths": 1,
+        "out_verts": 78,
+        "out_area_u2": 455727988.0,
+        "out_hash": "84e32fc1bed3befd"
+      },
+      "v250_decim": {
+        "median_ns": 16650,
+        "out_paths": 1,
+        "out_verts": 79,
+        "out_area_u2": 455720220.5881,
+        "out_hash": "791aa4db9aebd329"
+      }
+    },
+    {
+      "case_index": 16,
+      "site": "IB_DEEP_NEG",
+      "layer": 38,
+      "opcode": 0,
+      "in_verts": 378,
+      "rust_base": {
+        "median_ns": 293350,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623671135.5,
+        "out_hash": "f9f06f706b51b793"
+      },
+      "rust_patched": {
+        "median_ns": 196900,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623671135.5,
+        "out_hash": "f9f06f706b51b793"
+      },
+      "v250_decim": {
+        "median_ns": 142500,
+        "out_paths": 2,
+        "out_verts": 13,
+        "out_area_u2": 623704592.5642501,
+        "out_hash": "4fae39b0f0217fbb"
+      }
+    },
+    {
+      "case_index": 17,
+      "site": "IB_DEEP_NEG",
+      "layer": 41,
+      "opcode": 0,
+      "in_verts": 1303,
+      "rust_base": {
+        "median_ns": 2084600,
+        "out_paths": 1,
+        "out_verts": 200,
+        "out_area_u2": 4588214807.5,
+        "out_hash": "450d50317c515435"
+      },
+      "rust_patched": {
+        "median_ns": 1187900,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588224745.5,
+        "out_hash": "51eb28d255f49758"
+      },
+      "v250_decim": {
+        "median_ns": 851200,
+        "out_paths": 1,
+        "out_verts": 197,
+        "out_area_u2": 4588289700.45215,
+        "out_hash": "d45f591953d484e4"
+      }
+    },
+    {
+      "case_index": 18,
+      "site": "IB_DEEP_NEG",
+      "layer": 42,
+      "opcode": 0,
+      "in_verts": 2523,
+      "rust_base": {
+        "median_ns": 10226800,
+        "out_paths": 2,
+        "out_verts": 44,
+        "out_area_u2": 1280979848.5,
+        "out_hash": "560e8820d9f51df9"
+      },
+      "rust_patched": {
+        "median_ns": 7333750,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1280979955.0,
+        "out_hash": "09a4474eb9ddc3ad"
+      },
+      "v250_decim": {
+        "median_ns": 5395450,
+        "out_paths": 2,
+        "out_verts": 43,
+        "out_area_u2": 1281000757.4962,
+        "out_hash": "9fef7175c4b43b89"
+      }
+    },
+    {
+      "case_index": 19,
+      "site": "IB_DEEP_NEG",
+      "layer": 56,
+      "opcode": 0,
+      "in_verts": 3083,
+      "rust_base": {
+        "median_ns": 8034150,
+        "out_paths": 4,
+        "out_verts": 92,
+        "out_area_u2": 1410137899.0,
+        "out_hash": "fc31506923d28a88"
+      },
+      "rust_patched": {
+        "median_ns": 4110800,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410139105.5,
+        "out_hash": "629b9b294e2f333a"
+      },
+      "v250_decim": {
+        "median_ns": 2913400,
+        "out_paths": 4,
+        "out_verts": 91,
+        "out_area_u2": 1410199772.4115999,
+        "out_hash": "0fc68554f7388d2e"
+      }
+    },
+    {
+      "case_index": 20,
+      "site": "IB_DEEP_NEG",
+      "layer": 58,
+      "opcode": 0,
+      "in_verts": 1002,
+      "rust_base": {
+        "median_ns": 2613150,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924554688.5,
+        "out_hash": "cb46601923465116"
+      },
+      "rust_patched": {
+        "median_ns": 1671800,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924555693.0,
+        "out_hash": "4c879d1e63044976"
+      },
+      "v250_decim": {
+        "median_ns": 1095100,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 924593459.00175,
+        "out_hash": "eeda96a2d96cffba"
+      }
+    },
+    {
+      "case_index": 21,
+      "site": "IB_DEEP_NEG",
+      "layer": 68,
+      "opcode": 0,
+      "in_verts": 3867,
+      "rust_base": {
+        "median_ns": 11589850,
+        "out_paths": 5,
+        "out_verts": 554,
+        "out_area_u2": 5536392740.0,
+        "out_hash": "7e7b48b67dd28330"
+      },
+      "rust_patched": {
+        "median_ns": 4675450,
+        "out_paths": 5,
+        "out_verts": 513,
+        "out_area_u2": 5536411308.0,
+        "out_hash": "f09c639f0139b449"
+      },
+      "v250_decim": {
+        "median_ns": 3352100,
+        "out_paths": 5,
+        "out_verts": 510,
+        "out_area_u2": 5542098217.095851,
+        "out_hash": "9250c81ad0c20911"
+      }
+    },
+    {
+      "case_index": 22,
+      "site": "IB_DEEP_NEG",
+      "layer": 100,
+      "opcode": 0,
+      "in_verts": 845,
+      "rust_base": {
+        "median_ns": 1722500,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195089783.5,
+        "out_hash": "6f483c558ff69dad"
+      },
+      "rust_patched": {
+        "median_ns": 1128800,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195089783.5,
+        "out_hash": "6f483c558ff69dad"
+      },
+      "v250_decim": {
+        "median_ns": 765900,
+        "out_paths": 1,
+        "out_verts": 21,
+        "out_area_u2": 195115446.863,
+        "out_hash": "f1e82848de600e92"
+      }
+    },
+    {
+      "case_index": 23,
+      "site": "IB_DEEP_NEG",
+      "layer": 133,
+      "opcode": 0,
+      "in_verts": 1174,
+      "rust_base": {
+        "median_ns": 5178800,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 2092750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 1680350,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 24,
+      "site": "IB_DEEP_NEG",
+      "layer": 165,
+      "opcode": 0,
+      "in_verts": 4610,
+      "rust_base": {
+        "median_ns": 51229000,
+        "out_paths": 7,
+        "out_verts": 363,
+        "out_area_u2": 3245626479.0,
+        "out_hash": "b928a12fbc1f81da"
+      },
+      "rust_patched": {
+        "median_ns": 25504800,
+        "out_paths": 7,
+        "out_verts": 336,
+        "out_area_u2": 3245632333.0,
+        "out_hash": "a69216456a359066"
+      },
+      "v250_decim": {
+        "median_ns": 20846150,
+        "out_paths": 7,
+        "out_verts": 334,
+        "out_area_u2": 3262696506.9291,
+        "out_hash": "ceb2ba10dcd872e6"
+      }
+    },
+    {
+      "case_index": 25,
+      "site": "IB_DEEP_NEG",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 1057,
+      "rust_base": {
+        "median_ns": 3088600,
+        "out_paths": 2,
+        "out_verts": 40,
+        "out_area_u2": 1142972683.5,
+        "out_hash": "a331a05239e95f86"
+      },
+      "rust_patched": {
+        "median_ns": 1654150,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1142975283.0,
+        "out_hash": "18face4629623c46"
+      },
+      "v250_decim": {
+        "median_ns": 1015150,
+        "out_paths": 2,
+        "out_verts": 39,
+        "out_area_u2": 1143041556.7488,
+        "out_hash": "8cc42316aea80489"
+      }
+    },
+    {
+      "case_index": 26,
+      "site": "IB_DEEP_NEG",
+      "layer": 268,
+      "opcode": 0,
+      "in_verts": 718,
+      "rust_base": {
+        "median_ns": 998350,
+        "out_paths": 1,
+        "out_verts": 48,
+        "out_area_u2": 796647736.5,
+        "out_hash": "7e6d5b770363b294"
+      },
+      "rust_patched": {
+        "median_ns": 528300,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796653307.0,
+        "out_hash": "83ced5b336bb4055"
+      },
+      "v250_decim": {
+        "median_ns": 352550,
+        "out_paths": 1,
+        "out_verts": 49,
+        "out_area_u2": 796807464.86555,
+        "out_hash": "2def1da544d4cbdc"
+      }
+    },
+    {
+      "case_index": 27,
+      "site": "IB_DEEP_NEG",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 2320,
+      "rust_base": {
+        "median_ns": 21499800,
+        "out_paths": 3,
+        "out_verts": 471,
+        "out_area_u2": 8674506308.0,
+        "out_hash": "6013eccf3f9375a4"
+      },
+      "rust_patched": {
+        "median_ns": 9400050,
+        "out_paths": 3,
+        "out_verts": 428,
+        "out_area_u2": 8674541254.5,
+        "out_hash": "7a53dbb167635c29"
+      },
+      "v250_decim": {
+        "median_ns": 7431150,
+        "out_paths": 3,
+        "out_verts": 426,
+        "out_area_u2": 8674889702.5156,
+        "out_hash": "66eb779dde79dbd9"
+      }
+    },
+    {
+      "case_index": 28,
+      "site": "IB_DEEP_NEG",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 690,
+      "rust_base": {
+        "median_ns": 692300,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422503904.5,
+        "out_hash": "71d04d4ae7812ca8"
+      },
+      "rust_patched": {
+        "median_ns": 409750,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422503374.5,
+        "out_hash": "543e307e2c780b1a"
+      },
+      "v250_decim": {
+        "median_ns": 268850,
+        "out_paths": 1,
+        "out_verts": 35,
+        "out_area_u2": 422521459.67655,
+        "out_hash": "e1aad2994c9a066e"
+      }
+    },
+    {
+      "case_index": 29,
+      "site": "IB_DEEP_NEG",
+      "layer": 468,
+      "opcode": 0,
+      "in_verts": 559,
+      "rust_base": {
+        "median_ns": 701100,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180735402.0,
+        "out_hash": "56bf576d0d7e6a85"
+      },
+      "rust_patched": {
+        "median_ns": 305700,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180735402.0,
+        "out_hash": "56bf576d0d7e6a85"
+      },
+      "v250_decim": {
+        "median_ns": 216900,
+        "out_paths": 1,
+        "out_verts": 14,
+        "out_area_u2": 180756187.7856,
+        "out_hash": "76206631b8f9bcf6"
+      }
+    },
+    {
+      "case_index": 30,
+      "site": "IB_DEEP_NEG",
+      "layer": 492,
+      "opcode": 0,
+      "in_verts": 759,
+      "rust_base": {
+        "median_ns": 1586600,
+        "out_paths": 1,
+        "out_verts": 53,
+        "out_area_u2": 112377536.0,
+        "out_hash": "727c9ef39268c79b"
+      },
+      "rust_patched": {
+        "median_ns": 882650,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112373380.5,
+        "out_hash": "749b67a503d6fa5e"
+      },
+      "v250_decim": {
+        "median_ns": 602650,
+        "out_paths": 1,
+        "out_verts": 47,
+        "out_area_u2": 112376914.56805,
+        "out_hash": "37cdd1ceb16d1475"
+      }
+    },
+    {
+      "case_index": 31,
+      "site": "IB_DEEP_NEG",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 812,
+      "rust_base": {
+        "median_ns": 1825650,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 958050,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 644700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 32,
+      "site": "IB_DEEP_POS",
+      "layer": 23,
+      "opcode": 0,
+      "in_verts": 5741,
+      "rust_base": {
+        "median_ns": 12077350,
+        "out_paths": 361,
+        "out_verts": 6258,
+        "out_area_u2": 11450615134.5,
+        "out_hash": "de7ffe0549f99af1"
+      },
+      "rust_patched": {
+        "median_ns": 5625200,
+        "out_paths": 74,
+        "out_verts": 2708,
+        "out_area_u2": 11322581269.5,
+        "out_hash": "b3143e492a00b31c"
+      },
+      "v250_decim": {
+        "median_ns": 3542550,
+        "out_paths": 3,
+        "out_verts": 1281,
+        "out_area_u2": 47887604361.282646,
+        "out_hash": "dd274a8591ff51d0"
+      }
+    },
+    {
+      "case_index": 33,
+      "site": "IB_DEEP_POS",
+      "layer": 37,
+      "opcode": 0,
+      "in_verts": 8630,
+      "rust_base": {
+        "median_ns": 14235800,
+        "out_paths": 4,
+        "out_verts": 2164,
+        "out_area_u2": 87556004270.5,
+        "out_hash": "e3d2a013fa19f650"
+      },
+      "rust_patched": {
+        "median_ns": 8254100,
+        "out_paths": 4,
+        "out_verts": 2085,
+        "out_area_u2": 87556005654.0,
+        "out_hash": "27998385503b55a3"
+      },
+      "v250_decim": {
+        "median_ns": 6226000,
+        "out_paths": 4,
+        "out_verts": 2099,
+        "out_area_u2": 87555848449.4361,
+        "out_hash": "4372b9ecd2627a12"
+      }
+    },
+    {
+      "case_index": 34,
+      "site": "IB_DEEP_POS",
+      "layer": 46,
+      "opcode": 0,
+      "in_verts": 13758,
+      "rust_base": {
+        "median_ns": 50301750,
+        "out_paths": 4,
+        "out_verts": 3004,
+        "out_area_u2": 117698074398.5,
+        "out_hash": "8d1de45d1a92832f"
+      },
+      "rust_patched": {
+        "median_ns": 27883950,
+        "out_paths": 4,
+        "out_verts": 2947,
+        "out_area_u2": 117698050706.0,
+        "out_hash": "f263b1bba6af4397"
+      },
+      "v250_decim": {
+        "median_ns": 20576250,
+        "out_paths": 4,
+        "out_verts": 2965,
+        "out_area_u2": 117697891166.54213,
+        "out_hash": "0104650e06ac7935"
+      }
+    },
+    {
+      "case_index": 35,
+      "site": "IB_DEEP_POS",
+      "layer": 48,
+      "opcode": 0,
+      "in_verts": 14536,
+      "rust_base": {
+        "median_ns": 57483950,
+        "out_paths": 3,
+        "out_verts": 3055,
+        "out_area_u2": 118308738947.0,
+        "out_hash": "078e6f740c8b3f2f"
+      },
+      "rust_patched": {
+        "median_ns": 33898050,
+        "out_paths": 3,
+        "out_verts": 2995,
+        "out_area_u2": 118308672926.5,
+        "out_hash": "27abefcd7fbc4f22"
+      },
+      "v250_decim": {
+        "median_ns": 25274100,
+        "out_paths": 3,
+        "out_verts": 3007,
+        "out_area_u2": 118309348175.9006,
+        "out_hash": "781d959c0cee08a1"
+      }
+    },
+    {
+      "case_index": 36,
+      "site": "IB_DEEP_POS",
+      "layer": 57,
+      "opcode": 0,
+      "in_verts": 10246,
+      "rust_base": {
+        "median_ns": 22146500,
+        "out_paths": 1,
+        "out_verts": 2254,
+        "out_area_u2": 117737630925.5,
+        "out_hash": "e7a9adbcc83efd38"
+      },
+      "rust_patched": {
+        "median_ns": 13765050,
+        "out_paths": 1,
+        "out_verts": 2208,
+        "out_area_u2": 117737597688.0,
+        "out_hash": "70b5f0d3a27b47c5"
+      },
+      "v250_decim": {
+        "median_ns": 9918050,
+        "out_paths": 1,
+        "out_verts": 2224,
+        "out_area_u2": 117737557204.03305,
+        "out_hash": "e3eb8f3993db205d"
+      }
+    },
+    {
+      "case_index": 37,
+      "site": "IB_DEEP_POS",
+      "layer": 66,
+      "opcode": 0,
+      "in_verts": 8080,
+      "rust_base": {
+        "median_ns": 20975150,
+        "out_paths": 643,
+        "out_verts": 9644,
+        "out_area_u2": 14910706748.0,
+        "out_hash": "5146f228cea01c11"
+      },
+      "rust_patched": {
+        "median_ns": 7158900,
+        "out_paths": 106,
+        "out_verts": 4256,
+        "out_area_u2": 14738468777.5,
+        "out_hash": "2fd9129cdb475627"
+      },
+      "v250_decim": {
+        "median_ns": 5400650,
+        "out_paths": 1,
+        "out_verts": 2039,
+        "out_area_u2": 118825897210.95026,
+        "out_hash": "30c431b591e8d608"
+      }
+    },
+    {
+      "case_index": 38,
+      "site": "IB_DEEP_POS",
+      "layer": 99,
+      "opcode": 0,
+      "in_verts": 9986,
+      "rust_base": {
+        "median_ns": 23425600,
+        "out_paths": 1,
+        "out_verts": 2527,
+        "out_area_u2": 137297432935.5,
+        "out_hash": "c61687de37d4256d"
+      },
+      "rust_patched": {
+        "median_ns": 11905000,
+        "out_paths": 1,
+        "out_verts": 2405,
+        "out_area_u2": 137297429763.0,
+        "out_hash": "85222a765e812d3a"
+      },
+      "v250_decim": {
+        "median_ns": 8656900,
+        "out_paths": 1,
+        "out_verts": 2417,
+        "out_area_u2": 137297460076.6174,
+        "out_hash": "2ed2373726eb120e"
+      }
+    },
+    {
+      "case_index": 39,
+      "site": "IB_DEEP_POS",
+      "layer": 116,
+      "opcode": 0,
+      "in_verts": 10550,
+      "rust_base": {
+        "median_ns": 27875100,
+        "out_paths": 1,
+        "out_verts": 2882,
+        "out_area_u2": 130201795943.0,
+        "out_hash": "b3f5be90a2790348"
+      },
+      "rust_patched": {
+        "median_ns": 14024350,
+        "out_paths": 1,
+        "out_verts": 2705,
+        "out_area_u2": 130201775087.0,
+        "out_hash": "d64f8a3911bc2867"
+      },
+      "v250_decim": {
+        "median_ns": 10300750,
+        "out_paths": 1,
+        "out_verts": 2721,
+        "out_area_u2": 130200839680.94855,
+        "out_hash": "2b5c3c7078578ca1"
+      }
+    },
+    {
+      "case_index": 40,
+      "site": "IB_DEEP_POS",
+      "layer": 132,
+      "opcode": 0,
+      "in_verts": 9760,
+      "rust_base": {
+        "median_ns": 68828550,
+        "out_paths": 4,
+        "out_verts": 2633,
+        "out_area_u2": 117206703520.0,
+        "out_hash": "92de204abc3e8cf7"
+      },
+      "rust_patched": {
+        "median_ns": 37605900,
+        "out_paths": 4,
+        "out_verts": 2490,
+        "out_area_u2": 117206732499.5,
+        "out_hash": "05e97022df68f0bb"
+      },
+      "v250_decim": {
+        "median_ns": 34227000,
+        "out_paths": 4,
+        "out_verts": 2482,
+        "out_area_u2": 117210006675.94205,
+        "out_hash": "e1989260cdbd7ae5"
+      }
+    },
+    {
+      "case_index": 41,
+      "site": "IB_DEEP_POS",
+      "layer": 157,
+      "opcode": 0,
+      "in_verts": 11766,
+      "rust_base": {
+        "median_ns": 91656150,
+        "out_paths": 2,
+        "out_verts": 2997,
+        "out_area_u2": 120827608906.0,
+        "out_hash": "4ece644ced1d7fcf"
+      },
+      "rust_patched": {
+        "median_ns": 51762050,
+        "out_paths": 2,
+        "out_verts": 2893,
+        "out_area_u2": 120827592705.5,
+        "out_hash": "2663e10fd34ded01"
+      },
+      "v250_decim": {
+        "median_ns": 43318900,
+        "out_paths": 2,
+        "out_verts": 2902,
+        "out_area_u2": 120825924579.79385,
+        "out_hash": "74b8470c8a271b85"
+      }
+    },
+    {
+      "case_index": 42,
+      "site": "IB_DEEP_POS",
+      "layer": 210,
+      "opcode": 0,
+      "in_verts": 9622,
+      "rust_base": {
+        "median_ns": 88703750,
+        "out_paths": 1,
+        "out_verts": 2305,
+        "out_area_u2": 121400856085.0,
+        "out_hash": "bd6f09f61d402605"
+      },
+      "rust_patched": {
+        "median_ns": 51324200,
+        "out_paths": 1,
+        "out_verts": 2169,
+        "out_area_u2": 121400852448.5,
+        "out_hash": "c3874567aa50f00a"
+      },
+      "v250_decim": {
+        "median_ns": 46375150,
+        "out_paths": 1,
+        "out_verts": 2168,
+        "out_area_u2": 121400765225.4537,
+        "out_hash": "d5c4f333bc28d2e9"
+      }
+    },
+    {
+      "case_index": 43,
+      "site": "IB_DEEP_POS",
+      "layer": 225,
+      "opcode": 0,
+      "in_verts": 9209,
+      "rust_base": {
+        "median_ns": 90960650,
+        "out_paths": 1,
+        "out_verts": 2087,
+        "out_area_u2": 115725263686.5,
+        "out_hash": "e7684808ad2d224c"
+      },
+      "rust_patched": {
+        "median_ns": 46506700,
+        "out_paths": 1,
+        "out_verts": 1986,
+        "out_area_u2": 115725271895.5,
+        "out_hash": "a296beee90fc7330"
+      },
+      "v250_decim": {
+        "median_ns": 41084000,
+        "out_paths": 1,
+        "out_verts": 1993,
+        "out_area_u2": 115730201074.41576,
+        "out_hash": "7a22c0d9517a2853"
+      }
+    },
+    {
+      "case_index": 44,
+      "site": "IB_DEEP_POS",
+      "layer": 231,
+      "opcode": 0,
+      "in_verts": 8264,
+      "rust_base": {
+        "median_ns": 58869300,
+        "out_paths": 525,
+        "out_verts": 6801,
+        "out_area_u2": 12251956834.0,
+        "out_hash": "eb5a1ad2d5e3c8dd"
+      },
+      "rust_patched": {
+        "median_ns": 25987100,
+        "out_paths": 93,
+        "out_verts": 3709,
+        "out_area_u2": 12174989539.0,
+        "out_hash": "8f75e514ae7de35d"
+      },
+      "v250_decim": {
+        "median_ns": 47319050,
+        "out_paths": 1,
+        "out_verts": 1900,
+        "out_area_u2": 113560289748.08345,
+        "out_hash": "a02da9585dd5ab96"
+      }
+    },
+    {
+      "case_index": 45,
+      "site": "IB_DEEP_POS",
+      "layer": 250,
+      "opcode": 0,
+      "in_verts": 8485,
+      "rust_base": {
+        "median_ns": 93598700,
+        "out_paths": 1,
+        "out_verts": 2237,
+        "out_area_u2": 113822370909.5,
+        "out_hash": "5964aa5ed9620a72"
+      },
+      "rust_patched": {
+        "median_ns": 47650650,
+        "out_paths": 1,
+        "out_verts": 2051,
+        "out_area_u2": 113822407806.0,
+        "out_hash": "4b457eb5511d2392"
+      },
+      "v250_decim": {
+        "median_ns": 41748400,
+        "out_paths": 1,
+        "out_verts": 2045,
+        "out_area_u2": 113822350078.1849,
+        "out_hash": "2b4d4b8f64fd3bfe"
+      }
+    },
+    {
+      "case_index": 46,
+      "site": "IB_DEEP_POS",
+      "layer": 298,
+      "opcode": 0,
+      "in_verts": 7920,
+      "rust_base": {
+        "median_ns": 40867150,
+        "out_paths": 535,
+        "out_verts": 6256,
+        "out_area_u2": 11866846559.5,
+        "out_hash": "516f0634de19b4f0"
+      },
+      "rust_patched": {
+        "median_ns": 14008600,
+        "out_paths": 116,
+        "out_verts": 3428,
+        "out_area_u2": 11782533907.5,
+        "out_hash": "aa0e9d94aebc165b"
+      },
+      "v250_decim": {
+        "median_ns": 35598400,
+        "out_paths": 1,
+        "out_verts": 2034,
+        "out_area_u2": 99296721313.71895,
+        "out_hash": "2cd0ef5f20a65866"
+      }
+    },
+    {
+      "case_index": 47,
+      "site": "IB_DEEP_POS",
+      "layer": 311,
+      "opcode": 0,
+      "in_verts": 6713,
+      "rust_base": {
+        "median_ns": 84460300,
+        "out_paths": 1,
+        "out_verts": 1571,
+        "out_area_u2": 86713757373.0,
+        "out_hash": "0f564feae12bc6aa"
+      },
+      "rust_patched": {
+        "median_ns": 45753050,
+        "out_paths": 1,
+        "out_verts": 1476,
+        "out_area_u2": 86713755121.5,
+        "out_hash": "a6e3499d6b88b5d9"
+      },
+      "v250_decim": {
+        "median_ns": 39851200,
+        "out_paths": 1,
+        "out_verts": 1479,
+        "out_area_u2": 86713694211.08624,
+        "out_hash": "3cc425bca07759a9"
+      }
+    },
+    {
+      "case_index": 48,
+      "site": "IB_DEEP_POS",
+      "layer": 318,
+      "opcode": 0,
+      "in_verts": 7536,
+      "rust_base": {
+        "median_ns": 111231550,
+        "out_paths": 1,
+        "out_verts": 1836,
+        "out_area_u2": 86550665611.0,
+        "out_hash": "45c191fb858c577a"
+      },
+      "rust_patched": {
+        "median_ns": 67588900,
+        "out_paths": 1,
+        "out_verts": 1714,
+        "out_area_u2": 86550680520.0,
+        "out_hash": "4d6aa0df9f35162f"
+      },
+      "v250_decim": {
+        "median_ns": 55365050,
+        "out_paths": 1,
+        "out_verts": 1717,
+        "out_area_u2": 86554174993.82664,
+        "out_hash": "c5fa77405e853fa4"
+      }
+    },
+    {
+      "case_index": 49,
+      "site": "IB_DEEP_POS",
+      "layer": 320,
+      "opcode": 0,
+      "in_verts": 6090,
+      "rust_base": {
+        "median_ns": 65140350,
+        "out_paths": 1,
+        "out_verts": 1437,
+        "out_area_u2": 86836824281.5,
+        "out_hash": "3467934d1c0202ce"
+      },
+      "rust_patched": {
+        "median_ns": 42489050,
+        "out_paths": 1,
+        "out_verts": 1342,
+        "out_area_u2": 86836840145.0,
+        "out_hash": "8fabb132669514e8"
+      },
+      "v250_decim": {
+        "median_ns": 29771650,
+        "out_paths": 1,
+        "out_verts": 1344,
+        "out_area_u2": 86836984087.34785,
+        "out_hash": "282e387ee1c65ce2"
+      }
+    },
+    {
+      "case_index": 50,
+      "site": "IB_DEEP_POS",
+      "layer": 322,
+      "opcode": 0,
+      "in_verts": 5351,
+      "rust_base": {
+        "median_ns": 39492800,
+        "out_paths": 1,
+        "out_verts": 1436,
+        "out_area_u2": 84813926936.0,
+        "out_hash": "625305e6035b2e9e"
+      },
+      "rust_patched": {
+        "median_ns": 24828150,
+        "out_paths": 1,
+        "out_verts": 1319,
+        "out_area_u2": 84813948825.0,
+        "out_hash": "fbdc58c87e04c3f8"
+      },
+      "v250_decim": {
+        "median_ns": 17520950,
+        "out_paths": 1,
+        "out_verts": 1323,
+        "out_area_u2": 84814308871.5942,
+        "out_hash": "a7e6681e227170d4"
+      }
+    },
+    {
+      "case_index": 51,
+      "site": "IB_DEEP_POS",
+      "layer": 379,
+      "opcode": 0,
+      "in_verts": 4254,
+      "rust_base": {
+        "median_ns": 40063100,
+        "out_paths": 1,
+        "out_verts": 1214,
+        "out_area_u2": 75496061892.5,
+        "out_hash": "7c365c8fc84e5ac6"
+      },
+      "rust_patched": {
+        "median_ns": 19284500,
+        "out_paths": 1,
+        "out_verts": 1120,
+        "out_area_u2": 75496080215.5,
+        "out_hash": "80d4a95c2fee97de"
+      },
+      "v250_decim": {
+        "median_ns": 14331150,
+        "out_paths": 1,
+        "out_verts": 1121,
+        "out_area_u2": 75496210914.10036,
+        "out_hash": "4e290f5149e00362"
+      }
+    },
+    {
+      "case_index": 52,
+      "site": "IB_DEEP_POS",
+      "layer": 386,
+      "opcode": 0,
+      "in_verts": 4487,
+      "rust_base": {
+        "median_ns": 37979050,
+        "out_paths": 1,
+        "out_verts": 1096,
+        "out_area_u2": 71175466395.0,
+        "out_hash": "95e27f47ed03b3c3"
+      },
+      "rust_patched": {
+        "median_ns": 18003200,
+        "out_paths": 1,
+        "out_verts": 1037,
+        "out_area_u2": 71175456627.0,
+        "out_hash": "d7e7f72dbec91225"
+      },
+      "v250_decim": {
+        "median_ns": 11891200,
+        "out_paths": 1,
+        "out_verts": 1037,
+        "out_area_u2": 71175617642.3612,
+        "out_hash": "c4f3029ac3c28550"
+      }
+    },
+    {
+      "case_index": 53,
+      "site": "IB_DEEP_POS",
+      "layer": 397,
+      "opcode": 0,
+      "in_verts": 4997,
+      "rust_base": {
+        "median_ns": 55470400,
+        "out_paths": 288,
+        "out_verts": 3979,
+        "out_area_u2": 7552684462.0,
+        "out_hash": "101439c842d7428b"
+      },
+      "rust_patched": {
+        "median_ns": 29833050,
+        "out_paths": 67,
+        "out_verts": 2252,
+        "out_area_u2": 7515451165.5,
+        "out_hash": "5320614b25614923"
+      },
+      "v250_decim": {
+        "median_ns": 33143750,
+        "out_paths": 1,
+        "out_verts": 1199,
+        "out_area_u2": 68086735407.86255,
+        "out_hash": "f6b93abc815869fc"
+      }
+    },
+    {
+      "case_index": 54,
+      "site": "IB_DEEP_POS",
+      "layer": 469,
+      "opcode": 0,
+      "in_verts": 2271,
+      "rust_base": {
+        "median_ns": 5710600,
+        "out_paths": 1,
+        "out_verts": 661,
+        "out_area_u2": 26169904293.0,
+        "out_hash": "650fc74d3a01e0e8"
+      },
+      "rust_patched": {
+        "median_ns": 3178250,
+        "out_paths": 1,
+        "out_verts": 620,
+        "out_area_u2": 26169897751.0,
+        "out_hash": "b3732d262ffa8829"
+      },
+      "v250_decim": {
+        "median_ns": 1820250,
+        "out_paths": 1,
+        "out_verts": 622,
+        "out_area_u2": 26169802372.2805,
+        "out_hash": "e254dfcd29233011"
+      }
+    },
+    {
+      "case_index": 55,
+      "site": "IB_DEEP_POS",
+      "layer": 493,
+      "opcode": 0,
+      "in_verts": 844,
+      "rust_base": {
+        "median_ns": 1190700,
+        "out_paths": 1,
+        "out_verts": 171,
+        "out_area_u2": 3078258536.5,
+        "out_hash": "5488c3ffe28d085f"
+      },
+      "rust_patched": {
+        "median_ns": 901350,
+        "out_paths": 1,
+        "out_verts": 168,
+        "out_area_u2": 3078254558.0,
+        "out_hash": "b104b9b59cb2eefc"
+      },
+      "v250_decim": {
+        "median_ns": 466800,
+        "out_paths": 1,
+        "out_verts": 169,
+        "out_area_u2": 3078307548.3677,
+        "out_hash": "8bb8949f22d58868"
+      }
+    },
+    {
+      "case_index": 56,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_base": {
+        "median_ns": 183250,
+        "out_paths": 1,
+        "out_verts": 225,
+        "out_area_u2": 231405930.5,
+        "out_hash": "c2b3e447c57a088b"
+      },
+      "rust_patched": {
+        "median_ns": 97450,
+        "out_paths": 1,
+        "out_verts": 205,
+        "out_area_u2": 231410209.0,
+        "out_hash": "7cde8f3fd35aee3e"
+      },
+      "v250_decim": {
+        "median_ns": 68800,
+        "out_paths": 1,
+        "out_verts": 207,
+        "out_area_u2": 231413285.72495,
+        "out_hash": "2f0137ecd4b013af"
+      }
+    },
+    {
+      "case_index": 57,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_base": {
+        "median_ns": 13688300,
+        "out_paths": 14,
+        "out_verts": 7498,
+        "out_area_u2": 4417211695.0,
+        "out_hash": "39497a572d6e51b1"
+      },
+      "rust_patched": {
+        "median_ns": 6562450,
+        "out_paths": 14,
+        "out_verts": 7009,
+        "out_area_u2": 4417138824.5,
+        "out_hash": "39d94f1fe40acd33"
+      },
+      "v250_decim": {
+        "median_ns": 4552900,
+        "out_paths": 14,
+        "out_verts": 7272,
+        "out_area_u2": 4417338592.6395,
+        "out_hash": "eeee115763c6adfe"
+      }
+    },
+    {
+      "case_index": 58,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_base": {
+        "median_ns": 7610500,
+        "out_paths": 11,
+        "out_verts": 4687,
+        "out_area_u2": 1651444150.0,
+        "out_hash": "af188f20d67c043d"
+      },
+      "rust_patched": {
+        "median_ns": 3984700,
+        "out_paths": 11,
+        "out_verts": 4301,
+        "out_area_u2": 1651471802.5,
+        "out_hash": "18bffaa9a2f0874c"
+      },
+      "v250_decim": {
+        "median_ns": 3302400,
+        "out_paths": 11,
+        "out_verts": 4514,
+        "out_area_u2": 1651464055.9330497,
+        "out_hash": "a5747a47967f44a8"
+      }
+    },
+    {
+      "case_index": 59,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_base": {
+        "median_ns": 4131950,
+        "out_paths": 8,
+        "out_verts": 1292,
+        "out_area_u2": 294139881.5,
+        "out_hash": "77c8503f708a5121"
+      },
+      "rust_patched": {
+        "median_ns": 2400700,
+        "out_paths": 8,
+        "out_verts": 1181,
+        "out_area_u2": 294144827.5,
+        "out_hash": "589e6a92350d0e3a"
+      },
+      "v250_decim": {
+        "median_ns": 1852500,
+        "out_paths": 8,
+        "out_verts": 1235,
+        "out_area_u2": 294152124.3262,
+        "out_hash": "64af1424169d6bba"
+      }
+    },
+    {
+      "case_index": 60,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_base": {
+        "median_ns": 12807500,
+        "out_paths": 13,
+        "out_verts": 3147,
+        "out_area_u2": 947146210.0,
+        "out_hash": "e09f3684a1f8357f"
+      },
+      "rust_patched": {
+        "median_ns": 6119700,
+        "out_paths": 13,
+        "out_verts": 2928,
+        "out_area_u2": 946978479.0,
+        "out_hash": "cdb93fb965a466e3"
+      },
+      "v250_decim": {
+        "median_ns": 4137550,
+        "out_paths": 13,
+        "out_verts": 3054,
+        "out_area_u2": 947126579.4030001,
+        "out_hash": "2af0df4063004c92"
+      }
+    },
+    {
+      "case_index": 61,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_base": {
+        "median_ns": 9670300,
+        "out_paths": 15,
+        "out_verts": 2667,
+        "out_area_u2": 692064712.0,
+        "out_hash": "f2de3b22aa53b7dc"
+      },
+      "rust_patched": {
+        "median_ns": 3887900,
+        "out_paths": 15,
+        "out_verts": 2514,
+        "out_area_u2": 691978087.5,
+        "out_hash": "72d7c3ac02b3b72e"
+      },
+      "v250_decim": {
+        "median_ns": 3472750,
+        "out_paths": 15,
+        "out_verts": 2609,
+        "out_area_u2": 692069761.77505,
+        "out_hash": "f27204f1a9c988ba"
+      }
+    },
+    {
+      "case_index": 62,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_base": {
+        "median_ns": 10258200,
+        "out_paths": 9,
+        "out_verts": 1161,
+        "out_area_u2": 327069179.5,
+        "out_hash": "38080572d62f5bb2"
+      },
+      "rust_patched": {
+        "median_ns": 3375350,
+        "out_paths": 9,
+        "out_verts": 1113,
+        "out_area_u2": 327024574.0,
+        "out_hash": "2cbdebde85a87b5a"
+      },
+      "v250_decim": {
+        "median_ns": 3047250,
+        "out_paths": 9,
+        "out_verts": 1167,
+        "out_area_u2": 327056476.8735,
+        "out_hash": "ab2796063c68b815"
+      }
+    },
+    {
+      "case_index": 63,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_base": {
+        "median_ns": 8591850,
+        "out_paths": 12,
+        "out_verts": 1307,
+        "out_area_u2": 350671789.0,
+        "out_hash": "fc7b9fb6a6670ce9"
+      },
+      "rust_patched": {
+        "median_ns": 4348800,
+        "out_paths": 12,
+        "out_verts": 1259,
+        "out_area_u2": 350666756.0,
+        "out_hash": "769b4f7951356e53"
+      },
+      "v250_decim": {
+        "median_ns": 3176750,
+        "out_paths": 12,
+        "out_verts": 1310,
+        "out_area_u2": 350650055.28055,
+        "out_hash": "5cfb04d04260a918"
+      }
+    },
+    {
+      "case_index": 64,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_base": {
+        "median_ns": 4161100,
+        "out_paths": 7,
+        "out_verts": 1640,
+        "out_area_u2": 441018873.0,
+        "out_hash": "2314b52535d4b815"
+      },
+      "rust_patched": {
+        "median_ns": 2494050,
+        "out_paths": 7,
+        "out_verts": 1541,
+        "out_area_u2": 441026272.0,
+        "out_hash": "ed4db1ffb1b875e9"
+      },
+      "v250_decim": {
+        "median_ns": 2064700,
+        "out_paths": 7,
+        "out_verts": 1599,
+        "out_area_u2": 441227861.28134996,
+        "out_hash": "5ca84965701b5fbf"
+      }
+    },
+    {
+      "case_index": 65,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_base": {
+        "median_ns": 8146800,
+        "out_paths": 8,
+        "out_verts": 1733,
+        "out_area_u2": 679205203.5,
+        "out_hash": "f1f7811c561d8162"
+      },
+      "rust_patched": {
+        "median_ns": 4417350,
+        "out_paths": 8,
+        "out_verts": 1605,
+        "out_area_u2": 679204674.5,
+        "out_hash": "d3992eaf5193f21d"
+      },
+      "v250_decim": {
+        "median_ns": 3653650,
+        "out_paths": 8,
+        "out_verts": 1650,
+        "out_area_u2": 679221125.312,
+        "out_hash": "c022a13dab09b3e6"
+      }
+    },
+    {
+      "case_index": 66,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_base": {
+        "median_ns": 5084300,
+        "out_paths": 13,
+        "out_verts": 882,
+        "out_area_u2": 135075785.5,
+        "out_hash": "3db392009b402053"
+      },
+      "rust_patched": {
+        "median_ns": 3037050,
+        "out_paths": 13,
+        "out_verts": 847,
+        "out_area_u2": 135217003.0,
+        "out_hash": "8b44f663e2a88a20"
+      },
+      "v250_decim": {
+        "median_ns": 1905200,
+        "out_paths": 13,
+        "out_verts": 876,
+        "out_area_u2": 135377024.77549997,
+        "out_hash": "58134448bc00891a"
+      }
+    },
+    {
+      "case_index": 67,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_base": {
+        "median_ns": 7206250,
+        "out_paths": 9,
+        "out_verts": 1199,
+        "out_area_u2": 511687259.0,
+        "out_hash": "69a26328f30ccf42"
+      },
+      "rust_patched": {
+        "median_ns": 3026950,
+        "out_paths": 9,
+        "out_verts": 1158,
+        "out_area_u2": 511686690.0,
+        "out_hash": "3decf4cb0267a13b"
+      },
+      "v250_decim": {
+        "median_ns": 2456950,
+        "out_paths": 9,
+        "out_verts": 1195,
+        "out_area_u2": 511675706.5856,
+        "out_hash": "41bfa73294fab547"
+      }
+    },
+    {
+      "case_index": 68,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_base": {
+        "median_ns": 2704200,
+        "out_paths": 5,
+        "out_verts": 1103,
+        "out_area_u2": 410261415.0,
+        "out_hash": "97bbf66f65663e85"
+      },
+      "rust_patched": {
+        "median_ns": 1645300,
+        "out_paths": 5,
+        "out_verts": 1023,
+        "out_area_u2": 410250855.5,
+        "out_hash": "37bd8a7b796453eb"
+      },
+      "v250_decim": {
+        "median_ns": 1180500,
+        "out_paths": 5,
+        "out_verts": 1074,
+        "out_area_u2": 410017702.34835,
+        "out_hash": "7277e61e068d9260"
+      }
+    },
+    {
+      "case_index": 69,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_base": {
+        "median_ns": 1204250,
+        "out_paths": 1,
+        "out_verts": 107,
+        "out_area_u2": 14062489.5,
+        "out_hash": "1e500af3e815e10c"
+      },
+      "rust_patched": {
+        "median_ns": 674550,
+        "out_paths": 1,
+        "out_verts": 101,
+        "out_area_u2": 14060640.0,
+        "out_hash": "ef8c51f2a77fe538"
+      },
+      "v250_decim": {
+        "median_ns": 478100,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 14060751.96765,
+        "out_hash": "847fd723f432882b"
+      }
+    },
+    {
+      "case_index": 70,
+      "site": "SH_OPEN_BOT_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_base": {
+        "median_ns": 12100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 8450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 8300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 71,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 0,
+      "opcode": 5,
+      "in_verts": 277,
+      "rust_base": {
+        "median_ns": 508300,
+        "out_paths": 1,
+        "out_verts": 318,
+        "out_area_u2": 227780386.0,
+        "out_hash": "7e3c136551df4dd4"
+      },
+      "rust_patched": {
+        "median_ns": 326700,
+        "out_paths": 1,
+        "out_verts": 314,
+        "out_area_u2": 227775519.5,
+        "out_hash": "967274ee632a5f5b"
+      },
+      "v250_decim": {
+        "median_ns": 200350,
+        "out_paths": 1,
+        "out_verts": 312,
+        "out_area_u2": 227775776.2629,
+        "out_hash": "c1945a02ce20497c"
+      }
+    },
+    {
+      "case_index": 72,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 11117,
+      "rust_base": {
+        "median_ns": 20332750,
+        "out_paths": 10,
+        "out_verts": 2872,
+        "out_area_u2": 2415704733.5,
+        "out_hash": "e8ceaa4664813c30"
+      },
+      "rust_patched": {
+        "median_ns": 10590750,
+        "out_paths": 10,
+        "out_verts": 2845,
+        "out_area_u2": 2415697862.5,
+        "out_hash": "90d19200b88ab572"
+      },
+      "v250_decim": {
+        "median_ns": 8028150,
+        "out_paths": 10,
+        "out_verts": 2812,
+        "out_area_u2": 2415719071.0617,
+        "out_hash": "bad578a37357febc"
+      }
+    },
+    {
+      "case_index": 73,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 7701,
+      "rust_base": {
+        "median_ns": 11063100,
+        "out_paths": 2,
+        "out_verts": 439,
+        "out_area_u2": 257788248.5,
+        "out_hash": "2de81565595eadb5"
+      },
+      "rust_patched": {
+        "median_ns": 7425900,
+        "out_paths": 2,
+        "out_verts": 433,
+        "out_area_u2": 257794458.0,
+        "out_hash": "13fad5306aba5a77"
+      },
+      "v250_decim": {
+        "median_ns": 5512950,
+        "out_paths": 2,
+        "out_verts": 412,
+        "out_area_u2": 257779030.42195,
+        "out_hash": "f0170f67562f7a11"
+      }
+    },
+    {
+      "case_index": 74,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 5031,
+      "rust_base": {
+        "median_ns": 9446450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 5529200,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 4866450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 75,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8263,
+      "rust_base": {
+        "median_ns": 26461750,
+        "out_paths": 2,
+        "out_verts": 309,
+        "out_area_u2": 262212915.5,
+        "out_hash": "852a1708152c25c9"
+      },
+      "rust_patched": {
+        "median_ns": 17290400,
+        "out_paths": 2,
+        "out_verts": 301,
+        "out_area_u2": 262263884.0,
+        "out_hash": "48c7cf1c3bf28fbb"
+      },
+      "v250_decim": {
+        "median_ns": 11451300,
+        "out_paths": 2,
+        "out_verts": 296,
+        "out_area_u2": 262274933.28855002,
+        "out_hash": "e58001e2745e02aa"
+      }
+    },
+    {
+      "case_index": 76,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7136,
+      "rust_base": {
+        "median_ns": 21079150,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15174455.0,
+        "out_hash": "0d579ce3ab5c79b9"
+      },
+      "rust_patched": {
+        "median_ns": 14943700,
+        "out_paths": 1,
+        "out_verts": 54,
+        "out_area_u2": 15181400.0,
+        "out_hash": "c1a68a389c402064"
+      },
+      "v250_decim": {
+        "median_ns": 10494350,
+        "out_paths": 1,
+        "out_verts": 52,
+        "out_area_u2": 15184183.32005,
+        "out_hash": "156e5f070a9f51a9"
+      }
+    },
+    {
+      "case_index": 77,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5404,
+      "rust_base": {
+        "median_ns": 28084750,
+        "out_paths": 2,
+        "out_verts": 178,
+        "out_area_u2": 55193898.5,
+        "out_hash": "d5cea9a05d228213"
+      },
+      "rust_patched": {
+        "median_ns": 17457000,
+        "out_paths": 2,
+        "out_verts": 181,
+        "out_area_u2": 55167014.0,
+        "out_hash": "67ca9fbfb094241a"
+      },
+      "v250_decim": {
+        "median_ns": 21395450,
+        "out_paths": 2,
+        "out_verts": 185,
+        "out_area_u2": 55181111.1066,
+        "out_hash": "53e76fce5f573e76"
+      }
+    },
+    {
+      "case_index": 78,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5452,
+      "rust_base": {
+        "median_ns": 27407900,
+        "out_paths": 2,
+        "out_verts": 196,
+        "out_area_u2": 60496750.0,
+        "out_hash": "7c3cb301d3482742"
+      },
+      "rust_patched": {
+        "median_ns": 20800650,
+        "out_paths": 2,
+        "out_verts": 189,
+        "out_area_u2": 60485817.0,
+        "out_hash": "fa666d3221d30a3e"
+      },
+      "v250_decim": {
+        "median_ns": 21463250,
+        "out_paths": 2,
+        "out_verts": 184,
+        "out_area_u2": 60490927.021299995,
+        "out_hash": "8daf80334dd81a28"
+      }
+    },
+    {
+      "case_index": 79,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 4476,
+      "rust_base": {
+        "median_ns": 10730500,
+        "out_paths": 2,
+        "out_verts": 127,
+        "out_area_u2": 30569005.5,
+        "out_hash": "b656221974a062d9"
+      },
+      "rust_patched": {
+        "median_ns": 7469950,
+        "out_paths": 2,
+        "out_verts": 126,
+        "out_area_u2": 30574340.0,
+        "out_hash": "898f58b8e1c02ce1"
+      },
+      "v250_decim": {
+        "median_ns": 7785300,
+        "out_paths": 2,
+        "out_verts": 121,
+        "out_area_u2": 30570006.83015,
+        "out_hash": "c1dd9e5c1a54ddc3"
+      }
+    },
+    {
+      "case_index": 80,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 4864,
+      "rust_base": {
+        "median_ns": 30502300,
+        "out_paths": 3,
+        "out_verts": 524,
+        "out_area_u2": 317092059.0,
+        "out_hash": "4d76750b3633d5c9"
+      },
+      "rust_patched": {
+        "median_ns": 24301950,
+        "out_paths": 3,
+        "out_verts": 514,
+        "out_area_u2": 317037053.0,
+        "out_hash": "04ab6cbd9f33664b"
+      },
+      "v250_decim": {
+        "median_ns": 28256950,
+        "out_paths": 3,
+        "out_verts": 511,
+        "out_area_u2": 317067482.773,
+        "out_hash": "44579f5a3f782970"
+      }
+    },
+    {
+      "case_index": 81,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 3543,
+      "rust_base": {
+        "median_ns": 15744300,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 11341400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 12449450,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 82,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 3537,
+      "rust_base": {
+        "median_ns": 25422850,
+        "out_paths": 1,
+        "out_verts": 162,
+        "out_area_u2": 82540947.5,
+        "out_hash": "5635a380ad660613"
+      },
+      "rust_patched": {
+        "median_ns": 16869450,
+        "out_paths": 1,
+        "out_verts": 166,
+        "out_area_u2": 82573941.5,
+        "out_hash": "155e992276d1d6e5"
+      },
+      "v250_decim": {
+        "median_ns": 21412700,
+        "out_paths": 1,
+        "out_verts": 167,
+        "out_area_u2": 82540705.3501,
+        "out_hash": "1985b986772c0f30"
+      }
+    },
+    {
+      "case_index": 83,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 2350,
+      "rust_base": {
+        "median_ns": 6375100,
+        "out_paths": 1,
+        "out_verts": 67,
+        "out_area_u2": 17202603.5,
+        "out_hash": "7785b7a2f85c4996"
+      },
+      "rust_patched": {
+        "median_ns": 5599700,
+        "out_paths": 1,
+        "out_verts": 67,
+        "out_area_u2": 17205290.5,
+        "out_hash": "dbc780d1dd6114c6"
+      },
+      "v250_decim": {
+        "median_ns": 3442850,
+        "out_paths": 1,
+        "out_verts": 63,
+        "out_area_u2": 17222277.6055,
+        "out_hash": "d992739256f78f76"
+      }
+    },
+    {
+      "case_index": 84,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 1640,
+      "rust_base": {
+        "median_ns": 3975100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 2492600,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 1976750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 85,
+      "site": "SH_OPEN_BOT_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 36,
+      "rust_base": {
+        "median_ns": 51850,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 29900,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 33750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 86,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_base": {
+        "median_ns": 5537450,
+        "out_paths": 10,
+        "out_verts": 4250,
+        "out_area_u2": 1405654660.0,
+        "out_hash": "a1d0ab61edc5361d"
+      },
+      "rust_patched": {
+        "median_ns": 2572900,
+        "out_paths": 10,
+        "out_verts": 3979,
+        "out_area_u2": 1405645490.5,
+        "out_hash": "7639e7df7e2ffc7f"
+      },
+      "v250_decim": {
+        "median_ns": 2354800,
+        "out_paths": 10,
+        "out_verts": 4098,
+        "out_area_u2": 1405618978.76805,
+        "out_hash": "8263c37ddf08d7b6"
+      }
+    },
+    {
+      "case_index": 87,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_base": {
+        "median_ns": 4478750,
+        "out_paths": 7,
+        "out_verts": 3486,
+        "out_area_u2": 1177911023.5,
+        "out_hash": "782503fea7eacac9"
+      },
+      "rust_patched": {
+        "median_ns": 2253700,
+        "out_paths": 7,
+        "out_verts": 3182,
+        "out_area_u2": 1177912833.0,
+        "out_hash": "9a1946fa2af31fc4"
+      },
+      "v250_decim": {
+        "median_ns": 1932700,
+        "out_paths": 7,
+        "out_verts": 3318,
+        "out_area_u2": 1177862851.61205,
+        "out_hash": "35525e4d70136ef4"
+      }
+    },
+    {
+      "case_index": 88,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_base": {
+        "median_ns": 6904650,
+        "out_paths": 12,
+        "out_verts": 3500,
+        "out_area_u2": 1099735257.0,
+        "out_hash": "78d31da5b5046169"
+      },
+      "rust_patched": {
+        "median_ns": 3940750,
+        "out_paths": 12,
+        "out_verts": 3262,
+        "out_area_u2": 1099761176.0,
+        "out_hash": "b1c2bb0e6ba04efb"
+      },
+      "v250_decim": {
+        "median_ns": 2951700,
+        "out_paths": 12,
+        "out_verts": 3397,
+        "out_area_u2": 1099782588.5811498,
+        "out_hash": "6dd4950b2aa8c4a4"
+      }
+    },
+    {
+      "case_index": 89,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_base": {
+        "median_ns": 10535950,
+        "out_paths": 19,
+        "out_verts": 3927,
+        "out_area_u2": 1451694747.5,
+        "out_hash": "eee3c894a60fd1cc"
+      },
+      "rust_patched": {
+        "median_ns": 5861500,
+        "out_paths": 19,
+        "out_verts": 3719,
+        "out_area_u2": 1451725779.0,
+        "out_hash": "66bdc60b6a1b1888"
+      },
+      "v250_decim": {
+        "median_ns": 4310950,
+        "out_paths": 20,
+        "out_verts": 3862,
+        "out_area_u2": 1452787567.6925998,
+        "out_hash": "8ace3fdbfac4fc7a"
+      }
+    },
+    {
+      "case_index": 90,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_base": {
+        "median_ns": 8795500,
+        "out_paths": 18,
+        "out_verts": 1824,
+        "out_area_u2": 332808088.0,
+        "out_hash": "db23c2abd4552631"
+      },
+      "rust_patched": {
+        "median_ns": 4240300,
+        "out_paths": 18,
+        "out_verts": 1752,
+        "out_area_u2": 332768415.5,
+        "out_hash": "08dabfcdd0d1c153"
+      },
+      "v250_decim": {
+        "median_ns": 3217150,
+        "out_paths": 18,
+        "out_verts": 1826,
+        "out_area_u2": 332807666.7628,
+        "out_hash": "68f1da0af1cc6838"
+      }
+    },
+    {
+      "case_index": 91,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_base": {
+        "median_ns": 9156000,
+        "out_paths": 7,
+        "out_verts": 569,
+        "out_area_u2": 116065859.5,
+        "out_hash": "b0985570e26498a2"
+      },
+      "rust_patched": {
+        "median_ns": 3606350,
+        "out_paths": 7,
+        "out_verts": 537,
+        "out_area_u2": 115997079.5,
+        "out_hash": "e3509e6eae063512"
+      },
+      "v250_decim": {
+        "median_ns": 3418250,
+        "out_paths": 7,
+        "out_verts": 553,
+        "out_area_u2": 116020676.5127,
+        "out_hash": "a2dcada07139447f"
+      }
+    },
+    {
+      "case_index": 92,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_base": {
+        "median_ns": 7799500,
+        "out_paths": 6,
+        "out_verts": 545,
+        "out_area_u2": 100635584.0,
+        "out_hash": "68508b28afd04b55"
+      },
+      "rust_patched": {
+        "median_ns": 3248300,
+        "out_paths": 6,
+        "out_verts": 508,
+        "out_area_u2": 100643253.0,
+        "out_hash": "4cbf5cb038017dd6"
+      },
+      "v250_decim": {
+        "median_ns": 3012200,
+        "out_paths": 6,
+        "out_verts": 530,
+        "out_area_u2": 100642602.79419999,
+        "out_hash": "4903327c75b5fcca"
+      }
+    },
+    {
+      "case_index": 93,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_base": {
+        "median_ns": 18779200,
+        "out_paths": 21,
+        "out_verts": 3041,
+        "out_area_u2": 1286392006.0,
+        "out_hash": "28d4405ce7c00c02"
+      },
+      "rust_patched": {
+        "median_ns": 8635300,
+        "out_paths": 21,
+        "out_verts": 2814,
+        "out_area_u2": 1286394094.5,
+        "out_hash": "4e8a19009dd67e93"
+      },
+      "v250_decim": {
+        "median_ns": 7465650,
+        "out_paths": 21,
+        "out_verts": 2930,
+        "out_area_u2": 1286479596.3199,
+        "out_hash": "49c96348f7e81ba0"
+      }
+    },
+    {
+      "case_index": 94,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_base": {
+        "median_ns": 12792000,
+        "out_paths": 10,
+        "out_verts": 2502,
+        "out_area_u2": 796622343.5,
+        "out_hash": "1b1b5ae1aad0e10a"
+      },
+      "rust_patched": {
+        "median_ns": 6696600,
+        "out_paths": 10,
+        "out_verts": 2295,
+        "out_area_u2": 796842408.0,
+        "out_hash": "a3a9dbd0445ea364"
+      },
+      "v250_decim": {
+        "median_ns": 5520250,
+        "out_paths": 10,
+        "out_verts": 2392,
+        "out_area_u2": 796589654.5921998,
+        "out_hash": "8ee70237ff2c11e2"
+      }
+    },
+    {
+      "case_index": 95,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_base": {
+        "median_ns": 7098150,
+        "out_paths": 15,
+        "out_verts": 1570,
+        "out_area_u2": 1035151050.5,
+        "out_hash": "c7e60789b121fd76"
+      },
+      "rust_patched": {
+        "median_ns": 4077900,
+        "out_paths": 15,
+        "out_verts": 1542,
+        "out_area_u2": 1035130659.5,
+        "out_hash": "537ff08878a8bcaf"
+      },
+      "v250_decim": {
+        "median_ns": 2824250,
+        "out_paths": 15,
+        "out_verts": 1609,
+        "out_area_u2": 1035143752.27475,
+        "out_hash": "be06384608e46e1c"
+      }
+    },
+    {
+      "case_index": 96,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_base": {
+        "median_ns": 6155600,
+        "out_paths": 10,
+        "out_verts": 1207,
+        "out_area_u2": 415812065.5,
+        "out_hash": "462b5a75a5274cf0"
+      },
+      "rust_patched": {
+        "median_ns": 2899700,
+        "out_paths": 10,
+        "out_verts": 1154,
+        "out_area_u2": 415796709.0,
+        "out_hash": "7dac5b4c58bc7172"
+      },
+      "v250_decim": {
+        "median_ns": 2208900,
+        "out_paths": 10,
+        "out_verts": 1190,
+        "out_area_u2": 415831377.83225,
+        "out_hash": "6914fc0e6df1ef00"
+      }
+    },
+    {
+      "case_index": 97,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_base": {
+        "median_ns": 3942150,
+        "out_paths": 5,
+        "out_verts": 1379,
+        "out_area_u2": 293542220.5,
+        "out_hash": "76232694553f1d93"
+      },
+      "rust_patched": {
+        "median_ns": 2247250,
+        "out_paths": 5,
+        "out_verts": 1287,
+        "out_area_u2": 293565141.0,
+        "out_hash": "3ceac443c09e2b0f"
+      },
+      "v250_decim": {
+        "median_ns": 1618250,
+        "out_paths": 5,
+        "out_verts": 1356,
+        "out_area_u2": 293545225.32860005,
+        "out_hash": "b82651296c75ea9b"
+      }
+    },
+    {
+      "case_index": 98,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_base": {
+        "median_ns": 3689350,
+        "out_paths": 7,
+        "out_verts": 1151,
+        "out_area_u2": 478265486.0,
+        "out_hash": "f7b4357a93617b17"
+      },
+      "rust_patched": {
+        "median_ns": 1599600,
+        "out_paths": 7,
+        "out_verts": 1102,
+        "out_area_u2": 478409362.0,
+        "out_hash": "8be24e818fe19a43"
+      },
+      "v250_decim": {
+        "median_ns": 1372700,
+        "out_paths": 7,
+        "out_verts": 1164,
+        "out_area_u2": 478298310.34915,
+        "out_hash": "1bcbbdcb1241d7b5"
+      }
+    },
+    {
+      "case_index": 99,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_base": {
+        "median_ns": 2474200,
+        "out_paths": 4,
+        "out_verts": 1700,
+        "out_area_u2": 863829424.5,
+        "out_hash": "0b79d3a4ddda9953"
+      },
+      "rust_patched": {
+        "median_ns": 1511850,
+        "out_paths": 4,
+        "out_verts": 1579,
+        "out_area_u2": 863836289.0,
+        "out_hash": "12ea35207fe6108f"
+      },
+      "v250_decim": {
+        "median_ns": 1080950,
+        "out_paths": 4,
+        "out_verts": 1648,
+        "out_area_u2": 863827939.2730999,
+        "out_hash": "cfd4bc1e761c6ba3"
+      }
+    },
+    {
+      "case_index": 100,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_base": {
+        "median_ns": 315900,
+        "out_paths": 1,
+        "out_verts": 357,
+        "out_area_u2": 678680681.0,
+        "out_hash": "b6e62502037ed9c7"
+      },
+      "rust_patched": {
+        "median_ns": 185700,
+        "out_paths": 1,
+        "out_verts": 344,
+        "out_area_u2": 678686793.0,
+        "out_hash": "7117fa26f92ef236"
+      },
+      "v250_decim": {
+        "median_ns": 134250,
+        "out_paths": 1,
+        "out_verts": 357,
+        "out_area_u2": 678689313.1309,
+        "out_hash": "b949099bac940a7f"
+      }
+    },
+    {
+      "case_index": 101,
+      "site": "SH_OPEN_TOP_CANON",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_base": {
+        "median_ns": 94800,
+        "out_paths": 1,
+        "out_verts": 112,
+        "out_area_u2": 82303166.0,
+        "out_hash": "de457c027278e678"
+      },
+      "rust_patched": {
+        "median_ns": 72900,
+        "out_paths": 1,
+        "out_verts": 105,
+        "out_area_u2": 82301405.5,
+        "out_hash": "c79879b80938613a"
+      },
+      "v250_decim": {
+        "median_ns": 53100,
+        "out_paths": 1,
+        "out_verts": 109,
+        "out_area_u2": 82294001.5191,
+        "out_hash": "44ea53ce30e4925b"
+      }
+    },
+    {
+      "case_index": 102,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 40,
+      "opcode": 5,
+      "in_verts": 6789,
+      "rust_base": {
+        "median_ns": 8214800,
+        "out_paths": 6,
+        "out_verts": 1067,
+        "out_area_u2": 577943408.5,
+        "out_hash": "34a1cdc7242de1f8"
+      },
+      "rust_patched": {
+        "median_ns": 5374850,
+        "out_paths": 6,
+        "out_verts": 1055,
+        "out_area_u2": 577931190.5,
+        "out_hash": "3737d21fa39e1c77"
+      },
+      "v250_decim": {
+        "median_ns": 4116650,
+        "out_paths": 6,
+        "out_verts": 1041,
+        "out_area_u2": 577927125.13085,
+        "out_hash": "51035a73955efab6"
+      }
+    },
+    {
+      "case_index": 103,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 80,
+      "opcode": 5,
+      "in_verts": 5865,
+      "rust_base": {
+        "median_ns": 7867500,
+        "out_paths": 3,
+        "out_verts": 360,
+        "out_area_u2": 171758665.5,
+        "out_hash": "3f69b3e1bd363f0a"
+      },
+      "rust_patched": {
+        "median_ns": 4197750,
+        "out_paths": 3,
+        "out_verts": 361,
+        "out_area_u2": 171758025.5,
+        "out_hash": "0979120afac86fa0"
+      },
+      "v250_decim": {
+        "median_ns": 3553000,
+        "out_paths": 3,
+        "out_verts": 357,
+        "out_area_u2": 171751515.58685,
+        "out_hash": "cb00d109dab3e2b7"
+      }
+    },
+    {
+      "case_index": 104,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 120,
+      "opcode": 5,
+      "in_verts": 8091,
+      "rust_base": {
+        "median_ns": 15309750,
+        "out_paths": 4,
+        "out_verts": 668,
+        "out_area_u2": 277792694.0,
+        "out_hash": "f2bb887f668fc5af"
+      },
+      "rust_patched": {
+        "median_ns": 9027450,
+        "out_paths": 4,
+        "out_verts": 662,
+        "out_area_u2": 277813984.5,
+        "out_hash": "b0e4bdfdc996dd74"
+      },
+      "v250_decim": {
+        "median_ns": 7199200,
+        "out_paths": 4,
+        "out_verts": 673,
+        "out_area_u2": 277786185.16015,
+        "out_hash": "cb4fcd36505e6a3f"
+      }
+    },
+    {
+      "case_index": 105,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 160,
+      "opcode": 5,
+      "in_verts": 8250,
+      "rust_base": {
+        "median_ns": 25036050,
+        "out_paths": 4,
+        "out_verts": 527,
+        "out_area_u2": 286408259.0,
+        "out_hash": "6ca13aa4b44ee0f8"
+      },
+      "rust_patched": {
+        "median_ns": 16072800,
+        "out_paths": 4,
+        "out_verts": 519,
+        "out_area_u2": 286407308.0,
+        "out_hash": "f568b270d619f2c5"
+      },
+      "v250_decim": {
+        "median_ns": 14025600,
+        "out_paths": 4,
+        "out_verts": 518,
+        "out_area_u2": 286408136.1839,
+        "out_hash": "3b5d4e4e1196e084"
+      }
+    },
+    {
+      "case_index": 106,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 200,
+      "opcode": 5,
+      "in_verts": 7731,
+      "rust_base": {
+        "median_ns": 24389750,
+        "out_paths": 1,
+        "out_verts": 94,
+        "out_area_u2": 25565692.0,
+        "out_hash": "31c829a97ff516c7"
+      },
+      "rust_patched": {
+        "median_ns": 15579400,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25565019.0,
+        "out_hash": "0d2a0111c09e73a4"
+      },
+      "v250_decim": {
+        "median_ns": 14412850,
+        "out_paths": 1,
+        "out_verts": 95,
+        "out_area_u2": 25574665.7536,
+        "out_hash": "e1cece57c0379c97"
+      }
+    },
+    {
+      "case_index": 107,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 239,
+      "opcode": 5,
+      "in_verts": 5839,
+      "rust_base": {
+        "median_ns": 26675900,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 14515650,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 14268100,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 108,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 240,
+      "opcode": 5,
+      "in_verts": 5660,
+      "rust_base": {
+        "median_ns": 24341400,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 15826950,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 12730850,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 109,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 270,
+      "opcode": 5,
+      "in_verts": 8615,
+      "rust_base": {
+        "median_ns": 62686500,
+        "out_paths": 3,
+        "out_verts": 762,
+        "out_area_u2": 761832413.0,
+        "out_hash": "45406555afcb0539"
+      },
+      "rust_patched": {
+        "median_ns": 47317750,
+        "out_paths": 3,
+        "out_verts": 743,
+        "out_area_u2": 761835613.5,
+        "out_hash": "20be76113e4f8892"
+      },
+      "v250_decim": {
+        "median_ns": 55385100,
+        "out_paths": 3,
+        "out_verts": 725,
+        "out_area_u2": 761838922.3686999,
+        "out_hash": "923523ce061e4bd6"
+      }
+    },
+    {
+      "case_index": 110,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 280,
+      "opcode": 5,
+      "in_verts": 7952,
+      "rust_base": {
+        "median_ns": 46840100,
+        "out_paths": 2,
+        "out_verts": 239,
+        "out_area_u2": 91006636.0,
+        "out_hash": "3ec293505eacf5c3"
+      },
+      "rust_patched": {
+        "median_ns": 31133600,
+        "out_paths": 2,
+        "out_verts": 234,
+        "out_area_u2": 91002027.5,
+        "out_hash": "009ef50df44e726c"
+      },
+      "v250_decim": {
+        "median_ns": 42229900,
+        "out_paths": 2,
+        "out_verts": 228,
+        "out_area_u2": 90991947.3308,
+        "out_hash": "f84d3372cf6971e7"
+      }
+    },
+    {
+      "case_index": 111,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 320,
+      "opcode": 5,
+      "in_verts": 5114,
+      "rust_base": {
+        "median_ns": 22048500,
+        "out_paths": 1,
+        "out_verts": 255,
+        "out_area_u2": 651398535.0,
+        "out_hash": "9b91e3074fd0e6aa"
+      },
+      "rust_patched": {
+        "median_ns": 12471250,
+        "out_paths": 1,
+        "out_verts": 245,
+        "out_area_u2": 651401512.0,
+        "out_hash": "70d19c423b2ecb75"
+      },
+      "v250_decim": {
+        "median_ns": 12731200,
+        "out_paths": 1,
+        "out_verts": 247,
+        "out_area_u2": 651391743.6638,
+        "out_hash": "d2ff49d8d16b302a"
+      }
+    },
+    {
+      "case_index": 112,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 360,
+      "opcode": 5,
+      "in_verts": 4686,
+      "rust_base": {
+        "median_ns": 20030100,
+        "out_paths": 2,
+        "out_verts": 401,
+        "out_area_u2": 207497241.5,
+        "out_hash": "e914eaaa1a6fa0ef"
+      },
+      "rust_patched": {
+        "median_ns": 11312550,
+        "out_paths": 2,
+        "out_verts": 386,
+        "out_area_u2": 207517996.0,
+        "out_hash": "70105f7c32a927e5"
+      },
+      "v250_decim": {
+        "median_ns": 10131300,
+        "out_paths": 2,
+        "out_verts": 387,
+        "out_area_u2": 207508218.13645,
+        "out_hash": "69a8a0d6a28c3175"
+      }
+    },
+    {
+      "case_index": 113,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 400,
+      "opcode": 5,
+      "in_verts": 3921,
+      "rust_base": {
+        "median_ns": 11587250,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 6207700,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 5107950,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 114,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 440,
+      "opcode": 5,
+      "in_verts": 3549,
+      "rust_base": {
+        "median_ns": 10021750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "rust_patched": {
+        "median_ns": 5295750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0.0,
+        "out_hash": "cbf29ce484222325"
+      },
+      "v250_decim": {
+        "median_ns": 4154750,
+        "out_paths": 0,
+        "out_verts": 0,
+        "out_area_u2": 0,
+        "out_hash": "cbf29ce484222325"
+      }
+    },
+    {
+      "case_index": 115,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 480,
+      "opcode": 5,
+      "in_verts": 2502,
+      "rust_base": {
+        "median_ns": 4080900,
+        "out_paths": 2,
+        "out_verts": 470,
+        "out_area_u2": 267299368.0,
+        "out_hash": "f0753f055fdd51aa"
+      },
+      "rust_patched": {
+        "median_ns": 2430750,
+        "out_paths": 2,
+        "out_verts": 459,
+        "out_area_u2": 267290305.0,
+        "out_hash": "d4ac630ed4d045a8"
+      },
+      "v250_decim": {
+        "median_ns": 1757100,
+        "out_paths": 2,
+        "out_verts": 457,
+        "out_area_u2": 267297185.57475,
+        "out_hash": "8a54f211b4ca3736"
+      }
+    },
+    {
+      "case_index": 116,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 494,
+      "opcode": 5,
+      "in_verts": 432,
+      "rust_base": {
+        "median_ns": 826300,
+        "out_paths": 1,
+        "out_verts": 476,
+        "out_area_u2": 663949053.0,
+        "out_hash": "319b1844493c73d7"
+      },
+      "rust_patched": {
+        "median_ns": 477300,
+        "out_paths": 1,
+        "out_verts": 466,
+        "out_area_u2": 663952100.5,
+        "out_hash": "06148e07203fcefd"
+      },
+      "v250_decim": {
+        "median_ns": 327100,
+        "out_paths": 1,
+        "out_verts": 474,
+        "out_area_u2": 663963903.01375,
+        "out_hash": "cdbfac17972aaddb"
+      }
+    },
+    {
+      "case_index": 117,
+      "site": "SH_OPEN_TOP_LEGACY",
+      "layer": 495,
+      "opcode": 5,
+      "in_verts": 151,
+      "rust_base": {
+        "median_ns": 246350,
+        "out_paths": 1,
+        "out_verts": 136,
+        "out_area_u2": 74895165.5,
+        "out_hash": "10aa6ec8560b2821"
+      },
+      "rust_patched": {
+        "median_ns": 167450,
+        "out_paths": 1,
+        "out_verts": 141,
+        "out_area_u2": 74894540.5,
+        "out_hash": "a4c6ddd8c24c3d23"
+      },
+      "v250_decim": {
+        "median_ns": 127400,
+        "out_paths": 1,
+        "out_verts": 133,
+        "out_area_u2": 74883844.06755,
+        "out_hash": "8978ff3a9c4857d9"
+      }
+    }
+  ],
+  "corpus": "docs/specs/perf-vs-orca/evidence/t167-canonical-clipperutils-replay/corpus/base-prepass-t167.corpus"
+}

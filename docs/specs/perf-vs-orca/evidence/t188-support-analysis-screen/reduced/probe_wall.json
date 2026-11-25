@@ -1,0 +1,3816 @@
+{
+  "schema": "t188_probe_wall_v1",
+  "captured_utc": "2026-11-24T01:40:06.539769+00:00",
+  "head_commit": "a5aea3ae",
+  "rayon_num_threads": 12,
+  "exe_sha256": "fb133cbd20212e13bbe51bb338a9f60e2e3dcdf155f06ed496f8aff9837af738",
+  "total_runs": 16,
+  "cells": {
+    "benchy-classic-on": {
+      "passes": [
+        {
+          "round": 1,
+          "exit_code": 0,
+          "wall_s": 3.8374,
+          "cpu_s": 12.2656,
+          "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "gcode_bytes": 8544099,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 3572,
+            "sa_stage_ms": 344
+          },
+          "total_wall_ns": 343648300,
+          "phases": {
+            "eligibility_ns": 2921900,
+            "gather_ns": 4462700,
+            "ppo_ns": 122683600,
+            "layer_union_ns": 47045600,
+            "modifiers_ns": 2800,
+            "sort_ns": 2200,
+            "contacts_par_ns": 165914900,
+            "post_contacts_ns": 137600,
+            "commit_ns": 300
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 1012880600,
+            "max_total_ns": 94434000,
+            "p50_ns": 2065900,
+            "p90_ns": 8392400,
+            "p99_ns": 24025800
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 509467800,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 65115600
+            },
+            "trimmed_diff": {
+              "ns": 144303200,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 5471000
+            },
+            "expand_back_offset": {
+              "ns": 7381500,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 3071900
+            },
+            "expand_back_intersect_diff": {
+              "ns": 71966400,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 8204200
+            },
+            "final_union": {
+              "ns": 4865100,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 1331000
+            },
+            "cantilever_offset": {
+              "ns": 262764000,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 53670100
+            },
+            "cantilever_diff": {
+              "ns": 11899400,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 920100
+            },
+            "derive_needs_support": {
+              "ns": 28906800,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 2461100
+            },
+            "contact_item_total": {
+              "ns": 1012888800,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 94434000
+            },
+            "enforced_blocked_intersections": {
+              "ns": 44510400,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 9571000
+            },
+            "ppo_world_mesh": {
+              "ns": 906600,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 906600
+            },
+            "ppo_make_lines": {
+              "ns": 28440000,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 28440000
+            },
+            "ppo_chain": {
+              "ns": 93297300,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 93297300
+            },
+            "object_layer_union": {
+              "ns": 46723000,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 2380600
+            },
+            "ppo_chain_per_layer": {
+              "ns": 93273700,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 3300000
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 2,
+          "exit_code": 0,
+          "wall_s": 3.4663,
+          "cpu_s": 13.125,
+          "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "gcode_bytes": 8544099,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 3328,
+            "sa_stage_ms": 368
+          },
+          "total_wall_ns": 368328000,
+          "phases": {
+            "eligibility_ns": 2255700,
+            "gather_ns": 4676000,
+            "ppo_ns": 126388300,
+            "layer_union_ns": 51370500,
+            "modifiers_ns": 2900,
+            "sort_ns": 6200,
+            "contacts_par_ns": 183274100,
+            "post_contacts_ns": 148300,
+            "commit_ns": 400
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 1155952000,
+            "max_total_ns": 107236100,
+            "p50_ns": 2007600,
+            "p90_ns": 10529100,
+            "p99_ns": 37241100
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 566622300,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 67786500
+            },
+            "trimmed_diff": {
+              "ns": 193630300,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 27629300
+            },
+            "expand_back_offset": {
+              "ns": 11055300,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 4320500
+            },
+            "expand_back_intersect_diff": {
+              "ns": 77410600,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 17084100
+            },
+            "final_union": {
+              "ns": 4386100,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 1688400
+            },
+            "cantilever_offset": {
+              "ns": 290590500,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 56440800
+            },
+            "cantilever_diff": {
+              "ns": 11996400,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 911700
+            },
+            "derive_needs_support": {
+              "ns": 16100000,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 637600
+            },
+            "contact_item_total": {
+              "ns": 1155958500,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 107236100
+            },
+            "enforced_blocked_intersections": {
+              "ns": 25923600,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 858800
+            },
+            "ppo_world_mesh": {
+              "ns": 822800,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 822800
+            },
+            "ppo_make_lines": {
+              "ns": 23777200,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 23777200
+            },
+            "ppo_chain": {
+              "ns": 101727800,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 101727800
+            },
+            "object_layer_union": {
+              "ns": 50848600,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 2514100
+            },
+            "ppo_chain_per_layer": {
+              "ns": 101701000,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 3615900
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 3,
+          "exit_code": 0,
+          "wall_s": 3.3822,
+          "cpu_s": 11.7812,
+          "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+          "gcode_bytes": 8544099,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 3243,
+            "sa_stage_ms": 349
+          },
+          "total_wall_ns": 348527600,
+          "phases": {
+            "eligibility_ns": 2402400,
+            "gather_ns": 4689900,
+            "ppo_ns": 110312900,
+            "layer_union_ns": 48137900,
+            "modifiers_ns": 2400,
+            "sort_ns": 5500,
+            "contacts_par_ns": 182645000,
+            "post_contacts_ns": 135200,
+            "commit_ns": 500
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 1023099900,
+            "max_total_ns": 92729100,
+            "p50_ns": 1964000,
+            "p90_ns": 9308700,
+            "p99_ns": 41840700
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 525859000,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 49202700
+            },
+            "trimmed_diff": {
+              "ns": 162098500,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 13010400
+            },
+            "expand_back_offset": {
+              "ns": 7929500,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 3151100
+            },
+            "expand_back_intersect_diff": {
+              "ns": 60715600,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 3699700
+            },
+            "final_union": {
+              "ns": 6284900,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 2353000
+            },
+            "cantilever_offset": {
+              "ns": 245362900,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 55667000
+            },
+            "cantilever_diff": {
+              "ns": 11051700,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 901400
+            },
+            "derive_needs_support": {
+              "ns": 22148200,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 2128600
+            },
+            "contact_item_total": {
+              "ns": 1023106900,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 92729200
+            },
+            "enforced_blocked_intersections": {
+              "ns": 24966000,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 859500
+            },
+            "ppo_world_mesh": {
+              "ns": 846800,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 846800
+            },
+            "ppo_make_lines": {
+              "ns": 19905800,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 19905800
+            },
+            "ppo_chain": {
+              "ns": 89492100,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 89492100
+            },
+            "object_layer_union": {
+              "ns": 47746600,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 1624100
+            },
+            "ppo_chain_per_layer": {
+              "ns": 89471400,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 2981300
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        }
+      ],
+      "median": {
+        "total_wall_ns": 348527600,
+        "sa_stage_ms": 349,
+        "slice_complete_ms": 3328,
+        "phases": {
+          "eligibility_ns": 2402400,
+          "gather_ns": 4676000,
+          "ppo_ns": 122683600,
+          "layer_union_ns": 48137900,
+          "modifiers_ns": 2800,
+          "sort_ns": 5500,
+          "contacts_par_ns": 182645000,
+          "post_contacts_ns": 137600,
+          "commit_ns": 400
+        },
+        "counts": {
+          "regions_total": 240,
+          "needs_support_true": 240,
+          "layers_in_union": 240,
+          "multi_region_layers": 0,
+          "single_region_union_changed": 109,
+          "ppo_entries": 240,
+          "candidates_count": 81,
+          "cantilever_count": 2
+        },
+        "layer_summary": {
+          "layers": 239,
+          "region_eq_lower": 0,
+          "trimmed_nonempty": 81,
+          "contacts_nonempty": 81,
+          "cantilever_hits": 2,
+          "sum_total_ns": 1012880600,
+          "max_total_ns": 94434000,
+          "p50_ns": 2065900,
+          "p90_ns": 8392400,
+          "p99_ns": 24025800
+        },
+        "ops": {
+          "cantilever_diff": {
+            "ns": 11899400,
+            "max_ns": 911700,
+            "count": 81,
+            "vin": 96685,
+            "vout": 8
+          },
+          "cantilever_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 2,
+            "vin": 0,
+            "vout": 0
+          },
+          "cantilever_offset": {
+            "ns": 262764000,
+            "max_ns": 55667000,
+            "count": 81,
+            "vin": 212363,
+            "vout": 74031
+          },
+          "contact_item_total": {
+            "ns": 1023106900,
+            "max_ns": 94434000,
+            "count": 239,
+            "vin": 880703,
+            "vout": 22654
+          },
+          "contacts_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          },
+          "derive_needs_support": {
+            "ns": 22148200,
+            "max_ns": 2128600,
+            "count": 240,
+            "vin": 444483,
+            "vout": 240
+          },
+          "enforced_blocked_intersections": {
+            "ns": 25923600,
+            "max_ns": 859500,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          },
+          "expand_back_intersect_diff": {
+            "ns": 71966400,
+            "max_ns": 8204200,
+            "count": 81,
+            "vin": 431210,
+            "vout": 22654
+          },
+          "expand_back_offset": {
+            "ns": 7929500,
+            "max_ns": 3151100,
+            "count": 81,
+            "vin": 11096,
+            "vout": 10868
+          },
+          "final_union": {
+            "ns": 4865100,
+            "max_ns": 1688400,
+            "count": 81,
+            "vin": 22654,
+            "vout": 22654
+          },
+          "grown_offset": {
+            "ns": 525859000,
+            "max_ns": 65115600,
+            "count": 239,
+            "vin": 443688,
+            "vout": 290213
+          },
+          "object_layer_union": {
+            "ns": 47746600,
+            "max_ns": 2380600,
+            "count": 240,
+            "vin": 444483,
+            "vout": 444483
+          },
+          "ppo_chain": {
+            "ns": 93297300,
+            "max_ns": 93297300,
+            "count": 1,
+            "vin": 240,
+            "vout": 259510
+          },
+          "ppo_chain_per_layer": {
+            "ns": 93273700,
+            "max_ns": 3300000,
+            "count": 240,
+            "vin": 269512,
+            "vout": 259510
+          },
+          "ppo_make_lines": {
+            "ns": 23777200,
+            "max_ns": 23777200,
+            "count": 1,
+            "vin": 225706,
+            "vout": 269512
+          },
+          "ppo_world_mesh": {
+            "ns": 846800,
+            "max_ns": 846800,
+            "count": 1,
+            "vin": 225706,
+            "vout": 112662
+          },
+          "trimmed_diff": {
+            "ns": 162098500,
+            "max_ns": 13010400,
+            "count": 239,
+            "vin": 727228,
+            "vout": 11096
+          },
+          "trimmed_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          }
+        }
+      },
+      "top_layers_r1": [
+        {
+          "layer": 2,
+          "total_ns": 94434000,
+          "grown_ns": 31212600,
+          "trimmed_diff_ns": 1021700,
+          "expand_back_ns": 6701700,
+          "erosion_ns": 0,
+          "final_union_ns": 903900,
+          "cantilever_off_ns": 53670100,
+          "cantilever_diff_ns": 920100,
+          "lower_verts": 5225,
+          "region_verts": 1621,
+          "trimmed_verts": 2410,
+          "contact_verts": 4250,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 1,
+          "total_ns": 70592000,
+          "grown_ns": 65115500,
+          "trimmed_diff_ns": 5471000,
+          "expand_back_ns": 0,
+          "erosion_ns": 0,
+          "final_union_ns": 0,
+          "cantilever_off_ns": 0,
+          "cantilever_diff_ns": 0,
+          "lower_verts": 7468,
+          "region_verts": 5225,
+          "trimmed_verts": 0,
+          "contact_verts": 0,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 48,
+          "total_ns": 24025800,
+          "grown_ns": 10191500,
+          "trimmed_diff_ns": 1190700,
+          "expand_back_ns": 975400,
+          "erosion_ns": 0,
+          "final_union_ns": 24000,
+          "cantilever_off_ns": 11506000,
+          "cantilever_diff_ns": 136400,
+          "lower_verts": 3711,
+          "region_verts": 3964,
+          "trimmed_verts": 71,
+          "contact_verts": 184,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 54,
+          "total_ns": 21063600,
+          "grown_ns": 4492400,
+          "trimmed_diff_ns": 4170400,
+          "expand_back_ns": 1059800,
+          "erosion_ns": 0,
+          "final_union_ns": 27700,
+          "cantilever_off_ns": 11153500,
+          "cantilever_diff_ns": 157500,
+          "lower_verts": 4047,
+          "region_verts": 3644,
+          "trimmed_verts": 44,
+          "contact_verts": 198,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 51,
+          "total_ns": 15136300,
+          "grown_ns": 6260000,
+          "trimmed_diff_ns": 1678700,
+          "expand_back_ns": 1446200,
+          "erosion_ns": 0,
+          "final_union_ns": 28300,
+          "cantilever_off_ns": 5582800,
+          "cantilever_diff_ns": 138500,
+          "lower_verts": 3953,
+          "region_verts": 3990,
+          "trimmed_verts": 46,
+          "contact_verts": 201,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 58,
+          "total_ns": 15015200,
+          "grown_ns": 3186600,
+          "trimmed_diff_ns": 1685300,
+          "expand_back_ns": 3321800,
+          "erosion_ns": 0,
+          "final_union_ns": 29800,
+          "cantilever_off_ns": 6638400,
+          "cantilever_diff_ns": 150900,
+          "lower_verts": 3632,
+          "region_verts": 3602,
+          "trimmed_verts": 75,
+          "contact_verts": 203,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 50,
+          "total_ns": 15006800,
+          "grown_ns": 6765500,
+          "trimmed_diff_ns": 1188800,
+          "expand_back_ns": 1881500,
+          "erosion_ns": 0,
+          "final_union_ns": 33000,
+          "cantilever_off_ns": 5001100,
+          "cantilever_diff_ns": 135000,
+          "lower_verts": 3861,
+          "region_verts": 3953,
+          "trimmed_verts": 62,
+          "contact_verts": 201,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 55,
+          "total_ns": 14780400,
+          "grown_ns": 3615700,
+          "trimmed_diff_ns": 1150000,
+          "expand_back_ns": 1001500,
+          "erosion_ns": 0,
+          "final_union_ns": 37200,
+          "cantilever_off_ns": 8807600,
+          "cantilever_diff_ns": 165000,
+          "lower_verts": 3644,
+          "region_verts": 3670,
+          "trimmed_verts": 49,
+          "contact_verts": 218,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 92,
+          "total_ns": 13380800,
+          "grown_ns": 2107900,
+          "trimmed_diff_ns": 912100,
+          "expand_back_ns": 8214100,
+          "erosion_ns": 0,
+          "final_union_ns": 12000,
+          "cantilever_off_ns": 2027400,
+          "cantilever_diff_ns": 105200,
+          "lower_verts": 2850,
+          "region_verts": 3034,
+          "trimmed_verts": 36,
+          "contact_verts": 50,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 90,
+          "total_ns": 12206500,
+          "grown_ns": 5780100,
+          "trimmed_diff_ns": 1974200,
+          "expand_back_ns": 870000,
+          "erosion_ns": 0,
+          "final_union_ns": 52100,
+          "cantilever_off_ns": 3206900,
+          "cantilever_diff_ns": 320500,
+          "lower_verts": 3129,
+          "region_verts": 2916,
+          "trimmed_verts": 118,
+          "contact_verts": 356,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 49,
+          "total_ns": 12149100,
+          "grown_ns": 4094300,
+          "trimmed_diff_ns": 1245700,
+          "expand_back_ns": 977000,
+          "erosion_ns": 0,
+          "final_union_ns": 31000,
+          "cantilever_off_ns": 5579500,
+          "cantilever_diff_ns": 219800,
+          "lower_verts": 3964,
+          "region_verts": 3861,
+          "trimmed_verts": 77,
+          "contact_verts": 190,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 61,
+          "total_ns": 12085300,
+          "grown_ns": 2676400,
+          "trimmed_diff_ns": 5226600,
+          "expand_back_ns": 793600,
+          "erosion_ns": 0,
+          "final_union_ns": 26200,
+          "cantilever_off_ns": 3211300,
+          "cantilever_diff_ns": 149100,
+          "lower_verts": 3347,
+          "region_verts": 3109,
+          "trimmed_verts": 93,
+          "contact_verts": 193,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        }
+      ],
+      "profile_pass": {
+        "exit_code": 0,
+        "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+        "gcode_bytes": 8544099,
+        "reference_match": true,
+        "profile": {
+          "fuel_total": 20715721368,
+          "wall_total_ns": 8381174600,
+          "sa_total_calls": 1366,
+          "sa_total_wall_ns": 1168168600,
+          "scopes": {
+            "polygon_ops::offset": {
+              "calls": 401,
+              "wall_ns": 857075300
+            },
+            "polygon_ops::clip_polygons": {
+              "calls": 965,
+              "wall_ns": 311055100
+            }
+          }
+        }
+      }
+    },
+    "benchy-arachne-on": {
+      "passes": [
+        {
+          "round": 1,
+          "exit_code": 0,
+          "wall_s": 3.4742,
+          "cpu_s": 13.4531,
+          "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "gcode_bytes": 8688377,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 3328,
+            "sa_stage_ms": 335
+          },
+          "total_wall_ns": 334685800,
+          "phases": {
+            "eligibility_ns": 1156300,
+            "gather_ns": 3977200,
+            "ppo_ns": 116888700,
+            "layer_union_ns": 46079900,
+            "modifiers_ns": 2400,
+            "sort_ns": 4800,
+            "contacts_par_ns": 166105600,
+            "post_contacts_ns": 243400,
+            "commit_ns": 300
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 1080334800,
+            "max_total_ns": 97584100,
+            "p50_ns": 1866800,
+            "p90_ns": 10890900,
+            "p99_ns": 26204500
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 551012900,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 61969200
+            },
+            "trimmed_diff": {
+              "ns": 184635500,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 24880900
+            },
+            "expand_back_offset": {
+              "ns": 8373600,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 3071000
+            },
+            "expand_back_intersect_diff": {
+              "ns": 67578900,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 5757800
+            },
+            "final_union": {
+              "ns": 3692900,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 903400
+            },
+            "cantilever_offset": {
+              "ns": 251965000,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 52834300
+            },
+            "cantilever_diff": {
+              "ns": 12627800,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 928600
+            },
+            "derive_needs_support": {
+              "ns": 10748300,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 223300
+            },
+            "contact_item_total": {
+              "ns": 1080340700,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 97584100
+            },
+            "enforced_blocked_intersections": {
+              "ns": 30749000,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 2868400
+            },
+            "ppo_world_mesh": {
+              "ns": 1135900,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 1135900
+            },
+            "ppo_make_lines": {
+              "ns": 24413000,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 24413000
+            },
+            "ppo_chain": {
+              "ns": 91284800,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 91284800
+            },
+            "object_layer_union": {
+              "ns": 45443700,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 1634800
+            },
+            "ppo_chain_per_layer": {
+              "ns": 91265100,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 3667700
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 2,
+          "exit_code": 0,
+          "wall_s": 3.5431,
+          "cpu_s": 14.1719,
+          "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "gcode_bytes": 8688377,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 3387,
+            "sa_stage_ms": 320
+          },
+          "total_wall_ns": 320600700,
+          "phases": {
+            "eligibility_ns": 1142500,
+            "gather_ns": 2734000,
+            "ppo_ns": 113257300,
+            "layer_union_ns": 48634100,
+            "modifiers_ns": 2300,
+            "sort_ns": 4800,
+            "contacts_par_ns": 154529200,
+            "post_contacts_ns": 126500,
+            "commit_ns": 100
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 976655100,
+            "max_total_ns": 99864800,
+            "p50_ns": 1956400,
+            "p90_ns": 9732200,
+            "p99_ns": 20642700
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 482814900,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 48330800
+            },
+            "trimmed_diff": {
+              "ns": 156398700,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 12314500
+            },
+            "expand_back_offset": {
+              "ns": 9634200,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 5174200
+            },
+            "expand_back_intersect_diff": {
+              "ns": 61190700,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 3606000
+            },
+            "final_union": {
+              "ns": 3293500,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 894500
+            },
+            "cantilever_offset": {
+              "ns": 250928200,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 52925600
+            },
+            "cantilever_diff": {
+              "ns": 12162100,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 1437700
+            },
+            "derive_needs_support": {
+              "ns": 11652600,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 224900
+            },
+            "contact_item_total": {
+              "ns": 976663000,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 99864900
+            },
+            "enforced_blocked_intersections": {
+              "ns": 28824900,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 2084400
+            },
+            "ppo_world_mesh": {
+              "ns": 953200,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 953200
+            },
+            "ppo_make_lines": {
+              "ns": 21707400,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 21707400
+            },
+            "ppo_chain": {
+              "ns": 90552500,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 90552500
+            },
+            "object_layer_union": {
+              "ns": 48292500,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 2222700
+            },
+            "ppo_chain_per_layer": {
+              "ns": 90530000,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 2163500
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 3,
+          "exit_code": 0,
+          "wall_s": 4.2157,
+          "cpu_s": 13.4844,
+          "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+          "gcode_bytes": 8688377,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 4076,
+            "sa_stage_ms": 363
+          },
+          "total_wall_ns": 363346300,
+          "phases": {
+            "eligibility_ns": 1400000,
+            "gather_ns": 4289100,
+            "ppo_ns": 144639300,
+            "layer_union_ns": 47053400,
+            "modifiers_ns": 2300,
+            "sort_ns": 4900,
+            "contacts_par_ns": 165639900,
+            "post_contacts_ns": 142300,
+            "commit_ns": 400
+          },
+          "counts": {
+            "regions_total": 240,
+            "needs_support_true": 240,
+            "layers_in_union": 240,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 109,
+            "ppo_entries": 240,
+            "candidates_count": 81,
+            "cantilever_count": 2
+          },
+          "layer_summary": {
+            "layers": 239,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 81,
+            "contacts_nonempty": 81,
+            "cantilever_hits": 2,
+            "sum_total_ns": 1033867100,
+            "max_total_ns": 103859500,
+            "p50_ns": 2153900,
+            "p90_ns": 10299200,
+            "p99_ns": 16859900
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 502497400,
+              "count": 239,
+              "vin": 443688,
+              "vout": 290213,
+              "max_ns": 55068700
+            },
+            "trimmed_diff": {
+              "ns": 163713800,
+              "count": 239,
+              "vin": 727228,
+              "vout": 11096,
+              "max_ns": 8617100
+            },
+            "expand_back_offset": {
+              "ns": 8565700,
+              "count": 81,
+              "vin": 11096,
+              "vout": 10868,
+              "max_ns": 3775400
+            },
+            "expand_back_intersect_diff": {
+              "ns": 68622800,
+              "count": 81,
+              "vin": 431210,
+              "vout": 22654,
+              "max_ns": 4042600
+            },
+            "final_union": {
+              "ns": 3962200,
+              "count": 81,
+              "vin": 22654,
+              "vout": 22654,
+              "max_ns": 967000
+            },
+            "cantilever_offset": {
+              "ns": 273410800,
+              "count": 81,
+              "vin": 212363,
+              "vout": 74031,
+              "max_ns": 57467500
+            },
+            "cantilever_diff": {
+              "ns": 12637200,
+              "count": 81,
+              "vin": 96685,
+              "vout": 8,
+              "max_ns": 1856900
+            },
+            "derive_needs_support": {
+              "ns": 10449000,
+              "count": 240,
+              "vin": 444483,
+              "vout": 240,
+              "max_ns": 227300
+            },
+            "contact_item_total": {
+              "ns": 1033874800,
+              "count": 239,
+              "vin": 880703,
+              "vout": 22654,
+              "max_ns": 103859600
+            },
+            "enforced_blocked_intersections": {
+              "ns": 26343400,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 1110500
+            },
+            "ppo_world_mesh": {
+              "ns": 880500,
+              "count": 1,
+              "vin": 225706,
+              "vout": 112662,
+              "max_ns": 880500
+            },
+            "ppo_make_lines": {
+              "ns": 31431800,
+              "count": 1,
+              "vin": 225706,
+              "vout": 269512,
+              "max_ns": 31431800
+            },
+            "ppo_chain": {
+              "ns": 112271200,
+              "count": 1,
+              "vin": 240,
+              "vout": 259510,
+              "max_ns": 112271200
+            },
+            "object_layer_union": {
+              "ns": 46740900,
+              "count": 240,
+              "vin": 444483,
+              "vout": 444483,
+              "max_ns": 1782000
+            },
+            "ppo_chain_per_layer": {
+              "ns": 112244900,
+              "count": 240,
+              "vin": 269512,
+              "vout": 259510,
+              "max_ns": 3746300
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 81,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 2,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        }
+      ],
+      "median": {
+        "total_wall_ns": 334685800,
+        "sa_stage_ms": 335,
+        "slice_complete_ms": 3387,
+        "phases": {
+          "eligibility_ns": 1156300,
+          "gather_ns": 3977200,
+          "ppo_ns": 116888700,
+          "layer_union_ns": 47053400,
+          "modifiers_ns": 2300,
+          "sort_ns": 4800,
+          "contacts_par_ns": 165639900,
+          "post_contacts_ns": 142300,
+          "commit_ns": 300
+        },
+        "counts": {
+          "regions_total": 240,
+          "needs_support_true": 240,
+          "layers_in_union": 240,
+          "multi_region_layers": 0,
+          "single_region_union_changed": 109,
+          "ppo_entries": 240,
+          "candidates_count": 81,
+          "cantilever_count": 2
+        },
+        "layer_summary": {
+          "layers": 239,
+          "region_eq_lower": 0,
+          "trimmed_nonempty": 81,
+          "contacts_nonempty": 81,
+          "cantilever_hits": 2,
+          "sum_total_ns": 1080334800,
+          "max_total_ns": 97584100,
+          "p50_ns": 1866800,
+          "p90_ns": 10890900,
+          "p99_ns": 26204500
+        },
+        "ops": {
+          "cantilever_diff": {
+            "ns": 12627800,
+            "max_ns": 1437700,
+            "count": 81,
+            "vin": 96685,
+            "vout": 8
+          },
+          "cantilever_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 2,
+            "vin": 0,
+            "vout": 0
+          },
+          "cantilever_offset": {
+            "ns": 251965000,
+            "max_ns": 52925600,
+            "count": 81,
+            "vin": 212363,
+            "vout": 74031
+          },
+          "contact_item_total": {
+            "ns": 1033874800,
+            "max_ns": 99864900,
+            "count": 239,
+            "vin": 880703,
+            "vout": 22654
+          },
+          "contacts_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          },
+          "derive_needs_support": {
+            "ns": 10748300,
+            "max_ns": 224900,
+            "count": 240,
+            "vin": 444483,
+            "vout": 240
+          },
+          "enforced_blocked_intersections": {
+            "ns": 28824900,
+            "max_ns": 2084400,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          },
+          "expand_back_intersect_diff": {
+            "ns": 67578900,
+            "max_ns": 4042600,
+            "count": 81,
+            "vin": 431210,
+            "vout": 22654
+          },
+          "expand_back_offset": {
+            "ns": 8565700,
+            "max_ns": 3775400,
+            "count": 81,
+            "vin": 11096,
+            "vout": 10868
+          },
+          "final_union": {
+            "ns": 3692900,
+            "max_ns": 903400,
+            "count": 81,
+            "vin": 22654,
+            "vout": 22654
+          },
+          "grown_offset": {
+            "ns": 502497400,
+            "max_ns": 55068700,
+            "count": 239,
+            "vin": 443688,
+            "vout": 290213
+          },
+          "object_layer_union": {
+            "ns": 46740900,
+            "max_ns": 1782000,
+            "count": 240,
+            "vin": 444483,
+            "vout": 444483
+          },
+          "ppo_chain": {
+            "ns": 91284800,
+            "max_ns": 91284800,
+            "count": 1,
+            "vin": 240,
+            "vout": 259510
+          },
+          "ppo_chain_per_layer": {
+            "ns": 91265100,
+            "max_ns": 3667700,
+            "count": 240,
+            "vin": 269512,
+            "vout": 259510
+          },
+          "ppo_make_lines": {
+            "ns": 24413000,
+            "max_ns": 24413000,
+            "count": 1,
+            "vin": 225706,
+            "vout": 269512
+          },
+          "ppo_world_mesh": {
+            "ns": 953200,
+            "max_ns": 953200,
+            "count": 1,
+            "vin": 225706,
+            "vout": 112662
+          },
+          "trimmed_diff": {
+            "ns": 163713800,
+            "max_ns": 12314500,
+            "count": 239,
+            "vin": 727228,
+            "vout": 11096
+          },
+          "trimmed_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 81,
+            "vin": 0,
+            "vout": 0
+          }
+        }
+      },
+      "top_layers_r1": [
+        {
+          "layer": 2,
+          "total_ns": 97584100,
+          "grown_ns": 35068500,
+          "trimmed_diff_ns": 960100,
+          "expand_back_ns": 6885000,
+          "erosion_ns": 0,
+          "final_union_ns": 903300,
+          "cantilever_off_ns": 52834100,
+          "cantilever_diff_ns": 928600,
+          "lower_verts": 5225,
+          "region_verts": 1621,
+          "trimmed_verts": 2410,
+          "contact_verts": 4250,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 1,
+          "total_ns": 67483900,
+          "grown_ns": 61969100,
+          "trimmed_diff_ns": 5510000,
+          "expand_back_ns": 0,
+          "erosion_ns": 0,
+          "final_union_ns": 0,
+          "cantilever_off_ns": 0,
+          "cantilever_diff_ns": 0,
+          "lower_verts": 7468,
+          "region_verts": 5225,
+          "trimmed_verts": 0,
+          "contact_verts": 0,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 83,
+          "total_ns": 26204500,
+          "grown_ns": 1322700,
+          "trimmed_diff_ns": 24880800,
+          "expand_back_ns": 0,
+          "erosion_ns": 0,
+          "final_union_ns": 0,
+          "cantilever_off_ns": 0,
+          "cantilever_diff_ns": 0,
+          "lower_verts": 2495,
+          "region_verts": 2496,
+          "trimmed_verts": 0,
+          "contact_verts": 0,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 102,
+          "total_ns": 19710500,
+          "grown_ns": 16105800,
+          "trimmed_diff_ns": 935000,
+          "expand_back_ns": 730200,
+          "erosion_ns": 0,
+          "final_union_ns": 26000,
+          "cantilever_off_ns": 1785800,
+          "cantilever_diff_ns": 125000,
+          "lower_verts": 3188,
+          "region_verts": 3159,
+          "trimmed_verts": 46,
+          "contact_verts": 189,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 52,
+          "total_ns": 18809200,
+          "grown_ns": 9655300,
+          "trimmed_diff_ns": 1211500,
+          "expand_back_ns": 873600,
+          "erosion_ns": 0,
+          "final_union_ns": 23600,
+          "cantilever_off_ns": 6904100,
+          "cantilever_diff_ns": 139100,
+          "lower_verts": 3990,
+          "region_verts": 3900,
+          "trimmed_verts": 49,
+          "contact_verts": 185,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 45,
+          "total_ns": 18637600,
+          "grown_ns": 3336300,
+          "trimmed_diff_ns": 9186800,
+          "expand_back_ns": 1510600,
+          "erosion_ns": 0,
+          "final_union_ns": 102700,
+          "cantilever_off_ns": 4308900,
+          "cantilever_diff_ns": 189300,
+          "lower_verts": 3185,
+          "region_verts": 3472,
+          "trimmed_verts": 710,
+          "contact_verts": 979,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 39,
+          "total_ns": 17200500,
+          "grown_ns": 16905200,
+          "trimmed_diff_ns": 294700,
+          "expand_back_ns": 0,
+          "erosion_ns": 0,
+          "final_union_ns": 0,
+          "cantilever_off_ns": 0,
+          "cantilever_diff_ns": 0,
+          "lower_verts": 1862,
+          "region_verts": 1348,
+          "trimmed_verts": 0,
+          "contact_verts": 0,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 49,
+          "total_ns": 15683800,
+          "grown_ns": 9604500,
+          "trimmed_diff_ns": 1258700,
+          "expand_back_ns": 888300,
+          "erosion_ns": 0,
+          "final_union_ns": 24100,
+          "cantilever_off_ns": 3819200,
+          "cantilever_diff_ns": 87000,
+          "lower_verts": 3964,
+          "region_verts": 3861,
+          "trimmed_verts": 77,
+          "contact_verts": 190,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 53,
+          "total_ns": 15250000,
+          "grown_ns": 3757000,
+          "trimmed_diff_ns": 4423000,
+          "expand_back_ns": 1501300,
+          "erosion_ns": 0,
+          "final_union_ns": 26200,
+          "cantilever_off_ns": 5274500,
+          "cantilever_diff_ns": 265900,
+          "lower_verts": 3900,
+          "region_verts": 4047,
+          "trimmed_verts": 44,
+          "contact_verts": 178,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 118,
+          "total_ns": 14820800,
+          "grown_ns": 1557200,
+          "trimmed_diff_ns": 844100,
+          "expand_back_ns": 714700,
+          "erosion_ns": 0,
+          "final_union_ns": 20700,
+          "cantilever_off_ns": 11511900,
+          "cantilever_diff_ns": 170100,
+          "lower_verts": 2596,
+          "region_verts": 2401,
+          "trimmed_verts": 40,
+          "contact_verts": 155,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 54,
+          "total_ns": 13383900,
+          "grown_ns": 3964500,
+          "trimmed_diff_ns": 1222100,
+          "expand_back_ns": 973100,
+          "erosion_ns": 0,
+          "final_union_ns": 25300,
+          "cantilever_off_ns": 7032900,
+          "cantilever_diff_ns": 163900,
+          "lower_verts": 4047,
+          "region_verts": 3644,
+          "trimmed_verts": 44,
+          "contact_verts": 198,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 64,
+          "total_ns": 13318800,
+          "grown_ns": 2062800,
+          "trimmed_diff_ns": 1056500,
+          "expand_back_ns": 983000,
+          "erosion_ns": 0,
+          "final_union_ns": 45900,
+          "cantilever_off_ns": 8497700,
+          "cantilever_diff_ns": 670400,
+          "lower_verts": 2810,
+          "region_verts": 2660,
+          "trimmed_verts": 100,
+          "contact_verts": 259,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        }
+      ],
+      "profile_pass": {
+        "exit_code": 0,
+        "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+        "gcode_bytes": 8688377,
+        "reference_match": true,
+        "profile": {
+          "fuel_total": 20240975388,
+          "wall_total_ns": 8420399000,
+          "sa_total_calls": 1366,
+          "sa_total_wall_ns": 1076701900,
+          "scopes": {
+            "polygon_ops::offset": {
+              "calls": 401,
+              "wall_ns": 755992500
+            },
+            "polygon_ops::clip_polygons": {
+              "calls": 965,
+              "wall_ns": 320674000
+            }
+          }
+        }
+      }
+    },
+    "base-classic-on": {
+      "passes": [
+        {
+          "round": 1,
+          "exit_code": 0,
+          "wall_s": 26.1625,
+          "cpu_s": 110.8281,
+          "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "gcode_bytes": 39605478,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 24067,
+            "sa_stage_ms": 3412
+          },
+          "total_wall_ns": 3411969800,
+          "phases": {
+            "eligibility_ns": 23920500,
+            "gather_ns": 17123700,
+            "ppo_ns": 1086689700,
+            "layer_union_ns": 389200400,
+            "modifiers_ns": 1900,
+            "sort_ns": 4500,
+            "contacts_par_ns": 1893636500,
+            "post_contacts_ns": 803000,
+            "commit_ns": 700
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 21983131200,
+            "max_total_ns": 129276500,
+            "p50_ns": 39990600,
+            "p90_ns": 89309200,
+            "p99_ns": 119415700
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 9167061900,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 61678200
+            },
+            "trimmed_diff": {
+              "ns": 1401533800,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 10091800
+            },
+            "expand_back_offset": {
+              "ns": 170208300,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 4390300
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1121824700,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 10834000
+            },
+            "final_union": {
+              "ns": 47487100,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 2115600
+            },
+            "cantilever_offset": {
+              "ns": 9902846800,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 65178600
+            },
+            "cantilever_diff": {
+              "ns": 171265500,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 5128800
+            },
+            "derive_needs_support": {
+              "ns": 267884000,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 5205800
+            },
+            "contact_item_total": {
+              "ns": 21983147600,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 129276600
+            },
+            "enforced_blocked_intersections": {
+              "ns": 482884100,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 6134000
+            },
+            "ppo_world_mesh": {
+              "ns": 16117400,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 16117400
+            },
+            "ppo_make_lines": {
+              "ns": 427603600,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 427603600
+            },
+            "ppo_chain": {
+              "ns": 642828800,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 642828800
+            },
+            "object_layer_union": {
+              "ns": 387623300,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 9368900
+            },
+            "ppo_chain_per_layer": {
+              "ns": 642778800,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 3455000
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 2,
+          "exit_code": 0,
+          "wall_s": 25.7529,
+          "cpu_s": 111.4219,
+          "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "gcode_bytes": 39605478,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 23603,
+            "sa_stage_ms": 3686
+          },
+          "total_wall_ns": 3685305100,
+          "phases": {
+            "eligibility_ns": 23970500,
+            "gather_ns": 16294100,
+            "ppo_ns": 1286635100,
+            "layer_union_ns": 373051600,
+            "modifiers_ns": 2100,
+            "sort_ns": 5300,
+            "contacts_par_ns": 1984568000,
+            "post_contacts_ns": 335900,
+            "commit_ns": 400
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 22961223000,
+            "max_total_ns": 129620900,
+            "p50_ns": 43202600,
+            "p90_ns": 90077000,
+            "p99_ns": 117200000
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 9460694900,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 57562600
+            },
+            "trimmed_diff": {
+              "ns": 1509030600,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 11414800
+            },
+            "expand_back_offset": {
+              "ns": 190413000,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 6484700
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1147316400,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 9871600
+            },
+            "final_union": {
+              "ns": 63340900,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 4326600
+            },
+            "cantilever_offset": {
+              "ns": 10430223300,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 68284200
+            },
+            "cantilever_diff": {
+              "ns": 157344700,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 4349700
+            },
+            "derive_needs_support": {
+              "ns": 277723200,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 5420000
+            },
+            "contact_item_total": {
+              "ns": 22961238800,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 129620900
+            },
+            "enforced_blocked_intersections": {
+              "ns": 513940300,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 5088400
+            },
+            "ppo_world_mesh": {
+              "ns": 14835100,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 14835100
+            },
+            "ppo_make_lines": {
+              "ns": 485403700,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 485403700
+            },
+            "ppo_chain": {
+              "ns": 786261900,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 786261900
+            },
+            "object_layer_union": {
+              "ns": 371585000,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 2241000
+            },
+            "ppo_chain_per_layer": {
+              "ns": 786184400,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 5482200
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 3,
+          "exit_code": 0,
+          "wall_s": 25.5514,
+          "cpu_s": 109.2656,
+          "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+          "gcode_bytes": 39605478,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 23425,
+            "sa_stage_ms": 3429
+          },
+          "total_wall_ns": 3429378300,
+          "phases": {
+            "eligibility_ns": 22918500,
+            "gather_ns": 15427700,
+            "ppo_ns": 1088955600,
+            "layer_union_ns": 395801700,
+            "modifiers_ns": 2400,
+            "sort_ns": 5800,
+            "contacts_par_ns": 1905699000,
+            "post_contacts_ns": 271100,
+            "commit_ns": 200
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 22101049300,
+            "max_total_ns": 135601200,
+            "p50_ns": 39433000,
+            "p90_ns": 89439600,
+            "p99_ns": 119575200
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 9206710900,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 68425000
+            },
+            "trimmed_diff": {
+              "ns": 1433837200,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 10978400
+            },
+            "expand_back_offset": {
+              "ns": 186791100,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 9037600
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1106029000,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 9544800
+            },
+            "final_union": {
+              "ns": 53823100,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 2918700
+            },
+            "cantilever_offset": {
+              "ns": 9948545900,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 67050500
+            },
+            "cantilever_diff": {
+              "ns": 163921700,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 5880800
+            },
+            "derive_needs_support": {
+              "ns": 260213600,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 5556400
+            },
+            "contact_item_total": {
+              "ns": 22101065700,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 135601300
+            },
+            "enforced_blocked_intersections": {
+              "ns": 468890600,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 5551000
+            },
+            "ppo_world_mesh": {
+              "ns": 10942300,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 10942300
+            },
+            "ppo_make_lines": {
+              "ns": 419049500,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 419049500
+            },
+            "ppo_chain": {
+              "ns": 658824200,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 658824200
+            },
+            "object_layer_union": {
+              "ns": 394155400,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 6649200
+            },
+            "ppo_chain_per_layer": {
+              "ns": 658759200,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 3555200
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        }
+      ],
+      "median": {
+        "total_wall_ns": 3429378300,
+        "sa_stage_ms": 3429,
+        "slice_complete_ms": 23603,
+        "phases": {
+          "eligibility_ns": 23920500,
+          "gather_ns": 16294100,
+          "ppo_ns": 1088955600,
+          "layer_union_ns": 389200400,
+          "modifiers_ns": 2100,
+          "sort_ns": 5300,
+          "contacts_par_ns": 1905699000,
+          "post_contacts_ns": 335900,
+          "commit_ns": 400
+        },
+        "counts": {
+          "regions_total": 496,
+          "needs_support_true": 496,
+          "layers_in_union": 496,
+          "multi_region_layers": 0,
+          "single_region_union_changed": 211,
+          "ppo_entries": 496,
+          "candidates_count": 368,
+          "cantilever_count": 11
+        },
+        "layer_summary": {
+          "layers": 495,
+          "region_eq_lower": 0,
+          "trimmed_nonempty": 368,
+          "contacts_nonempty": 368,
+          "cantilever_hits": 11,
+          "sum_total_ns": 21983131200,
+          "max_total_ns": 129276500,
+          "p50_ns": 39990600,
+          "p90_ns": 89309200,
+          "p99_ns": 119415700
+        },
+        "ops": {
+          "cantilever_diff": {
+            "ns": 163921700,
+            "max_ns": 5128800,
+            "count": 368,
+            "vin": 835929,
+            "vout": 2357
+          },
+          "cantilever_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 11,
+            "vin": 0,
+            "vout": 0
+          },
+          "cantilever_offset": {
+            "ns": 9948545900,
+            "max_ns": 67050500,
+            "count": 368,
+            "vin": 2064373,
+            "vout": 580768
+          },
+          "contact_item_total": {
+            "ns": 22101065700,
+            "max_ns": 129620900,
+            "count": 495,
+            "vin": 5028330,
+            "vout": 255161
+          },
+          "contacts_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          },
+          "derive_needs_support": {
+            "ns": 267884000,
+            "max_ns": 5420000,
+            "count": 496,
+            "vin": 2514390,
+            "vout": 496
+          },
+          "enforced_blocked_intersections": {
+            "ns": 482884100,
+            "max_ns": 5551000,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          },
+          "expand_back_intersect_diff": {
+            "ns": 1121824700,
+            "max_ns": 9871600,
+            "count": 368,
+            "vin": 4274376,
+            "vout": 255162
+          },
+          "expand_back_offset": {
+            "ns": 186791100,
+            "max_ns": 6484700,
+            "count": 368,
+            "vin": 161762,
+            "vout": 140154
+          },
+          "final_union": {
+            "ns": 53823100,
+            "max_ns": 2918700,
+            "count": 368,
+            "vin": 255162,
+            "vout": 255161
+          },
+          "grown_offset": {
+            "ns": 9206710900,
+            "max_ns": 61678200,
+            "count": 495,
+            "vin": 2514234,
+            "vout": 1503906
+          },
+          "object_layer_union": {
+            "ns": 387623300,
+            "max_ns": 6649200,
+            "count": 496,
+            "vin": 2514390,
+            "vout": 2514390
+          },
+          "ppo_chain": {
+            "ns": 658824200,
+            "max_ns": 658824200,
+            "count": 1,
+            "vin": 496,
+            "vout": 1398043
+          },
+          "ppo_chain_per_layer": {
+            "ns": 658759200,
+            "max_ns": 3555200,
+            "count": 496,
+            "vin": 1431571,
+            "vout": 1398043
+          },
+          "ppo_make_lines": {
+            "ns": 427603600,
+            "max_ns": 427603600,
+            "count": 1,
+            "vin": 2461234,
+            "vout": 1431571
+          },
+          "ppo_world_mesh": {
+            "ns": 14835100,
+            "max_ns": 14835100,
+            "count": 1,
+            "vin": 2461234,
+            "vout": 1230602
+          },
+          "trimmed_diff": {
+            "ns": 1433837200,
+            "max_ns": 10978400,
+            "count": 495,
+            "vin": 4018002,
+            "vout": 161762
+          },
+          "trimmed_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          }
+        }
+      },
+      "top_layers_r1": [
+        {
+          "layer": 234,
+          "total_ns": 129276500,
+          "grown_ns": 59746600,
+          "trimmed_diff_ns": 4413600,
+          "expand_back_ns": 5544300,
+          "erosion_ns": 0,
+          "final_union_ns": 106000,
+          "cantilever_off_ns": 59101500,
+          "cantilever_diff_ns": 362100,
+          "lower_verts": 6136,
+          "region_verts": 6055,
+          "trimmed_verts": 403,
+          "contact_verts": 621,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 156,
+          "total_ns": 128353300,
+          "grown_ns": 49534200,
+          "trimmed_diff_ns": 8074300,
+          "expand_back_ns": 10822300,
+          "erosion_ns": 0,
+          "final_union_ns": 2115500,
+          "cantilever_off_ns": 56867900,
+          "cantilever_diff_ns": 934200,
+          "lower_verts": 8684,
+          "region_verts": 8608,
+          "trimmed_verts": 819,
+          "contact_verts": 1744,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 209,
+          "total_ns": 125780700,
+          "grown_ns": 54418000,
+          "trimmed_diff_ns": 4899300,
+          "expand_back_ns": 5042900,
+          "erosion_ns": 0,
+          "final_union_ns": 19100,
+          "cantilever_off_ns": 61120400,
+          "cantilever_diff_ns": 279300,
+          "lower_verts": 7245,
+          "region_verts": 7275,
+          "trimmed_verts": 27,
+          "contact_verts": 101,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 150,
+          "total_ns": 120820000,
+          "grown_ns": 48006400,
+          "trimmed_diff_ns": 10091700,
+          "expand_back_ns": 4617200,
+          "erosion_ns": 0,
+          "final_union_ns": 106400,
+          "cantilever_off_ns": 57499500,
+          "cantilever_diff_ns": 496300,
+          "lower_verts": 8624,
+          "region_verts": 8477,
+          "trimmed_verts": 402,
+          "contact_verts": 605,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 155,
+          "total_ns": 119415700,
+          "grown_ns": 44511200,
+          "trimmed_diff_ns": 5193000,
+          "expand_back_ns": 4868900,
+          "erosion_ns": 0,
+          "final_union_ns": 66400,
+          "cantilever_off_ns": 64372500,
+          "cantilever_diff_ns": 401000,
+          "lower_verts": 8631,
+          "region_verts": 8684,
+          "trimmed_verts": 239,
+          "contact_verts": 504,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 214,
+          "total_ns": 119310500,
+          "grown_ns": 45925300,
+          "trimmed_diff_ns": 3847600,
+          "expand_back_ns": 4108100,
+          "erosion_ns": 0,
+          "final_union_ns": 74300,
+          "cantilever_off_ns": 63556100,
+          "cantilever_diff_ns": 1796600,
+          "lower_verts": 7405,
+          "region_verts": 7091,
+          "trimmed_verts": 293,
+          "contact_verts": 480,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 237,
+          "total_ns": 118299200,
+          "grown_ns": 55021100,
+          "trimmed_diff_ns": 6966900,
+          "expand_back_ns": 3604900,
+          "erosion_ns": 0,
+          "final_union_ns": 32600,
+          "cantilever_off_ns": 52141200,
+          "cantilever_diff_ns": 529500,
+          "lower_verts": 6092,
+          "region_verts": 6035,
+          "trimmed_verts": 87,
+          "contact_verts": 202,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 282,
+          "total_ns": 116127500,
+          "grown_ns": 57975800,
+          "trimmed_diff_ns": 3823300,
+          "expand_back_ns": 9799300,
+          "erosion_ns": 0,
+          "final_union_ns": 122000,
+          "cantilever_off_ns": 44050000,
+          "cantilever_diff_ns": 354900,
+          "lower_verts": 6358,
+          "region_verts": 6496,
+          "trimmed_verts": 446,
+          "contact_verts": 770,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 272,
+          "total_ns": 115071100,
+          "grown_ns": 61678100,
+          "trimmed_diff_ns": 3520500,
+          "expand_back_ns": 4428800,
+          "erosion_ns": 0,
+          "final_union_ns": 55500,
+          "cantilever_off_ns": 45050500,
+          "cantilever_diff_ns": 336000,
+          "lower_verts": 6288,
+          "region_verts": 6405,
+          "trimmed_verts": 293,
+          "contact_verts": 390,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 316,
+          "total_ns": 114469800,
+          "grown_ns": 52012900,
+          "trimmed_diff_ns": 5404600,
+          "expand_back_ns": 9614700,
+          "erosion_ns": 0,
+          "final_union_ns": 853500,
+          "cantilever_off_ns": 45729700,
+          "cantilever_diff_ns": 850800,
+          "lower_verts": 5378,
+          "region_verts": 5428,
+          "trimmed_verts": 1226,
+          "contact_verts": 2531,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 210,
+          "total_ns": 110671600,
+          "grown_ns": 47216700,
+          "trimmed_diff_ns": 3843000,
+          "expand_back_ns": 5652400,
+          "erosion_ns": 0,
+          "final_union_ns": 16700,
+          "cantilever_off_ns": 53655100,
+          "cantilever_diff_ns": 285700,
+          "lower_verts": 7275,
+          "region_verts": 7156,
+          "trimmed_verts": 43,
+          "contact_verts": 101,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 151,
+          "total_ns": 110418700,
+          "grown_ns": 41736000,
+          "trimmed_diff_ns": 8913100,
+          "expand_back_ns": 4361700,
+          "erosion_ns": 0,
+          "final_union_ns": 38700,
+          "cantilever_off_ns": 52356300,
+          "cantilever_diff_ns": 3009500,
+          "lower_verts": 8477,
+          "region_verts": 8361,
+          "trimmed_verts": 208,
+          "contact_verts": 291,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        }
+      ],
+      "profile_pass": {
+        "exit_code": 0,
+        "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+        "gcode_bytes": 39605478,
+        "reference_match": true,
+        "profile": {
+          "fuel_total": 156909127978,
+          "wall_total_ns": 106686111600,
+          "sa_total_calls": 4430,
+          "sa_total_wall_ns": 24258927100,
+          "scopes": {
+            "polygon_ops::offset": {
+              "calls": 1231,
+              "wall_ns": 20451712300
+            },
+            "polygon_ops::clip_polygons": {
+              "calls": 3199,
+              "wall_ns": 3807082400
+            }
+          }
+        }
+      }
+    },
+    "base-arachne-on": {
+      "passes": [
+        {
+          "round": 1,
+          "exit_code": 0,
+          "wall_s": 26.8289,
+          "cpu_s": 115.75,
+          "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "gcode_bytes": 39417439,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 24744,
+            "sa_stage_ms": 3530
+          },
+          "total_wall_ns": 3530263000,
+          "phases": {
+            "eligibility_ns": 26472500,
+            "gather_ns": 16305900,
+            "ppo_ns": 1127293800,
+            "layer_union_ns": 384699100,
+            "modifiers_ns": 2200,
+            "sort_ns": 5900,
+            "contacts_par_ns": 1974769000,
+            "post_contacts_ns": 361000,
+            "commit_ns": 200
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 22569971100,
+            "max_total_ns": 137332700,
+            "p50_ns": 40502900,
+            "p90_ns": 91757700,
+            "p99_ns": 128357600
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 9449047500,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 66788000
+            },
+            "trimmed_diff": {
+              "ns": 1426042500,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 11567900
+            },
+            "expand_back_offset": {
+              "ns": 173585000,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 4110000
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1148570300,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 9872700
+            },
+            "final_union": {
+              "ns": 52506400,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 1853100
+            },
+            "cantilever_offset": {
+              "ns": 10156174900,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 67050200
+            },
+            "cantilever_diff": {
+              "ns": 162563200,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 2675200
+            },
+            "derive_needs_support": {
+              "ns": 298530200,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 5675100
+            },
+            "contact_item_total": {
+              "ns": 22569987300,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 137332800
+            },
+            "enforced_blocked_intersections": {
+              "ns": 495056100,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 7012100
+            },
+            "ppo_world_mesh": {
+              "ns": 13389600,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 13389600
+            },
+            "ppo_make_lines": {
+              "ns": 436451400,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 436451400
+            },
+            "ppo_chain": {
+              "ns": 677288000,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 677288000
+            },
+            "object_layer_union": {
+              "ns": 383091700,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 6391700
+            },
+            "ppo_chain_per_layer": {
+              "ns": 677227700,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 5610800
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 2,
+          "exit_code": 0,
+          "wall_s": 27.8591,
+          "cpu_s": 118.1719,
+          "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "gcode_bytes": 39417439,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 25787,
+            "sa_stage_ms": 3614
+          },
+          "total_wall_ns": 3614299200,
+          "phases": {
+            "eligibility_ns": 25518300,
+            "gather_ns": 16188200,
+            "ppo_ns": 1095120300,
+            "layer_union_ns": 400808800,
+            "modifiers_ns": 2300,
+            "sort_ns": 5400,
+            "contacts_par_ns": 2076046200,
+            "post_contacts_ns": 300900,
+            "commit_ns": 200
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 23312001000,
+            "max_total_ns": 164082900,
+            "p50_ns": 41468400,
+            "p90_ns": 93607000,
+            "p99_ns": 134258700
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 9500636700,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 76347700
+            },
+            "trimmed_diff": {
+              "ns": 1561006300,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 12578300
+            },
+            "expand_back_offset": {
+              "ns": 201942800,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 11472300
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1227925900,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 11588700
+            },
+            "final_union": {
+              "ns": 55513900,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 2195900
+            },
+            "cantilever_offset": {
+              "ns": 10583246300,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 76576000
+            },
+            "cantilever_diff": {
+              "ns": 179628100,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 3525700
+            },
+            "derive_needs_support": {
+              "ns": 285016300,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 4436000
+            },
+            "contact_item_total": {
+              "ns": 23312016000,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 164083000
+            },
+            "enforced_blocked_intersections": {
+              "ns": 558534500,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 7222300
+            },
+            "ppo_world_mesh": {
+              "ns": 13715800,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 13715800
+            },
+            "ppo_make_lines": {
+              "ns": 438311700,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 438311700
+            },
+            "ppo_chain": {
+              "ns": 642977300,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 642977300
+            },
+            "object_layer_union": {
+              "ns": 399307600,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 6648300
+            },
+            "ppo_chain_per_layer": {
+              "ns": 642925900,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 3423300
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        },
+        {
+          "round": 3,
+          "exit_code": 0,
+          "wall_s": 26.7753,
+          "cpu_s": 117.2344,
+          "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+          "gcode_bytes": 39417439,
+          "reference_match": true,
+          "inst": {
+            "degraded": false,
+            "fatal_error_count": 0,
+            "non_fatal_error_count": 0,
+            "code_1200_count": 0,
+            "slice_complete_ms": 24647,
+            "sa_stage_ms": 3403
+          },
+          "total_wall_ns": 3402879400,
+          "phases": {
+            "eligibility_ns": 24205100,
+            "gather_ns": 16164500,
+            "ppo_ns": 1112884300,
+            "layer_union_ns": 379374600,
+            "modifiers_ns": 3000,
+            "sort_ns": 7800,
+            "contacts_par_ns": 1869252000,
+            "post_contacts_ns": 601000,
+            "commit_ns": 400
+          },
+          "counts": {
+            "regions_total": 496,
+            "needs_support_true": 496,
+            "layers_in_union": 496,
+            "multi_region_layers": 0,
+            "single_region_union_changed": 211,
+            "ppo_entries": 496,
+            "candidates_count": 368,
+            "cantilever_count": 11
+          },
+          "layer_summary": {
+            "layers": 495,
+            "region_eq_lower": 0,
+            "trimmed_nonempty": 368,
+            "contacts_nonempty": 368,
+            "cantilever_hits": 11,
+            "sum_total_ns": 21529531500,
+            "max_total_ns": 128036400,
+            "p50_ns": 38015400,
+            "p90_ns": 87712100,
+            "p99_ns": 111325700
+          },
+          "ops": {
+            "grown_offset": {
+              "ns": 8978366500,
+              "count": 495,
+              "vin": 2514234,
+              "vout": 1503906,
+              "max_ns": 60784600
+            },
+            "trimmed_diff": {
+              "ns": 1405201700,
+              "count": 495,
+              "vin": 4018002,
+              "vout": 161762,
+              "max_ns": 10139300
+            },
+            "expand_back_offset": {
+              "ns": 173009600,
+              "count": 368,
+              "vin": 161762,
+              "vout": 140154,
+              "max_ns": 6667300
+            },
+            "expand_back_intersect_diff": {
+              "ns": 1097719700,
+              "count": 368,
+              "vin": 4274376,
+              "vout": 255162,
+              "max_ns": 12180800
+            },
+            "final_union": {
+              "ns": 56497800,
+              "count": 368,
+              "vin": 255162,
+              "vout": 255161,
+              "max_ns": 3002800
+            },
+            "cantilever_offset": {
+              "ns": 9655246200,
+              "count": 368,
+              "vin": 2064373,
+              "vout": 580768,
+              "max_ns": 61597700
+            },
+            "cantilever_diff": {
+              "ns": 162428600,
+              "count": 368,
+              "vin": 835929,
+              "vout": 2357,
+              "max_ns": 3091300
+            },
+            "derive_needs_support": {
+              "ns": 266838900,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 496,
+              "max_ns": 4430400
+            },
+            "contact_item_total": {
+              "ns": 21529548600,
+              "count": 495,
+              "vin": 5028330,
+              "vout": 255161,
+              "max_ns": 128036400
+            },
+            "enforced_blocked_intersections": {
+              "ns": 447243100,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 4818100
+            },
+            "ppo_world_mesh": {
+              "ns": 10400300,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1230602,
+              "max_ns": 10400300
+            },
+            "ppo_make_lines": {
+              "ns": 446383700,
+              "count": 1,
+              "vin": 2461234,
+              "vout": 1431571,
+              "max_ns": 446383700
+            },
+            "ppo_chain": {
+              "ns": 655989600,
+              "count": 1,
+              "vin": 496,
+              "vout": 1398043,
+              "max_ns": 655989600
+            },
+            "object_layer_union": {
+              "ns": 377817000,
+              "count": 496,
+              "vin": 2514390,
+              "vout": 2514390,
+              "max_ns": 2292000
+            },
+            "ppo_chain_per_layer": {
+              "ns": 655924800,
+              "count": 496,
+              "vin": 1431571,
+              "vout": 1398043,
+              "max_ns": 7655500
+            },
+            "trimmed_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "contacts_nonempty": {
+              "ns": 0,
+              "count": 368,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            },
+            "cantilever_nonempty": {
+              "ns": 0,
+              "count": 11,
+              "vin": 0,
+              "vout": 0,
+              "max_ns": 0
+            }
+          }
+        }
+      ],
+      "median": {
+        "total_wall_ns": 3530263000,
+        "sa_stage_ms": 3530,
+        "slice_complete_ms": 24744,
+        "phases": {
+          "eligibility_ns": 25518300,
+          "gather_ns": 16188200,
+          "ppo_ns": 1112884300,
+          "layer_union_ns": 384699100,
+          "modifiers_ns": 2300,
+          "sort_ns": 5900,
+          "contacts_par_ns": 1974769000,
+          "post_contacts_ns": 361000,
+          "commit_ns": 200
+        },
+        "counts": {
+          "regions_total": 496,
+          "needs_support_true": 496,
+          "layers_in_union": 496,
+          "multi_region_layers": 0,
+          "single_region_union_changed": 211,
+          "ppo_entries": 496,
+          "candidates_count": 368,
+          "cantilever_count": 11
+        },
+        "layer_summary": {
+          "layers": 495,
+          "region_eq_lower": 0,
+          "trimmed_nonempty": 368,
+          "contacts_nonempty": 368,
+          "cantilever_hits": 11,
+          "sum_total_ns": 22569971100,
+          "max_total_ns": 137332700,
+          "p50_ns": 40502900,
+          "p90_ns": 91757700,
+          "p99_ns": 128357600
+        },
+        "ops": {
+          "cantilever_diff": {
+            "ns": 162563200,
+            "max_ns": 3091300,
+            "count": 368,
+            "vin": 835929,
+            "vout": 2357
+          },
+          "cantilever_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 11,
+            "vin": 0,
+            "vout": 0
+          },
+          "cantilever_offset": {
+            "ns": 10156174900,
+            "max_ns": 67050200,
+            "count": 368,
+            "vin": 2064373,
+            "vout": 580768
+          },
+          "contact_item_total": {
+            "ns": 22569987300,
+            "max_ns": 137332800,
+            "count": 495,
+            "vin": 5028330,
+            "vout": 255161
+          },
+          "contacts_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          },
+          "derive_needs_support": {
+            "ns": 285016300,
+            "max_ns": 4436000,
+            "count": 496,
+            "vin": 2514390,
+            "vout": 496
+          },
+          "enforced_blocked_intersections": {
+            "ns": 495056100,
+            "max_ns": 7012100,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          },
+          "expand_back_intersect_diff": {
+            "ns": 1148570300,
+            "max_ns": 11588700,
+            "count": 368,
+            "vin": 4274376,
+            "vout": 255162
+          },
+          "expand_back_offset": {
+            "ns": 173585000,
+            "max_ns": 6667300,
+            "count": 368,
+            "vin": 161762,
+            "vout": 140154
+          },
+          "final_union": {
+            "ns": 55513900,
+            "max_ns": 2195900,
+            "count": 368,
+            "vin": 255162,
+            "vout": 255161
+          },
+          "grown_offset": {
+            "ns": 9449047500,
+            "max_ns": 66788000,
+            "count": 495,
+            "vin": 2514234,
+            "vout": 1503906
+          },
+          "object_layer_union": {
+            "ns": 383091700,
+            "max_ns": 6391700,
+            "count": 496,
+            "vin": 2514390,
+            "vout": 2514390
+          },
+          "ppo_chain": {
+            "ns": 655989600,
+            "max_ns": 655989600,
+            "count": 1,
+            "vin": 496,
+            "vout": 1398043
+          },
+          "ppo_chain_per_layer": {
+            "ns": 655924800,
+            "max_ns": 5610800,
+            "count": 496,
+            "vin": 1431571,
+            "vout": 1398043
+          },
+          "ppo_make_lines": {
+            "ns": 438311700,
+            "max_ns": 438311700,
+            "count": 1,
+            "vin": 2461234,
+            "vout": 1431571
+          },
+          "ppo_world_mesh": {
+            "ns": 13389600,
+            "max_ns": 13389600,
+            "count": 1,
+            "vin": 2461234,
+            "vout": 1230602
+          },
+          "trimmed_diff": {
+            "ns": 1426042500,
+            "max_ns": 11567900,
+            "count": 495,
+            "vin": 4018002,
+            "vout": 161762
+          },
+          "trimmed_nonempty": {
+            "ns": 0,
+            "max_ns": 0,
+            "count": 368,
+            "vin": 0,
+            "vout": 0
+          }
+        }
+      },
+      "top_layers_r1": [
+        {
+          "layer": 316,
+          "total_ns": 137332700,
+          "grown_ns": 66787900,
+          "trimmed_diff_ns": 3003000,
+          "expand_back_ns": 11341800,
+          "erosion_ns": 0,
+          "final_union_ns": 722800,
+          "cantilever_off_ns": 54629600,
+          "cantilever_diff_ns": 843700,
+          "lower_verts": 5378,
+          "region_verts": 5428,
+          "trimmed_verts": 1226,
+          "contact_verts": 2531,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 234,
+          "total_ns": 132148800,
+          "grown_ns": 57437700,
+          "trimmed_diff_ns": 5226400,
+          "expand_back_ns": 5827200,
+          "erosion_ns": 0,
+          "final_union_ns": 99700,
+          "cantilever_off_ns": 63228300,
+          "cantilever_diff_ns": 326400,
+          "lower_verts": 6136,
+          "region_verts": 6055,
+          "trimmed_verts": 403,
+          "contact_verts": 621,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 156,
+          "total_ns": 132063400,
+          "grown_ns": 51510800,
+          "trimmed_diff_ns": 6396800,
+          "expand_back_ns": 10483200,
+          "erosion_ns": 0,
+          "final_union_ns": 615600,
+          "cantilever_off_ns": 62015600,
+          "cantilever_diff_ns": 1012300,
+          "lower_verts": 8684,
+          "region_verts": 8608,
+          "trimmed_verts": 819,
+          "contact_verts": 1744,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 151,
+          "total_ns": 131246300,
+          "grown_ns": 55686700,
+          "trimmed_diff_ns": 4355400,
+          "expand_back_ns": 5830600,
+          "erosion_ns": 0,
+          "final_union_ns": 43700,
+          "cantilever_off_ns": 64963800,
+          "cantilever_diff_ns": 363000,
+          "lower_verts": 8477,
+          "region_verts": 8361,
+          "trimmed_verts": 208,
+          "contact_verts": 291,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 150,
+          "total_ns": 128357600,
+          "grown_ns": 43987500,
+          "trimmed_diff_ns": 6533000,
+          "expand_back_ns": 10016500,
+          "erosion_ns": 0,
+          "final_union_ns": 109800,
+          "cantilever_off_ns": 67050000,
+          "cantilever_diff_ns": 657100,
+          "lower_verts": 8624,
+          "region_verts": 8477,
+          "trimmed_verts": 402,
+          "contact_verts": 605,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 209,
+          "total_ns": 120174000,
+          "grown_ns": 55109400,
+          "trimmed_diff_ns": 6284600,
+          "expand_back_ns": 6990000,
+          "erosion_ns": 0,
+          "final_union_ns": 16900,
+          "cantilever_off_ns": 51505200,
+          "cantilever_diff_ns": 264600,
+          "lower_verts": 7245,
+          "region_verts": 7275,
+          "trimmed_verts": 27,
+          "contact_verts": 101,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 144,
+          "total_ns": 119056500,
+          "grown_ns": 42393800,
+          "trimmed_diff_ns": 6354100,
+          "expand_back_ns": 5149300,
+          "erosion_ns": 0,
+          "final_union_ns": 24200,
+          "cantilever_off_ns": 64197900,
+          "cantilever_diff_ns": 934700,
+          "lower_verts": 7927,
+          "region_verts": 7790,
+          "trimmed_verts": 47,
+          "contact_verts": 105,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 229,
+          "total_ns": 111891400,
+          "grown_ns": 46286200,
+          "trimmed_diff_ns": 7854000,
+          "expand_back_ns": 4382000,
+          "erosion_ns": 0,
+          "final_union_ns": 45600,
+          "cantilever_off_ns": 52987200,
+          "cantilever_diff_ns": 334100,
+          "lower_verts": 6457,
+          "region_verts": 6537,
+          "trimmed_verts": 84,
+          "contact_verts": 281,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 213,
+          "total_ns": 111692000,
+          "grown_ns": 47972800,
+          "trimmed_diff_ns": 4465800,
+          "expand_back_ns": 5124500,
+          "erosion_ns": 0,
+          "final_union_ns": 43900,
+          "cantilever_off_ns": 53784800,
+          "cantilever_diff_ns": 298000,
+          "lower_verts": 7137,
+          "region_verts": 7405,
+          "trimmed_verts": 148,
+          "contact_verts": 251,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 239,
+          "total_ns": 111274600,
+          "grown_ns": 58932400,
+          "trimmed_diff_ns": 2731100,
+          "expand_back_ns": 2597700,
+          "erosion_ns": 0,
+          "final_union_ns": 63200,
+          "cantilever_off_ns": 46620100,
+          "cantilever_diff_ns": 326000,
+          "lower_verts": 6137,
+          "region_verts": 5486,
+          "trimmed_verts": 160,
+          "contact_verts": 291,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 155,
+          "total_ns": 110327500,
+          "grown_ns": 35995200,
+          "trimmed_diff_ns": 5032000,
+          "expand_back_ns": 9058600,
+          "erosion_ns": 0,
+          "final_union_ns": 67000,
+          "cantilever_off_ns": 59766000,
+          "cantilever_diff_ns": 404900,
+          "lower_verts": 8631,
+          "region_verts": 8684,
+          "trimmed_verts": 239,
+          "contact_verts": 504,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        },
+        {
+          "layer": 230,
+          "total_ns": 110015700,
+          "grown_ns": 45431300,
+          "trimmed_diff_ns": 3145300,
+          "expand_back_ns": 6820300,
+          "erosion_ns": 0,
+          "final_union_ns": 20700,
+          "cantilever_off_ns": 54317700,
+          "cantilever_diff_ns": 277700,
+          "lower_verts": 6537,
+          "region_verts": 6242,
+          "trimmed_verts": 34,
+          "contact_verts": 128,
+          "cantilever_hit": false,
+          "region_eq_lower": false
+        }
+      ],
+      "profile_pass": {
+        "exit_code": 0,
+        "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+        "gcode_bytes": 39417439,
+        "reference_match": true,
+        "profile": {
+          "fuel_total": 144002343596,
+          "wall_total_ns": 104770729800,
+          "sa_total_calls": 4430,
+          "sa_total_wall_ns": 23301481400,
+          "scopes": {
+            "polygon_ops::offset": {
+              "calls": 1231,
+              "wall_ns": 19530753700
+            },
+            "polygon_ops::clip_polygons": {
+              "calls": 3199,
+              "wall_ns": 3770602400
+            }
+          }
+        }
+      }
+    }
+  },
+  "geometry_census": {
+    "benchy-classic-on": {
+      "layers": 239,
+      "lower_expolys": 580,
+      "lower_contour_verts": 391000,
+      "lower_holes": 175,
+      "lower_hole_verts": 52688,
+      "holes_lt_2delta": 0,
+      "holes_lt_2delta_verts": 0,
+      "holes_lt_6mm": 108,
+      "holes_lt_6mm_verts": 32754,
+      "holes_overlap_raw": 166,
+      "holes_overlap_raw_verts": 52184,
+      "raw_empty_layers": 0,
+      "raw_empty_trimmed_nonempty_errors": 0,
+      "raw_verts": 546499,
+      "grown_orig_single_thread_ms": 339.7,
+      "grown_cert_hits": 103,
+      "grown_cert_errors": 0,
+      "grown_cert_single_thread_ms": 880.7,
+      "gholes_single_thread_ms": 360.2,
+      "gholes_diff_layers": 2,
+      "gwin_single_thread_ms": 400.2,
+      "gwin_diff_layers": 2,
+      "gisland_single_thread_ms": 419.9,
+      "gisland_diff_layers": 2,
+      "cantilever_layers": 81,
+      "cantilever_real_true": 2,
+      "cantilever_orig_single_thread_ms": 161.1,
+      "cantilever_cert_hits": 79,
+      "cantilever_cert_errors": 0,
+      "cantilever_cert_single_thread_ms": 8.5
+    },
+    "base-classic-on": {
+      "layers": 495,
+      "lower_expolys": 839,
+      "lower_contour_verts": 2501360,
+      "lower_holes": 48,
+      "lower_hole_verts": 12874,
+      "holes_lt_2delta": 20,
+      "holes_lt_2delta_verts": 2283,
+      "holes_lt_6mm": 47,
+      "holes_lt_6mm_verts": 12054,
+      "holes_overlap_raw": 41,
+      "holes_overlap_raw_verts": 11053,
+      "raw_empty_layers": 9,
+      "raw_empty_trimmed_nonempty_errors": 0,
+      "raw_verts": 2369902,
+      "grown_orig_single_thread_ms": 5913.8,
+      "grown_cert_hits": 50,
+      "grown_cert_errors": 0,
+      "grown_cert_single_thread_ms": 570.4,
+      "gholes_single_thread_ms": 5877.1,
+      "gholes_diff_layers": 41,
+      "gwin_single_thread_ms": 6210.8,
+      "gwin_diff_layers": 50,
+      "gisland_single_thread_ms": 5678.2,
+      "gisland_diff_layers": 121,
+      "cantilever_layers": 368,
+      "cantilever_real_true": 11,
+      "cantilever_orig_single_thread_ms": 5613.5,
+      "cantilever_cert_hits": 352,
+      "cantilever_cert_errors": 0,
+      "cantilever_cert_single_thread_ms": 83.4
+    }
+  }
+}

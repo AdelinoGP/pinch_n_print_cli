@@ -325,19 +325,19 @@ the caller's `Arc`. The deterministic block also drives the real
 
 ```text
 cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier routine
-test result: ok. 1 passed; 0 failed; ... finished in 0.33s
-VERDICT: PASS
-
-cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier extended
-test result: ok. 1 passed; 0 failed; ... finished in 1.24s
+test result: ok. 1 passed; 0 failed; ... finished in 16.77s
 VERDICT: PASS
 ```
 
-The X-strip fixture puts `current \ previous` on a strip whose band boundaries are exact X
-intervals. Every classified cell midpoint is inside exactly its analytic band, the quartile set
-equals the scene's observable set, band 4 extends past `2.0 x line width`, and the three
-no-overhang modes leave both maps without the layer key. `prepass_overhang_band_controls` refutes
-swapped quartiles, a substituted previous-boundary footprint and a fourth band capped at `2.0 x`.
+Ticket 142 removed the producer-side four-band partition; this record now checks the
+annotation's unsupported area and predecessor identity. The X-strip fixture puts
+`current \ previous` on an exact X strip: every classified cell midpoint is inside the reported
+`overhang_areas`, a previous-footprint interior point is outside it, every vertex stays inside the
+current footprint, and the three no-overhang modes leave both maps without the layer key. The
+nonempty-current/empty-predecessor mode reports the whole current footprint with an empty previous
+entry. `prepass_overhang_area_controls` refutes a substituted previous-boundary footprint, a missing
+area, an un-differenced current footprint and the previous footprint standing in for the strip.
+The extended tier was not re-measured after this rewrite.
 
 ## Registry execution (`H-PAINT-COMPOSE`)
 

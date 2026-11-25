@@ -434,35 +434,142 @@ fn nearest_pair_candidates(
         .collect::<Vec<_>>();
     endpoints.sort_by(endpoint_order);
 
-    let mut candidates = Vec::new();
-    for endpoint in &endpoints {
-        let Some(best) = endpoints
-            .iter()
-            .filter(|other| {
-                other.path_index != endpoint.path_index
-                    && compatible_paths(active, endpoint.path_index, other.path_index)
-                    && other.position.ring_index == endpoint.position.ring_index
-            })
-            .filter_map(|other| {
-                let (distance, _) = graph
-                    .rings()
-                    .get(endpoint.position.ring_index)?
-                    .directed_distance(endpoint.position.arc_position, other.position.arc_position);
-                Some((*other, distance))
-            })
-            .min_by(|(left, left_distance), (right, right_distance)| {
-                left_distance
-                    .total_cmp(right_distance)
-                    .then_with(|| endpoint_order(left, right))
-            })
-        else {
-            continue;
-        };
-        candidates.push(Candidate {
-            first: *endpoint,
-            second: best.0,
-            distance: best.1,
+    let rings = graph.rings();
+    let mut by_ring: Vec<Vec<(f64, usize)>> = vec![Vec::new(); rings.len()];
+    for (ep_idx, endpoint) in endpoints.iter().enumerate() {
+        if let Some(ring) = rings.get(endpoint.position.ring_index) {
+            let local = ring.local_position(endpoint.position.arc_position);
+            by_ring[endpoint.position.ring_index].push((local, ep_idx));
+        }
+    }
+    for ring_eps in &mut by_ring {
+        ring_eps.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
         });
+    }
+
+    let mut best_for: Vec<Option<(usize, f64)>> = vec![None; endpoints.len()];
+    for (ring_index, ring_eps) in by_ring.iter().enumerate() {
+        let m = ring_eps.len();
+        if m < 2 {
+            continue;
+        }
+        let ring = &rings[ring_index];
+        let ring_len = ring.length;
+
+        for k in 0..m {
+            let (my_local, my_idx) = ring_eps[k];
+            let endpoint = endpoints[my_idx];
+            let mut best: Option<(usize, f64)> = None;
+
+            if !ring_len.is_finite() || ring_len <= 0.0 {
+                for &(_, other_idx) in ring_eps {
+                    if other_idx == my_idx {
+                        continue;
+                    }
+                    let other = endpoints[other_idx];
+                    if other.path_index == endpoint.path_index
+                        || !compatible_paths(active, endpoint.path_index, other.path_index)
+                    {
+                        continue;
+                    }
+                    let (distance, _) = ring.directed_distance(
+                        endpoint.position.arc_position,
+                        other.position.arc_position,
+                    );
+                    let better = best.is_none_or(|(best_idx, best_dist)| {
+                        distance
+                            .total_cmp(&best_dist)
+                            .then_with(|| other_idx.cmp(&best_idx))
+                            == Ordering::Less
+                    });
+                    if better {
+                        best = Some((other_idx, distance));
+                    }
+                }
+                best_for[my_idx] = best;
+                continue;
+            }
+
+            // Forward circular scan from k+1..: stops as soon as forward arc
+            // distance exceeds the current best distance.
+            for step in 1..m {
+                let j = (k + step) % m;
+                let (other_local, other_idx) = ring_eps[j];
+                let fwd = (other_local - my_local).rem_euclid(ring_len);
+                if let Some((_, best_dist)) = best {
+                    if fwd > best_dist {
+                        break;
+                    }
+                }
+                let other = endpoints[other_idx];
+                if other.path_index == endpoint.path_index
+                    || !compatible_paths(active, endpoint.path_index, other.path_index)
+                {
+                    continue;
+                }
+                let bwd = (my_local - other_local).rem_euclid(ring_len);
+                let distance = if fwd <= bwd { fwd } else { bwd };
+                let better = best.is_none_or(|(best_idx, best_dist)| {
+                    distance
+                        .total_cmp(&best_dist)
+                        .then_with(|| other_idx.cmp(&best_idx))
+                        == Ordering::Less
+                });
+                if better {
+                    best = Some((other_idx, distance));
+                }
+            }
+
+            if best.is_none() {
+                continue;
+            }
+
+            // Backward circular scan from k-1..: stops as soon as backward arc
+            // distance exceeds the current best distance.
+            for step in 1..m {
+                let j = (k + m - step) % m;
+                let (other_local, other_idx) = ring_eps[j];
+                let bwd = (my_local - other_local).rem_euclid(ring_len);
+                if let Some((_, best_dist)) = best {
+                    if bwd > best_dist {
+                        break;
+                    }
+                }
+                let other = endpoints[other_idx];
+                if other.path_index == endpoint.path_index
+                    || !compatible_paths(active, endpoint.path_index, other.path_index)
+                {
+                    continue;
+                }
+                let fwd = (other_local - my_local).rem_euclid(ring_len);
+                let distance = if fwd <= bwd { fwd } else { bwd };
+                let better = best.is_none_or(|(best_idx, best_dist)| {
+                    distance
+                        .total_cmp(&best_dist)
+                        .then_with(|| other_idx.cmp(&best_idx))
+                        == Ordering::Less
+                });
+                if better {
+                    best = Some((other_idx, distance));
+                }
+            }
+
+            best_for[my_idx] = best;
+        }
+    }
+
+    let mut candidates = Vec::with_capacity(endpoints.len());
+    for (ep_idx, endpoint) in endpoints.iter().enumerate() {
+        if let Some((second_idx, distance)) = best_for[ep_idx] {
+            candidates.push(Candidate {
+                first: *endpoint,
+                second: endpoints[second_idx],
+                distance,
+            });
+        }
     }
     candidates
 }
@@ -588,15 +695,17 @@ fn boundary_position(
             .iter()
             .enumerate()
             .find_map(|(ring_index, ring)| {
-                (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
-                    .then_some(ring_index)
+                (ring.hole_index.is_some()
+                    && ring.contains_bbox(point)
+                    && point_strictly_in_ring(point, ring))
+                .then_some(ring_index)
             });
     if let Some(hole_ring) = inside_hole {
         // Inside a void: only that hole's own ring can anchor, and only when
         // the point sits on it (a scan line clipped exactly at the hole
         // edge). Anything deeper has no T-joint anywhere.
         let ring = &graph.rings()[hole_ring];
-        let (distance_squared, local_arc) = project_on_ring(ring, point)?;
+        let (distance_squared, local_arc) = ring.project_bounded(point, f64::INFINITY)?;
         if distance_squared > ON_RING_TOLERANCE_UNITS_SQUARED {
             return None;
         }
@@ -605,53 +714,52 @@ fn boundary_position(
             arc_position: ring.pos_of_first_point + local_arc,
         });
     }
-    let mut best: Option<(f64, BoundaryPosition)> = None;
+    let mut best_distance = f64::INFINITY;
+    let mut best: Option<BoundaryPosition> = None;
     for (ring_index, ring) in graph.rings().iter().enumerate() {
-        let Some((distance_squared, local_arc)) = project_on_ring(ring, point) else {
+        let Some((distance_squared, local_arc)) = ring.project_bounded(point, best_distance) else {
             continue;
         };
-        let position = BoundaryPosition {
+        best_distance = distance_squared;
+        best = Some(BoundaryPosition {
             ring_index,
             arc_position: ring.pos_of_first_point + local_arc,
-        };
-        let better = best.as_ref().is_none_or(|(best_distance, best_position)| {
-            distance_squared < *best_distance
-                || (distance_squared == *best_distance
-                    && (ring_index, position.arc_position)
-                        < (best_position.ring_index, best_position.arc_position))
         });
-        if better {
-            best = Some((distance_squared, position));
+        if best_distance == 0.0 {
+            break;
         }
     }
-    best.map(|(_, position)| position)
+    best
 }
 
 /// Strict point-in-polygon over a single closed ring (units space).
-/// Boundary-exact points count as inside — the hole-edge scan-line case must
-/// still reach the tolerance check above rather than being treated as void.
-fn point_strictly_in_ring(point: Point2, ring: &slicer_ir::Polygon) -> bool {
-    let pts = &ring.points;
+/// Boundary-exact points count as NOT strictly inside — the hole-edge scan-line
+/// case must still reach the tolerance check above rather than being treated as void.
+fn point_strictly_in_ring(point: Point2, ring: &BoundaryRing) -> bool {
+    let pts = &ring.polygon.points;
     let n = pts.len();
-    if n < 3 {
+    if n < 3 || !ring.contains_bbox(point) {
         return false;
     }
     let x = point.x as f64;
     let y = point.y as f64;
     // On-edge counts as NOT strictly inside.
-    for i in 0..n {
-        let a = pts[i];
-        let b = pts[(i + 1) % n];
-        let dx = (b.x - a.x) as f64;
-        let dy = (b.y - a.y) as f64;
-        let len2 = dx * dx + dy * dy;
+    for edge in &ring.edges {
+        if point.x < edge.min_x.saturating_sub(3)
+            || point.x > edge.max_x.saturating_add(3)
+            || point.y < edge.min_y.saturating_sub(3)
+            || point.y > edge.max_y.saturating_add(3)
+        {
+            continue;
+        }
+        let len2 = edge.dx * edge.dx + edge.dy * edge.dy;
         if len2 == 0.0 {
             continue;
         }
-        let t = ((x - a.x as f64) * dx + (y - a.y as f64) * dy) / len2;
+        let t = ((x - edge.start.x as f64) * edge.dx + (y - edge.start.y as f64) * edge.dy) / len2;
         if (0.0..=1.0).contains(&t) {
-            let px = a.x as f64 + t * dx;
-            let py = a.y as f64 + t * dy;
+            let px = edge.start.x as f64 + t * edge.dx;
+            let py = edge.start.y as f64 + t * edge.dy;
             if (x - px).hypot(y - py) <= 2.0 {
                 return false;
             }
@@ -670,45 +778,6 @@ fn point_strictly_in_ring(point: Point2, ring: &slicer_ir::Polygon) -> bool {
         j = i;
     }
     inside
-}
-
-fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
-    let points = &ring.polygon.points;
-    if points.is_empty() {
-        return None;
-    }
-
-    let mut best = None;
-    let mut segment_start = 0.0;
-    for index in 0..points.len() {
-        let start = points[index];
-        let end = points[(index + 1) % points.len()];
-        let dx = end.x as f64 - start.x as f64;
-        let dy = end.y as f64 - start.y as f64;
-        let segment_len = dx.hypot(dy);
-        let parameter = if segment_len == 0.0 {
-            0.0
-        } else {
-            let point_dx = point.x as f64 - start.x as f64;
-            let point_dy = point.y as f64 - start.y as f64;
-            ((point_dx * dx + point_dy * dy) / (segment_len * segment_len)).clamp(0.0, 1.0)
-        };
-        let projected_x = start.x as f64 + parameter * dx;
-        let projected_y = start.y as f64 + parameter * dy;
-        let distance_x = point.x as f64 - projected_x;
-        let distance_y = point.y as f64 - projected_y;
-        let distance_squared = distance_x * distance_x + distance_y * distance_y;
-        let local_arc = segment_start + parameter * segment_len;
-        let candidate = (distance_squared, local_arc);
-        if best
-            .as_ref()
-            .is_none_or(|current: &(f64, f64)| candidate.0 < current.0)
-        {
-            best = Some(candidate);
-        }
-        segment_start += segment_len;
-    }
-    best
 }
 
 /// Canonical `get_and_update_merged_with`: the slot that now holds the
@@ -740,5 +809,288 @@ fn endpoint_side(path: &ExtrusionPath3D, point: (f32, f32)) -> Option<bool> {
         Some(true)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod il3_equivalence_tests {
+    use super::*;
+    use slicer_ir::{ExPolygon, ExtrusionRole, Polygon};
+
+    fn brute_force_project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
+        let points = &ring.polygon.points;
+        if points.is_empty() {
+            return None;
+        }
+        let mut best: Option<(f64, f64)> = None;
+        let mut segment_start = 0.0;
+        for index in 0..points.len() {
+            let start = points[index];
+            let end = points[(index + 1) % points.len()];
+            let dx = end.x as f64 - start.x as f64;
+            let dy = end.y as f64 - start.y as f64;
+            let segment_len = dx.hypot(dy);
+            let parameter = if segment_len == 0.0 {
+                0.0
+            } else {
+                let point_dx = point.x as f64 - start.x as f64;
+                let point_dy = point.y as f64 - start.y as f64;
+                ((point_dx * dx + point_dy * dy) / (segment_len * segment_len)).clamp(0.0, 1.0)
+            };
+            let projected_x = start.x as f64 + parameter * dx;
+            let projected_y = start.y as f64 + parameter * dy;
+            let distance_x = point.x as f64 - projected_x;
+            let distance_y = point.y as f64 - projected_y;
+            let distance_squared = distance_x * distance_x + distance_y * distance_y;
+            let local_arc = segment_start + parameter * segment_len;
+            if best.is_none_or(|current| distance_squared < current.0) {
+                best = Some((distance_squared, local_arc));
+            }
+            segment_start += segment_len;
+        }
+        best
+    }
+
+    fn brute_force_nearest_pair_candidates(
+        active: &[Option<ExtrusionPath3D>],
+        graph: &BoundaryInfillGraph,
+    ) -> Vec<Candidate> {
+        let mut endpoints = active
+            .iter()
+            .enumerate()
+            .flat_map(|(path_index, path)| {
+                let path = path.as_ref()?;
+                let (head, tail) = (path.points.first()?, path.points.last()?);
+                let first = boundary_position(graph, head).map(|position| Endpoint {
+                    path_index,
+                    at_start: true,
+                    position,
+                    point: (head.x, head.y),
+                });
+                let last = boundary_position(graph, tail).map(|position| Endpoint {
+                    path_index,
+                    at_start: false,
+                    position,
+                    point: (tail.x, tail.y),
+                });
+                Some([first, last].into_iter().flatten())
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+        endpoints.sort_by(endpoint_order);
+
+        let mut candidates = Vec::new();
+        for endpoint in &endpoints {
+            let Some(best) = endpoints
+                .iter()
+                .filter(|other| {
+                    other.path_index != endpoint.path_index
+                        && compatible_paths(active, endpoint.path_index, other.path_index)
+                        && other.position.ring_index == endpoint.position.ring_index
+                })
+                .filter_map(|other| {
+                    let (distance, _) = graph
+                        .rings()
+                        .get(endpoint.position.ring_index)?
+                        .directed_distance(
+                            endpoint.position.arc_position,
+                            other.position.arc_position,
+                        );
+                    Some((*other, distance))
+                })
+                .min_by(|(left, left_distance), (right, right_distance)| {
+                    left_distance
+                        .total_cmp(right_distance)
+                        .then_with(|| endpoint_order(left, right))
+                })
+            else {
+                continue;
+            };
+            candidates.push(Candidate {
+                first: *endpoint,
+                second: best.0,
+                distance: best.1,
+            });
+        }
+        candidates
+    }
+
+    fn path_2pt(
+        a: (f32, f32),
+        b: (f32, f32),
+        width: f32,
+        tool_index: Option<u32>,
+    ) -> ExtrusionPath3D {
+        ExtrusionPath3D {
+            points: vec![
+                Point3WithWidth {
+                    x: a.0,
+                    y: a.1,
+                    z: 0.2,
+                    width,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+                Point3WithWidth {
+                    x: b.0,
+                    y: b.1,
+                    z: 0.2,
+                    width,
+                    flow_factor: 1.0,
+                    ..Default::default()
+                },
+            ],
+            role: ExtrusionRole::SparseInfill,
+            speed_factor: 1.0,
+            tool_index,
+            order_lock: None, // exhaustive: ExtrusionPath3D has no Default impl
+        }
+    }
+
+    fn multi_hole_graph() -> BoundaryInfillGraph {
+        let ep1 = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(40.0, 0.0),
+                    Point2::from_mm(40.0, 30.0),
+                    Point2::from_mm(20.0, 35.0),
+                    Point2::from_mm(0.0, 30.0),
+                ],
+            },
+            holes: vec![
+                Polygon {
+                    points: vec![
+                        Point2::from_mm(5.0, 5.0),
+                        Point2::from_mm(15.0, 5.0),
+                        Point2::from_mm(15.0, 15.0),
+                        Point2::from_mm(5.0, 15.0),
+                    ],
+                },
+                Polygon {
+                    points: vec![
+                        Point2::from_mm(24.0, 8.0),
+                        Point2::from_mm(34.0, 8.0),
+                        Point2::from_mm(34.0, 22.0),
+                        Point2::from_mm(24.0, 22.0),
+                    ],
+                },
+            ],
+        };
+        let ep2 = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(50.0, 0.0),
+                    Point2::from_mm(70.0, 0.0),
+                    Point2::from_mm(70.0, 20.0),
+                    Point2::from_mm(50.0, 20.0),
+                ],
+            },
+            holes: Vec::new(),
+        };
+        BoundaryInfillGraph::new(&[ep1, ep2])
+    }
+
+    #[test]
+    fn bounded_ring_projection_is_bit_identical_to_bruteforce_across_multi_hole_graph() {
+        let graph = multi_hole_graph();
+        let mut state: u64 = 0x517CC1B727220A95;
+        let mut next_mm = |lo: f32, hi: f32| -> f32 {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let frac = ((state >> 40) as f32) / ((1u32 << 24) as f32);
+            lo + (hi - lo) * frac
+        };
+
+        // Include exact vertices, wrap-around origin (0,0), hole interiors, hole edges, and random points.
+        let mut probes = vec![
+            Point2::from_mm(0.0, 0.0),
+            Point2::from_mm(40.0, 0.0),
+            Point2::from_mm(5.0, 5.0),
+            Point2::from_mm(10.0, 10.0),
+            Point2::from_mm(15.0, 10.0),
+            Point2::from_mm(29.0, 15.0),
+            Point2::from_mm(45.0, 10.0),
+            Point2::from_mm(50.0, 0.0),
+        ];
+        for _ in 0..250 {
+            probes.push(Point2::from_mm(next_mm(-5.0, 75.0), next_mm(-5.0, 40.0)));
+        }
+
+        for point in probes {
+            // Check per-ring projection bit identity.
+            for ring in graph.rings() {
+                let fast = ring.project_bounded(point, f64::INFINITY);
+                let slow = brute_force_project_on_ring(ring, point);
+                assert_eq!(
+                    fast.map(|(d, a)| (d.to_bits(), a.to_bits())),
+                    slow.map(|(d, a)| (d.to_bits(), a.to_bits())),
+                    "ring projection mismatch for point {point:?}"
+                );
+            }
+            // Check cross-ring graph.project bit identity.
+            let mut slow_best: Option<(f64, f64)> = None;
+            for ring in graph.rings() {
+                if let Some((d2, local_arc)) = brute_force_project_on_ring(ring, point) {
+                    let pos = ring.pos_of_first_point + local_arc;
+                    if slow_best.is_none_or(|(bd, _)| d2 < bd) {
+                        slow_best = Some((d2, pos));
+                    }
+                }
+            }
+            assert_eq!(
+                graph.project(point).map(f64::to_bits),
+                slow_best.map(|(_, pos)| pos.to_bits()),
+                "graph.project mismatch for point {point:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sorted_ring_nearest_pair_candidates_matches_bruteforce_across_seams_ties_and_holes() {
+        let graph = multi_hole_graph();
+        // Craft endpoints deliberately straddling ring wrap-around seam (0,0),
+        // coincident endpoints at identical arc positions, hole-edge endpoints,
+        // incompatible tool/width endpoints interleaved with compatible ones,
+        // and multi-island rings.
+        let active: Vec<Option<ExtrusionPath3D>> = vec![
+            Some(path_2pt((0.0, 0.0), (0.0, 29.5), 0.4, None)), // seam at 0 and near L
+            Some(path_2pt((0.0, 0.0), (1.0, 0.0), 0.4, None)),  // coincident at seam 0
+            Some(path_2pt((0.0, 29.8), (39.5, 0.0), 0.4, None)), // just before wrap L
+            Some(path_2pt((0.2, 0.0), (20.0, 0.0), 0.4, Some(1))), // incompatible tool at seam!
+            Some(path_2pt((0.3, 0.0), (21.0, 0.0), 0.6, None)), // incompatible width at seam!
+            Some(path_2pt((5.0, 7.0), (5.0, 12.0), 0.4, None)), // hole 0 edges
+            Some(path_2pt((5.0, 7.0), (15.0, 12.0), 0.4, None)), // coincident on hole 0
+            Some(path_2pt((15.0, 8.0), (24.0, 10.0), 0.4, None)), // hole 0 -> hole 1
+            Some(path_2pt((24.0, 11.0), (34.0, 15.0), 0.4, None)), // hole 1 edges
+            Some(path_2pt((50.0, 0.0), (50.0, 19.5), 0.4, None)), // island 2 seam
+            Some(path_2pt((50.5, 0.0), (70.0, 10.0), 0.4, None)), // island 2
+            Some(path_2pt((50.0, 19.9), (60.0, 20.0), 0.4, None)), // island 2 wrap
+            Some(path_2pt((10.0, 10.0), (10.0, 11.0), 0.4, None)), // strictly inside hole -> rejected
+        ];
+
+        let fast = nearest_pair_candidates(&active, &graph);
+        let slow = brute_force_nearest_pair_candidates(&active, &graph);
+        assert_eq!(fast.len(), slow.len(), "candidate count mismatch");
+        for (idx, (f, s)) in fast.iter().zip(slow.iter()).enumerate() {
+            assert_eq!(
+                (
+                    f.first.path_index,
+                    f.first.at_start,
+                    f.second.path_index,
+                    f.second.at_start,
+                    f.distance.to_bits()
+                ),
+                (
+                    s.first.path_index,
+                    s.first.at_start,
+                    s.second.path_index,
+                    s.second.at_start,
+                    s.distance.to_bits()
+                ),
+                "candidate[{idx}] diverged from brute-force reference"
+            );
+        }
     }
 }

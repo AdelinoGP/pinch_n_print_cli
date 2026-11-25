@@ -1,0 +1,516 @@
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index f73b4680..459ec1b0 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2592,6 +2592,9 @@ fn ir_bounds_to_layer(bounds: slicer_ir::BoundingBox3) -> BoundingBox3 {
+ 
+ impl hs::Host for HostExecutionContext {
+     fn log(&mut self, level: hs::LogLevel, message: String) -> wasmtime::Result<()> {
++        if crate::t178_probe::handle_log(&message) {
++            return Ok(());
++        }
+         let level_str = match level {
+             hs::LogLevel::Trace => "trace",
+             hs::LogLevel::Debug => "debug",
+@@ -2738,6 +2741,65 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::ClipRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
++        if crate::t178_probe::in_phase3() {
++            let want_dump = crate::t178_probe::dump_enabled();
++            let indexed: Vec<(usize, &hs::ClipRequest)> = requests.iter().enumerate().collect();
++            let t_batch = std::time::Instant::now();
++            let (pairs, mode) = crate::batch::map_batch(
++                &indexed,
++                |(_, r)| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
++                |(req_idx, r)| {
++                    let t_total = std::time::Instant::now();
++                    let ir_subject = wit_to_ir_expolygons(&r.subject);
++                    let ir_clip = wit_to_ir_expolygons(&r.clip);
++                    let t_clip = std::time::Instant::now();
++                    let result = slicer_core::polygon_ops::clip_polygons(
++                        &ir_subject,
++                        &ir_clip,
++                        ir_clip_op(r.op),
++                    );
++                    let clip_ns = t_clip.elapsed().as_nanos() as u64;
++                    let wit_out = ir_to_wit_expolygons(&result);
++                    let total_req_ns = t_total.elapsed().as_nanos() as u64;
++                    let (sp, sh, sv) = crate::t178_probe::count_expolys(&ir_subject);
++                    let (cp, ch, cv) = crate::t178_probe::count_expolys(&ir_clip);
++                    let (op, oh, ov) = crate::t178_probe::count_expolys(&result);
++                    let (dumped_inputs, dumped_outputs) = if want_dump {
++                        let mut all_in = Vec::with_capacity(ir_subject.len() + ir_clip.len());
++                        all_in.extend(ir_subject);
++                        all_in.extend(ir_clip);
++                        (Some(all_in), Some(result))
++                    } else {
++                        (None, None)
++                    };
++                    (
++                        wit_out,
++                        crate::t178_probe::Phase3BatchReqResult {
++                            req_idx: *req_idx,
++                            clip_ns,
++                            total_req_ns,
++                            in_polys: sp + cp,
++                            in_holes: sh + ch,
++                            in_verts: sv + cv,
++                            out_polys: op,
++                            out_holes: oh,
++                            out_verts: ov,
++                            dumped_inputs,
++                            dumped_outputs,
++                        },
++                    )
++                },
++            );
++            let batch_wall_ns = t_batch.elapsed().as_nanos() as u64;
++            let mut results = Vec::with_capacity(pairs.len());
++            let mut probe_rows = Vec::with_capacity(pairs.len());
++            for (w, p) in pairs {
++                results.push(w);
++                probe_rows.push(p);
++            }
++            crate::t178_probe::record_batch(batch_wall_ns, mode, probe_rows);
++            return Ok(results);
++        }
+         let (results, _mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index fc900794..265e6c1e 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -26,6 +26,7 @@ pub mod profiling;
+ pub mod selection;
+ pub mod support_aggregation;
+ pub mod support_territory;
++pub mod t178_probe;
+ pub mod traits;
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/crates/slicer-wasm-host/src/t178_probe.rs b/crates/slicer-wasm-host/src/t178_probe.rs
+new file mode 100644
+index 00000000..a91ad67c
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/t178_probe.rs
+@@ -0,0 +1,302 @@
++//! TEMPORARY probe for wayfinder ticket 178 — Planner Phase-3 batched union
++//! attribution and mechanism screen.
++//!
++//! Reverted before ticket closure (`probe.patch` in `evidence/t178-planner-phase3-union/`
++//! is the preserved artifact). Gated on `PNP_T178_TIMING_OUT` / `PNP_T178_DUMP_OUT`.
++
++use std::fs::{File, OpenOptions};
++use std::io::{BufWriter, Write};
++use std::sync::{Mutex, OnceLock};
++
++use slicer_ir::ExPolygon;
++
++#[derive(Clone, Debug)]
++pub struct Phase3ReqMeta {
++    pub layer: i32,
++    pub role: u8,
++    pub avg_nodes: u32,
++    pub simplify_tol_bits: u64,
++    pub kept_count: u32,
++    pub clip_count: u32,
++    pub kept_flags: Vec<u8>,
++}
++
++pub struct Phase3BatchReqResult {
++    pub req_idx: usize,
++    pub clip_ns: u64,
++    pub total_req_ns: u64,
++    pub in_polys: usize,
++    pub in_holes: usize,
++    pub in_verts: usize,
++    pub out_polys: usize,
++    pub out_holes: usize,
++    pub out_verts: usize,
++    pub dumped_inputs: Option<Vec<ExPolygon>>,
++    pub dumped_outputs: Option<Vec<ExPolygon>>,
++}
++
++struct ProbeConfig {
++    timing_out: Option<String>,
++    dump_out: Option<String>,
++}
++
++struct ProbeState {
++    in_phase3: bool,
++    batch_seq: u32,
++    chunk_offset: usize,
++    singletons_skipped: u32,
++    pending_meta: Vec<Phase3ReqMeta>,
++    dump_header_written: bool,
++}
++
++static CONFIG: OnceLock<ProbeConfig> = OnceLock::new();
++static STATE: Mutex<ProbeState> = Mutex::new(ProbeState {
++    in_phase3: false,
++    batch_seq: 0,
++    chunk_offset: 0,
++    singletons_skipped: 0,
++    pending_meta: Vec::new(),
++    dump_header_written: false,
++});
++
++fn config() -> &'static ProbeConfig {
++    CONFIG.get_or_init(|| ProbeConfig {
++        timing_out: std::env::var("PNP_T178_TIMING_OUT")
++            .ok()
++            .filter(|s| !s.is_empty()),
++        dump_out: std::env::var("PNP_T178_DUMP_OUT")
++            .ok()
++            .filter(|s| !s.is_empty()),
++    })
++}
++
++pub fn enabled() -> bool {
++    let c = config();
++    c.timing_out.is_some() || c.dump_out.is_some()
++}
++
++pub fn dump_enabled() -> bool {
++    config().dump_out.is_some()
++}
++
++pub fn in_phase3() -> bool {
++    if !enabled() {
++        return false;
++    }
++    STATE.lock().map(|s| s.in_phase3).unwrap_or(false)
++}
++
++/// Handle a `t178:` log line from `tree-support-planner`.
++/// Always returns `true` if the message had the `t178:` prefix so callers can
++/// suppress it from production logs.
++pub fn handle_log(message: &str) -> bool {
++    let Some(rest) = message.strip_prefix("t178:") else {
++        return false;
++    };
++    if !enabled() {
++        return true;
++    }
++    if let Some(payload) = rest.strip_prefix("phase3_start:") {
++        let mut parts = payload.split('|');
++        let singletons: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
++        let mut metas = Vec::new();
++        for item in parts {
++            if item.is_empty() {
++                continue;
++            }
++            let f: Vec<&str> = item.split(',').collect();
++            if f.len() >= 7 {
++                let layer: i32 = f[0].parse().unwrap_or(-1);
++                let role: u8 = f[1].parse().unwrap_or(255);
++                let avg_nodes: u32 = f[2].parse().unwrap_or(0);
++                let simplify_tol_bits: u64 = f[3].parse().unwrap_or(0);
++                let kept_count: u32 = f[4].parse().unwrap_or(0);
++                let clip_count: u32 = f[5].parse().unwrap_or(0);
++                let kept_flags: Vec<u8> = f[6]
++                    .bytes()
++                    .map(|b| if b == b'1' { 1 } else { 0 })
++                    .collect();
++                metas.push(Phase3ReqMeta {
++                    layer,
++                    role,
++                    avg_nodes,
++                    simplify_tol_bits,
++                    kept_count,
++                    clip_count,
++                    kept_flags,
++                });
++            }
++        }
++        if let Ok(mut st) = STATE.lock() {
++            st.in_phase3 = true;
++            st.chunk_offset = 0;
++            st.singletons_skipped = singletons;
++            st.pending_meta = metas;
++        }
++    } else if rest == "phase3_end" {
++        if let Ok(mut st) = STATE.lock() {
++            st.in_phase3 = false;
++            st.pending_meta.clear();
++            st.chunk_offset = 0;
++        }
++    }
++    true
++}
++
++pub fn count_expolys(polys: &[ExPolygon]) -> (usize, usize, usize) {
++    let mut holes = 0usize;
++    let mut verts = 0usize;
++    for p in polys {
++        verts += p.contour.points.len();
++        holes += p.holes.len();
++        for h in &p.holes {
++            verts += h.points.len();
++        }
++    }
++    (polys.len(), holes, verts)
++}
++
++fn write_expolys<W: Write>(w: &mut W, polys: &[ExPolygon]) -> std::io::Result<()> {
++    w.write_all(&(polys.len() as u32).to_le_bytes())?;
++    for p in polys {
++        w.write_all(&(p.contour.points.len() as u32).to_le_bytes())?;
++        for pt in &p.contour.points {
++            w.write_all(&pt.x.to_le_bytes())?;
++            w.write_all(&pt.y.to_le_bytes())?;
++        }
++        w.write_all(&(p.holes.len() as u32).to_le_bytes())?;
++        for h in &p.holes {
++            w.write_all(&(h.points.len() as u32).to_le_bytes())?;
++            for pt in &h.points {
++                w.write_all(&pt.x.to_le_bytes())?;
++                w.write_all(&pt.y.to_le_bytes())?;
++            }
++        }
++    }
++    Ok(())
++}
++
++pub fn record_batch(
++    batch_wall_ns: u64,
++    mode: crate::batch::BatchMode,
++    mut results: Vec<Phase3BatchReqResult>,
++) {
++    let cfg = config();
++    let Ok(mut st) = STATE.lock() else {
++        return;
++    };
++    let batch_idx = st.batch_seq;
++    st.batch_seq += 1;
++    let offset = st.chunk_offset;
++    st.chunk_offset += results.len();
++    let singletons = if offset == 0 {
++        st.singletons_skipped
++    } else {
++        0
++    };
++    results.sort_by_key(|r| r.req_idx);
++
++    if let Some(path) = &cfg.timing_out {
++        if let Ok(file) = OpenOptions::new().create(true).append(true).open(path) {
++            let mut w = BufWriter::new(file);
++            let mode_s = match mode {
++                crate::batch::BatchMode::Serial => "serial",
++                crate::batch::BatchMode::Parallel => "parallel",
++            };
++            let _ = write!(
++                w,
++                "{{\"batch_idx\":{},\"batch_wall_ns\":{},\"mode\":\"{}\",\"singletons_skipped\":{},\"requests\":[",
++                batch_idx, batch_wall_ns, mode_s, singletons
++            );
++            for (k, r) in results.iter().enumerate() {
++                if k > 0 {
++                    let _ = write!(w, ",");
++                }
++                let meta = st.pending_meta.get(offset + r.req_idx);
++                let (layer, role, avg_nodes, simplify_bits, kept_c, clip_c) = meta
++                    .map(|m| {
++                        (
++                            m.layer,
++                            m.role,
++                            m.avg_nodes,
++                            m.simplify_tol_bits,
++                            m.kept_count,
++                            m.clip_count,
++                        )
++                    })
++                    .unwrap_or((-1, 255, 0, 0, 0, 0));
++                let _ = write!(
++                    w,
++                    "{{\"req_idx\":{},\"layer\":{},\"role\":{},\"avg_nodes\":{},\"simplify_tol_bits\":{},\"kept_count\":{},\"clip_count\":{},\"in_polys\":{},\"in_holes\":{},\"in_verts\":{},\"out_polys\":{},\"out_holes\":{},\"out_verts\":{},\"clip_ns\":{},\"total_req_ns\":{}}}",
++                    r.req_idx,
++                    layer,
++                    role,
++                    avg_nodes,
++                    simplify_bits,
++                    kept_c,
++                    clip_c,
++                    r.in_polys,
++                    r.in_holes,
++                    r.in_verts,
++                    r.out_polys,
++                    r.out_holes,
++                    r.out_verts,
++                    r.clip_ns,
++                    r.total_req_ns
++                );
++            }
++            let _ = writeln!(w, "]}}");
++            let _ = w.flush();
++        }
++    }
++
++    if let Some(path) = &cfg.dump_out {
++        let file_res = if !st.dump_header_written {
++            File::create(path)
++        } else {
++            OpenOptions::new().create(true).append(true).open(path)
++        };
++        if let Ok(file) = file_res {
++            let mut w = BufWriter::new(file);
++            if !st.dump_header_written {
++                let _ = w.write_all(b"T178P3V1");
++                st.dump_header_written = true;
++            }
++            let _ = w.write_all(&batch_idx.to_le_bytes());
++            let _ = w.write_all(&batch_wall_ns.to_le_bytes());
++            let _ = w.write_all(&(results.len() as u32).to_le_bytes());
++            for r in &results {
++                let meta = st.pending_meta.get(offset + r.req_idx);
++                let (layer, role, avg_nodes, simplify_bits, kept_c, clip_c, kept_flags) = meta
++                    .map(|m| {
++                        (
++                            m.layer,
++                            m.role,
++                            m.avg_nodes,
++                            m.simplify_tol_bits,
++                            m.kept_count,
++                            m.clip_count,
++                            m.kept_flags.as_slice(),
++                        )
++                    })
++                    .unwrap_or((-1, 255, 0, 0, 0, 0, &[]));
++                let _ = w.write_all(&layer.to_le_bytes());
++                let _ = w.write_all(&[role]);
++                let _ = w.write_all(&avg_nodes.to_le_bytes());
++                let _ = w.write_all(&simplify_bits.to_le_bytes());
++                let _ = w.write_all(&kept_c.to_le_bytes());
++                let _ = w.write_all(&clip_c.to_le_bytes());
++                let _ = w.write_all(&r.clip_ns.to_le_bytes());
++                let _ = w.write_all(&r.total_req_ns.to_le_bytes());
++                let _ = w.write_all(&(kept_flags.len() as u32).to_le_bytes());
++                let _ = w.write_all(kept_flags);
++                let empty: Vec<ExPolygon> = Vec::new();
++                let ins = r.dumped_inputs.as_ref().unwrap_or(&empty);
++                let outs = r.dumped_outputs.as_ref().unwrap_or(&empty);
++                let _ = write_expolys(&mut w, ins);
++                let _ = write_expolys(&mut w, outs);
++            }
++            let _ = w.flush();
++        }
++    }
++}
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index aa397096..0b6ca8fc 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -1310,6 +1310,7 @@ const EMIT_BATCH_LAYERS: usize = 12;
+ /// host can fan the work over its rayon pool instead of running one call at a
+ /// time from the guest's single thread.
+ struct RoleBuildInput {
++    global_layer_index: i32,
+     branch_segments: Vec<Vec<Point3WithWidth>>,
+     interface_segments: Vec<Vec<Point3WithWidth>>,
+     base_segments: Vec<Vec<Point3WithWidth>>,
+@@ -1379,6 +1380,10 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         .iter()
+         .map(|_| std::array::from_fn(|_| Vec::new()))
+         .collect();
++    let mut carved_from_kept: Vec<[Vec<bool>; ROLE_COUNT]> = inputs
++        .iter()
++        .map(|_| std::array::from_fn(|_| Vec::new()))
++        .collect();
+     let simplify: Vec<[Option<f64>; ROLE_COUNT]> = inputs
+         .iter()
+         .map(|input| {
+@@ -1404,6 +1409,7 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         for role in 0..ROLE_COUNT {
+             let regions = role_regions(input, role);
+             if input.collision_polys.is_empty() || regions.is_empty() {
++                carved_from_kept[i][role] = vec![true; regions.len()];
+                 carved[i][role] = regions;
+                 continue;
+             }
+@@ -1476,11 +1482,15 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+         for role in 0..ROLE_COUNT {
+             for slot in std::mem::take(&mut slot_lists[i][role]) {
+                 match slot {
+-                    CarveSlot::Kept(region) => carved[i][role].push(region),
++                    CarveSlot::Kept(region) => {
++                        carved[i][role].push(region);
++                        carved_from_kept[i][role].push(true);
++                    }
+                     CarveSlot::Clip(index) => {
+                         // One result slot per request, each consumed once.
+                         if let Some(region) = carve_results.get_mut(index).and_then(Option::take) {
+                             carved[i][role].push(region);
++                            carved_from_kept[i][role].push(false);
+                         }
+                     }
+                 }
+@@ -1513,9 +1523,15 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+     // Phase 3: one union per role that carries more than one region.
+     let mut union_slots: Vec<(usize, usize)> = Vec::new();
+     let mut union_requests: Vec<ClipRequest> = Vec::new();
++    #[cfg(target_arch = "wasm32")]
++    let mut phase3_singletons_skipped: u32 = 0;
+     for i in 0..inputs.len() {
+         for role in 0..ROLE_COUNT {
+             if carved[i][role].len() <= 1 {
++                #[cfg(target_arch = "wasm32")]
++                if carved[i][role].len() == 1 {
++                    phase3_singletons_skipped += 1;
++                }
+                 continue;
+             }
+             let (head, tail) = carved[i][role].split_at(1);
+@@ -1527,7 +1543,35 @@ fn build_roles_batched(inputs: &[&RoleBuildInput]) -> Vec<Vec<slicer_ir::Support
+             union_slots.push((i, role));
+         }
+     }
++    #[cfg(target_arch = "wasm32")]
++    if !union_requests.is_empty() {
++        let mut msg = format!("t178:phase3_start:{}", phase3_singletons_skipped);
++        for &(i, role) in &union_slots {
++            let flags = &carved_from_kept[i][role];
++            let kept_c = flags.iter().filter(|&&b| b).count();
++            let clip_c = flags.len().saturating_sub(kept_c);
++            let mask: String = flags.iter().map(|&b| if b { '1' } else { '0' }).collect();
++            let tol_bits: u64 = simplify[i][role].map_or(0, f64::to_bits);
++            msg.push('|');
++            msg.push_str(&format!(
++                "{},{},{},{},{},{},{}",
++                inputs[i].global_layer_index,
++                role,
++                inputs[i].avg_node_per_layer,
++                tol_bits,
++                kept_c,
++                clip_c,
++                mask
++            ));
++        }
++        slicer_sdk::host::log_trace(&msg);
++    }
++    let _ = &carved_from_kept;
+     let union_results = run_clip_batches(&union_requests);
++    #[cfg(target_arch = "wasm32")]
++    if !union_requests.is_empty() {
++        slicer_sdk::host::log_trace("t178:phase3_end");
++    }
+     for ((i, role), result) in union_slots.into_iter().zip(union_results) {
+         carved[i][role] = result;
+     }
+@@ -4510,6 +4554,7 @@ impl SupportPlanner {
+                         })
+                     };
+                     pending_emit_inputs.push(RoleBuildInput {
++                        global_layer_index: current_global_layer_index as i32,
+                         branch_segments: branch_segments.clone(),
+                         interface_segments: interface_segments.clone(),
+                         base_segments: base_segments.clone(),
+@@ -7424,6 +7469,7 @@ mod tests {
+         own_territory: Option<Vec<ExPolygon>>,
+     ) -> RoleBuildInput {
+         RoleBuildInput {
++            global_layer_index: 0,
+             branch_segments: Vec::new(),
+             interface_segments: Vec::new(),
+             base_segments: Vec::new(),

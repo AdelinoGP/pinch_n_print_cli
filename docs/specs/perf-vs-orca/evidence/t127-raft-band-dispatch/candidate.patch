@@ -1,0 +1,354 @@
+diff --git a/crates/slicer-wasm-host/src/selection.rs b/crates/slicer-wasm-host/src/selection.rs
+index 544235cb..b525faba 100644
+--- a/crates/slicer-wasm-host/src/selection.rs
++++ b/crates/slicer-wasm-host/src/selection.rs
+@@ -290,6 +290,23 @@ fn origin(key: &RegionKey) -> OriginId {
+         variant_chain: key.variant_chain.clone(),
+     }
+ }
++/// The optional raft-fill role claim (ADR-0009).
++const RAFT_FILL_CLAIM: &str = "claim:raft-fill";
++/// Whether this binding can produce work only inside the raft band.
++///
++/// A binding whose *only* declared claim is `claim:raft-fill` can emit nothing
++/// but `RaftInfill` geometry, and raft-fill geometry exists nowhere but the
++/// physical raft layers: the host already emits the `Raft` target only when
++/// `GlobalLayer.is_raft` is set, and the module body's own guard returns on
++/// every non-raft layer. Declining the whole call there is therefore
++/// output-neutral and skips the per-call view materialisation a no-op call
++/// still pays. Any additional claim keeps the binding scheduled, because it
++/// may then produce that other role outside the band.
++fn raft_band_only_binding(module: &LayerSelectionModuleInput<'_>) -> bool {
++    matches!(module.stage_id, "Layer::Infill" | "Layer::Support")
++        && module.claims.len() == 1
++        && module.claims[0] == RAFT_FILL_CLAIM
++}
+ fn config_for(
+     input: &LayerSelectionIndexInput<'_>,
+     module: &LayerSelectionModuleInput<'_>,
+@@ -345,6 +362,13 @@ fn build_layer(
+         result.invoke = false;
+         return Ok(result);
+     }
++    // Outside the raft band a raft-band-only binding is a provable no-op; see
++    // `raft_band_only_binding`. Declining here also skips the per-region config
++    // resolution below, so the skipped layer costs nothing at all.
++    if !layer.is_raft && raft_band_only_binding(module) {
++        result.invoke = false;
++        return Ok(result);
++    }
+     let candidates = slice
+         .map(|s| {
+             if module.stage_id == "Layer::Perimeters" {
+@@ -1152,4 +1176,182 @@ mod tests {
+             Some(73)
+         );
+     }
++
++    #[test]
++    fn raft_band_only_binding_declines_outside_the_band() {
++        let invocation = ConfigView::from_map(HashMap::new());
++        let layers = [
++            GlobalLayer {
++                index: 0,
++                is_raft: true,
++                ..GlobalLayer::default()
++            },
++            GlobalLayer {
++                index: 1,
++                ..GlobalLayer::default()
++            },
++        ];
++        let raft_only_claims = vec![RAFT_FILL_CLAIM.to_string()];
++        let mixed_claims = vec![RAFT_FILL_CLAIM.to_string(), "claim:sparse-fill".to_string()];
++        let sparse_claims = vec!["claim:sparse-fill".to_string()];
++        let committed = [SliceIR {
++            global_layer_index: 1,
++            regions: vec![SlicedRegion {
++                object_id: "model".into(),
++                region_id: 11,
++                ..SlicedRegion::default()
++            }],
++            ..SliceIR::default()
++        }];
++
++        // The predicate is claim-shape and stage exact.
++        // exhaustive: predicate probe specifies every borrowed binding field.
++        let raft_only = LayerSelectionModuleInput {
++            stage_id: "Layer::Infill",
++            module_id: "raft",
++            claims: &raft_only_claims,
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        // exhaustive: predicate probe specifies every borrowed binding field.
++        let mixed = LayerSelectionModuleInput {
++            stage_id: "Layer::Infill",
++            module_id: "mixed",
++            claims: &mixed_claims,
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        // exhaustive: predicate probe specifies every borrowed binding field.
++        let transparent = LayerSelectionModuleInput {
++            stage_id: "Layer::Infill",
++            module_id: "transparent",
++            claims: &[],
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        assert!(raft_band_only_binding(&raft_only));
++        assert!(!raft_band_only_binding(&mixed));
++        assert!(!raft_band_only_binding(&transparent));
++
++        // A committed ordinary layer whose config authority is absent. The
++        // raft-band-only binding must be declined before config resolution, so
++        // the whole index still builds; a fill binding that stays scheduled
++        // must still fail closed on the same input.
++        // exhaustive: decline proof intentionally supplies no model authority.
++        let declined = build_layer_selection_index(LayerSelectionIndexInput {
++            stage_roster: STAGES,
++            global_layers: &layers,
++            modules: std::slice::from_ref(&raft_only),
++            slices: &committed,
++            region_map: None,
++            support_plan: None,
++            perimeters: &[],
++        })
++        .expect("raft-band-only binding must not demand config authority outside the band");
++        assert!(!declined.selection_for(1, "raft").unwrap().invoke);
++        assert!(declined
++            .selection_for(1, "raft")
++            .unwrap()
++            .targets
++            .is_empty());
++        // exhaustive: control binding specifies every borrowed field.
++        let scheduled_control = LayerSelectionModuleInput {
++            stage_id: "Layer::Infill",
++            module_id: "sparse",
++            claims: &sparse_claims,
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        // exhaustive: non-vacuity control reuses the same absent authority.
++        let error = build_layer_selection_index(LayerSelectionIndexInput {
++            stage_roster: STAGES,
++            global_layers: &layers,
++            modules: std::slice::from_ref(&scheduled_control),
++            slices: &committed,
++            region_map: None,
++            support_plan: None,
++            perimeters: &[],
++        })
++        .unwrap_err();
++        assert_eq!(
++            error.error,
++            SelectionError::MissingModelConfig {
++                key: RegionKey {
++                    global_layer_index: 1,
++                    object_id: "model".into(),
++                    region_id: 11,
++                    variant_chain: Vec::new(),
++                }
++            }
++        );
++
++        let mut map = RegionMapIR::default();
++        let id = map.intern_config(ResolvedConfig::default());
++        map.entries.insert(
++            RegionKey {
++                global_layer_index: 1,
++                object_id: "model".into(),
++                region_id: 11,
++                variant_chain: Vec::new(),
++            },
++            RegionPlan {
++                config: id,
++                ..RegionPlan::default()
++            },
++        );
++        // exhaustive: support-stage raft binding specifies every borrowed field.
++        let support = LayerSelectionModuleInput {
++            stage_id: "Layer::Support",
++            module_id: "support-raft",
++            claims: &raft_only_claims,
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        // exhaustive: stage control specifies every borrowed field.
++        let perimeters = LayerSelectionModuleInput {
++            stage_id: "Layer::Perimeters",
++            module_id: "walls",
++            claims: &raft_only_claims,
++            paint_semantics: None,
++            invocation_config: &invocation,
++        };
++        // exhaustive: index explicitly supplies every authority channel.
++        let index = build_layer_selection_index(LayerSelectionIndexInput {
++            stage_roster: STAGES,
++            global_layers: &layers,
++            modules: &[raft_only, mixed, support, perimeters],
++            slices: &committed,
++            region_map: Some(&map),
++            support_plan: None,
++            perimeters: &[],
++        })
++        .unwrap();
++
++        // Declined on the ordinary layer with no targets and no model handles.
++        let outside = index.selection_for(1, "raft").unwrap();
++        assert!(!outside.invoke);
++        assert!(outside.targets.is_empty());
++        assert!(outside.slice_regions.is_empty());
++        // Still dispatched inside the band, where the `Raft` target exists.
++        let inside = index.selection_for(0, "raft").unwrap();
++        assert!(inside.invoke);
++        assert!(inside.targets.iter().any(|target| matches!(
++            target.source,
++            LayerTargetSource::Raft {
++                global_layer_index: 0
++            }
++        )));
++        // Negative controls: one extra claim keeps the binding scheduled, and a
++        // stage that never receives a `Raft` target is not covered by the gate.
++        let mixed_outside = index.selection_for(1, "mixed").unwrap();
++        assert!(mixed_outside.invoke);
++        assert!(mixed_outside
++            .targets
++            .iter()
++            .any(|target| matches!(target.source, LayerTargetSource::Model { .. })));
++        let walls_outside = index.selection_for(1, "walls").unwrap();
++        assert!(walls_outside.invoke);
++        assert!(!index.selection_for(1, "support-raft").unwrap().invoke);
++        assert!(index.selection_for(0, "support-raft").unwrap().invoke);
++    }
+ }
+diff --git a/crates/slicer-wasm-host/tests/contract/main.rs b/crates/slicer-wasm-host/tests/contract/main.rs
+index 5367faf1..716f15f2 100644
+--- a/crates/slicer-wasm-host/tests/contract/main.rs
++++ b/crates/slicer-wasm-host/tests/contract/main.rs
+@@ -35,6 +35,7 @@ mod preparation_transport_tdd;
+ mod prepass_layer_planning_v2_tdd;
+ mod prepass_output_builder_validation_tdd;
+ mod production_guest_smoke_tdd;
++mod raft_band_dispatch_tdd;
+ mod region_eligibility_tdd;
+ mod sdk_view_transport_parity_tdd;
+ mod seam_plan_harvest_custom_paint_value_tdd;
+diff --git a/crates/slicer-wasm-host/tests/contract/raft_band_dispatch_tdd.rs b/crates/slicer-wasm-host/tests/contract/raft_band_dispatch_tdd.rs
+new file mode 100644
+index 00000000..22f1de4a
+--- /dev/null
++++ b/crates/slicer-wasm-host/tests/contract/raft_band_dispatch_tdd.rs
+@@ -0,0 +1,111 @@
++//! The selection index declines a raft-band-only `Layer::Infill` binding
++//! outside the raft band (`selection::raft_band_only_binding`). That decline is
++//! exact only while the binding produces nothing but raft fill, and it is safe
++//! only while another infill binding remains scheduled there. Both halves are
++//! properties of the real module roster, so they are derived from the committed
++//! manifests rather than from a hand-maintained list.
++
++#![allow(missing_docs)]
++
++use std::fs;
++use std::path::{Path, PathBuf};
++
++#[derive(Debug)]
++struct InfillBinding {
++    module_id: String,
++    holds: Vec<String>,
++}
++
++fn workspace_root() -> PathBuf {
++    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
++}
++
++/// Every core-module manifest whose `[stage].id` is `Layer::Infill`.
++fn infill_bindings() -> Vec<InfillBinding> {
++    let modules_dir = workspace_root().join("modules/core-modules");
++    let mut dirs: Vec<PathBuf> = fs::read_dir(&modules_dir)
++        .unwrap_or_else(|error| panic!("cannot read {}: {error}", modules_dir.display()))
++        .map(|entry| {
++            entry
++                .unwrap_or_else(|error| panic!("cannot read module directory entry: {error}"))
++                .path()
++        })
++        .filter(|path| path.is_dir())
++        .collect();
++    dirs.sort();
++
++    let mut bindings = Vec::new();
++    for dir in dirs {
++        let stem = dir
++            .file_name()
++            .and_then(|name| name.to_str())
++            .unwrap_or_else(|| panic!("module directory is not valid UTF-8: {dir:?}"));
++        let manifest = dir.join(format!("{stem}.toml"));
++        let text = fs::read_to_string(&manifest)
++            .unwrap_or_else(|error| panic!("cannot read {}: {error}", manifest.display()));
++        let document: toml::Value = toml::from_str(&text)
++            .unwrap_or_else(|error| panic!("cannot parse {}: {error}", manifest.display()));
++        if document
++            .get("stage")
++            .and_then(|stage| stage.get("id"))
++            .and_then(toml::Value::as_str)
++            != Some("Layer::Infill")
++        {
++            continue;
++        }
++        let module_id = document
++            .get("module")
++            .and_then(|module| module.get("id"))
++            .and_then(toml::Value::as_str)
++            .unwrap_or_else(|| panic!("{} has no [module].id", manifest.display()))
++            .to_string();
++        let holds = document
++            .get("claims")
++            .and_then(|claims| claims.get("holds"))
++            .and_then(toml::Value::as_array)
++            .map(|claims| {
++                claims
++                    .iter()
++                    .map(|claim| {
++                        claim.as_str().unwrap_or_else(|| {
++                            panic!("{} has a non-string claim", manifest.display())
++                        })
++                    })
++                    .map(str::to_string)
++                    .collect()
++            })
++            .unwrap_or_default();
++        bindings.push(InfillBinding { module_id, holds });
++    }
++    bindings
++}
++
++/// Mirrors the selection gate's claim-shape test.
++fn is_raft_band_only(binding: &InfillBinding) -> bool {
++    binding.holds.len() == 1 && binding.holds[0] == "claim:raft-fill"
++}
++
++#[test]
++fn raft_band_only_infill_binding_leaves_stage_coverage() {
++    let infill = infill_bindings();
++    assert!(
++        !infill.is_empty(),
++        "core-module census found no Layer::Infill binding"
++    );
++
++    let raft_band_only: Vec<&InfillBinding> =
++        infill.iter().filter(|b| is_raft_band_only(b)).collect();
++    assert!(
++        raft_band_only
++            .iter()
++            .any(|b| b.module_id == "com.core.raft-default"),
++        "com.core.raft-default is no longer raft-band-only; the selection gate's \
++         exactness premise changed, so re-derive it before keeping the decline. \
++         Declined bindings: {raft_band_only:?}",
++    );
++    assert!(
++        infill.len() > raft_band_only.len(),
++        "every Layer::Infill binding would be declined outside the raft band, \
++         leaving the stage with no producer there",
++    );
++}

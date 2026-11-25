@@ -14,6 +14,11 @@ use clipper2_rust::Point64;
 use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
+pub use crate::polygon_ops_spatial_union::{
+    union_spatial_tree, union_spatial_tree_with_options, DEFAULT_SPATIAL_UNION_CHUNK_SIZE,
+    DEFAULT_SPATIAL_UNION_NESTED_PAR,
+};
+
 /// A 2D line segment with endpoints in scaled integer coordinates (1 unit = 100 nm).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
@@ -332,14 +337,6 @@ fn path_to_polyline(path: &[Point64]) -> Vec<Point2> {
     path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect()
 }
 
-/// Zero-cost `Point64` -> `Point2` field copy (already integer units).
-fn path_to_point2(point: Point64) -> Point2 {
-    Point2 {
-        x: point.x,
-        y: point.y,
-    }
-}
-
 /// Clips open polylines against an ExPolygon set via a single Clipper2
 /// open-path intersection (ClipType::Intersection, FillRule::NonZero). All
 /// contours and holes of every clip ExPolygon are fed as one closed clip
@@ -461,51 +458,25 @@ impl PreparedPolylineClip {
     /// the input position, so entries whose polyline had fewer than 2 points
     /// (or which produced no output) are empty.
     ///
-    /// This is the batch candidate of wayfinder ticket 65: `link_paths_without_offset`
-    /// (`modules/core-modules/infill-linker/src/orchestrate.rs`) replaces its
-    /// per-path engine round trip — 12,022 `Clipper64` constructions,
-    /// universe re-adds and executes per Benchy slice against one immutable
-    /// prepared boundary — with one shared engine per invocation. The
-    /// prepared universe is added once, the subjects once.
+    /// Each valid open subject is registered via
+    /// `Clipper64::add_open_subject_tagged` with its subject index and read out
+    /// via `Clipper64::execute_open_tagged`: because Clipper2 open subjects
+    /// never intersect or join across distinct open polylines, every emitted
+    /// open `OutRec` carries its exact originating subject index directly out
+    /// of the single sweep with zero post-hoc geometric re-attribution and zero
+    /// per-subject ambiguity fallback clips. If `execute_open_tagged` returns
+    /// `Err` (or `valid_positions.len() > u32::MAX`), the method falls back to
+    /// per-subject [`Self::clip`] so the contract holds unconditionally.
     ///
-    /// Per-subject attribution is re-derived, not assumed: vendored
-    /// `clipper2-rust` 1.1.0 exposes no owner tags on open-path solutions
-    /// and its solution order is outrec creation order, so attribute every
-    /// emitted segment to the subject's own segment it rides on (tolerant
-    /// incidence; output coordinates are within ±2 units of the exact
-    /// boundary, plus intersection rounding) and cut each concatenated
-    /// output path at subject boundaries. Exactness conditions:
-    /// - every emitted segment must be a sub-segment of exactly one
-    ///   subject's segment set; collinear-overlapping or coincident
-    ///   duplicate subjects (segments shared by more than one subject) make
-    ///   attribution ambiguous;
-    /// - if any segment is unattributable or ambiguously attributable, the
-    ///   whole call falls back to per-subject [`Self::clip`] so the
-    ///   per-path-equivalence contract holds unconditionally;
-    /// - subject–subject adjacency (touching spans) can concatenate two
-    ///   subjects into one emitted path (the engine's join logic); splitting
-    ///   at attributed boundaries reconstitutes each subject's own pieces.
-    ///
-    /// Equivalence to the per-path chain on real matched-job invocations is
-    /// proved by the t65 replay oracle and the batch-equivalence tests
-    /// (`crates/slicer-core/tests/polygon_ops_clip_batched_tdd.rs`).
+    /// Equivalence to the per-path chain is proved by the batch-equivalence
+    /// suite (`crates/slicer-core/tests/polygon_ops_clip_batched_tdd.rs`).
     pub fn clip_batched(&self, polylines: &[Vec<Point2>]) -> Vec<Vec<Vec<Point2>>> {
         let mut results: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); polylines.len()];
         if self.clip_paths.is_empty() {
             return results;
         }
-        let subject_segment_lists: Vec<Vec<(Point2, Point2)>> = polylines
-            .iter()
-            .filter(|polyline| polyline.len() >= 2)
-            .map(|polyline| {
-                polyline
-                    .windows(2)
-                    .map(|segment| (segment[0], segment[1]))
-                    .collect()
-            })
-            .collect();
-        // Input positions map to subject segment lists only when valid, so
-        // run the batch over the valid subjects and index back by position.
+        // Input positions map to valid subjects (>= 2 points) so invalid
+        // positions stay empty at their original slot.
         let valid_positions: Vec<usize> = polylines
             .iter()
             .enumerate()
@@ -519,59 +490,39 @@ impl PreparedPolylineClip {
         use clipper2_rust::core::FillRule;
         use clipper2_rust::{ClipType, Clipper64};
 
-        // A single-subject invocation pays one engine + one execute either
-        // way; take the `clip` path directly and skip attribution work.
+        // A single-subject invocation pays one engine + one execute either way.
         if valid_positions.len() == 1 {
             let position = valid_positions[0];
             results[position] = self.clip(&[polylines[position].clone()]);
             return results;
         }
 
-        let open_subjects: Vec<Vec<Point64>> = valid_positions
-            .iter()
-            .map(|&position| polyline_to_path(&polylines[position]))
-            .collect();
+        if u32::try_from(valid_positions.len()).is_err() {
+            for &position in &valid_positions {
+                results[position] = self.clip(&[polylines[position].clone()]);
+            }
+            return results;
+        }
+
         let mut clipper = Clipper64::default();
-        clipper.add_open_subject(&open_subjects);
+        for (subject_idx, &position) in valid_positions.iter().enumerate() {
+            let path = polyline_to_path(&polylines[position]);
+            clipper.add_open_subject_tagged(&path, subject_idx as u32);
+        }
         clipper.add_clip(&self.clip_paths);
 
-        let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
-        let mut open_solution: Vec<Vec<Point64>> = Vec::new();
-        let ok = clipper.execute(
-            ClipType::Intersection,
-            FillRule::NonZero,
-            &mut closed_solution,
-            Some(&mut open_solution),
-        );
-
-        let attributed = if ok {
-            attributed_runs(&open_solution, &subject_segment_lists)
-        } else {
-            Err(())
-        };
-        match attributed {
-            Ok((runs_by_subject, ambiguous)) => {
-                for (subject, &position) in valid_positions.iter().enumerate() {
-                    if ambiguous[subject] {
-                        // Ambiguous junction neighbourhood: the subject's
-                        // own per-path chain is exact by construction, and
-                        // only the flagged subjects pay it.
-                        results[position] = self.clip(&[polylines[position].clone()]);
-                    } else {
-                        results[position] = runs_by_subject[subject]
-                            .iter()
-                            .filter(|run| run.len() >= 2)
-                            .cloned()
-                            .collect();
+        match clipper.execute_open_tagged(ClipType::Intersection, FillRule::NonZero) {
+            Ok(tagged_open) => {
+                for (source_id, path) in tagged_open {
+                    if path.len() >= 2 {
+                        if let Some(&position) = valid_positions.get(source_id as usize) {
+                            results[position].push(path_to_polyline(&path));
+                        }
                     }
                 }
                 results
             }
-            Err(()) => {
-                // Fallback (unattributable emitted segment or engine
-                // failure): the per-path chain, so the contract still
-                // holds. Expected to never fire on the matched cells — the
-                // t65 oracle counted its fires on the real captures.
+            Err(_) => {
                 for &position in &valid_positions {
                     results[position] = self.clip(&[polylines[position].clone()]);
                 }
@@ -579,172 +530,6 @@ impl PreparedPolylineClip {
             }
         }
     }
-}
-
-/// Maximum tolerance (integer units; 1 unit = 100 nm) when attributing an
-/// emitted open-path segment to a subject segment: ends and midpoint must
-/// lie within this distance of the subject segment's line and inside its
-/// span. The prepared-universe boundary coordinates sit within ±2 units of
-/// the exact clip boundary (see [`PreparedPolylineClip::new`]) and clipper's
-/// intersection rounding is comparable, while real scan-line separations are
-/// orders of magnitude larger, so the tolerance never bridges distinct
-/// subject geometry.
-const CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS: f64 = 2.0;
-
-/// Attributes every emitted open-path segment of a batched execute to the
-/// subject segment it rides on, and cuts each emitted path into maximal
-/// runs of one subject. Returns per-subject runs in encounter order plus an
-/// ambiguity flag per subject — at least one emitted segment rode more than
-/// one subject's segment set (coincident / collinear-touching subjects near
-/// a junction; the caller re-runs exactly those subjects through their own
-/// single-subject `clip`, which is exact by construction) — or `Err(())`
-/// when any emitted segment rides NO subject's segment set at all (the
-/// batch's attribution cannot be trusted; the caller falls back to
-/// per-subject clipping for the whole call).
-fn attributed_runs(
-    open_solution: &[Vec<Point64>],
-    subject_segment_lists: &[Vec<(Point2, Point2)>],
-) -> Result<(Vec<Vec<Vec<Point2>>>, Vec<bool>), ()> {
-    let subject_boxes: Vec<(Point2, Point2)> = subject_segment_lists
-        .iter()
-        .map(|segments| {
-            let mut min_x = i64::MAX;
-            let mut min_y = i64::MAX;
-            let mut max_x = i64::MIN;
-            let mut max_y = i64::MIN;
-            for (a, b) in segments {
-                min_x = min_x.min(a.x).min(b.x);
-                min_y = min_y.min(a.y).min(b.y);
-                max_x = max_x.max(a.x).max(b.x);
-                max_y = max_y.max(a.y).max(b.y);
-            }
-            (
-                Point2 {
-                    x: min_x - 2,
-                    y: min_y - 2,
-                },
-                Point2 {
-                    x: max_x + 2,
-                    y: max_y + 2,
-                },
-            )
-        })
-        .collect();
-
-    let mut runs_by_subject: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); subject_segment_lists.len()];
-    let mut ambiguous: Vec<bool> = vec![false; subject_segment_lists.len()];
-    for path in open_solution.iter().filter(|path| path.len() >= 2) {
-        let mut current_owner: Option<usize> = None;
-        let mut current_run: Vec<Point2> = Vec::new();
-        for window in path.windows(2) {
-            let start = path_to_point2(window[0]);
-            let end = path_to_point2(window[1]);
-            let candidates = candidate_subjects(start, end, subject_segment_lists, &subject_boxes);
-            if candidates.is_empty() {
-                // Rides nothing: the batch's attribution cannot be trusted.
-                return Err(());
-            }
-            if candidates.len() > 1 {
-                for &subject in candidates.iter() {
-                    ambiguous[subject] = true;
-                }
-            }
-            let owner = candidates[0];
-            if current_owner.is_none() {
-                current_owner = Some(owner);
-                current_run.push(start);
-            } else if current_owner != Some(owner) {
-                let previous_owner = current_owner.expect("checked above");
-                runs_by_subject[previous_owner].push(std::mem::take(&mut current_run));
-                // The junction point starts the next run.
-                current_run.push(start);
-                current_owner = Some(owner);
-            }
-            current_run.push(end);
-        }
-        if let Some(owner) = current_owner {
-            runs_by_subject[owner].push(current_run);
-        }
-    }
-    Ok((runs_by_subject, ambiguous))
-}
-
-/// Returns every subject whose segment set contains both endpoints and the
-/// midpoint of `(start, end)` as a contiguous sub-segment.
-///
-/// The midpoint must ride the same subject segment as both ends. At a
-/// collinear junction of two touching subjects the shared vertex is one
-/// subject's own end point and the other's start point, so endpoint
-/// tolerance alone admits both subjects; the midpoint separates them
-/// whenever the shared vertex is emitted as a path vertex, and the
-/// resulting candidate pair is repaired per-subject otherwise.
-fn candidate_subjects(
-    start: Point2,
-    end: Point2,
-    subject_segment_lists: &[Vec<(Point2, Point2)>],
-    subject_boxes: &[(Point2, Point2)],
-) -> Vec<usize> {
-    let midpoint = Point2 {
-        x: ((start.x as i128 + end.x as i128) / 2) as i64,
-        y: ((start.y as i128 + end.y as i128) / 2) as i64,
-    };
-    let mut candidates: Vec<usize> = Vec::new();
-    for (subject, segments) in subject_segment_lists.iter().enumerate() {
-        let (min, max) = &subject_boxes[subject];
-        if start.x < min.x
-            || start.y < min.y
-            || end.x < min.x
-            || end.y < min.y
-            || midpoint.x < min.x
-            || midpoint.y < min.y
-            || start.x > max.x
-            || start.y > max.y
-            || end.x > max.x
-            || end.y > max.y
-            || midpoint.x > max.x
-            || midpoint.y > max.y
-        {
-            continue;
-        }
-        if segments
-            .iter()
-            .any(|(a, b)| segment_rides(start, midpoint, end, *a, *b))
-        {
-            candidates.push(subject);
-        }
-    }
-    candidates
-}
-
-/// True when `a`, `m`, and `b` all lie on the segment `p -> q`: within the
-/// attribution tolerance of its line and inside its span (the tolerance
-/// admits the ±2-unit rounding of emitted boundary/intersection
-/// coordinates). Degenerate subject segments (a repeated subject point)
-/// match only a degenerate candidate at their location.
-fn segment_rides(a: Point2, m: Point2, b: Point2, p: Point2, q: Point2) -> bool {
-    const TOLERANCE: f64 = CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS;
-    let vx = (q.x - p.x) as i128;
-    let vy = (q.y - p.y) as i128;
-    let length_squared = vx * vx + vy * vy;
-    let length = (length_squared as f64).sqrt();
-    if length <= TOLERANCE {
-        // Degenerate subject segment: only a coincident degenerate candidate
-        // can ride it.
-        return (a.x as i128 - b.x as i128).abs() <= 1 && (a.y as i128 - b.y as i128).abs() <= 1;
-    }
-    let rides = |point: Point2| {
-        let apx = (point.x - p.x) as i128;
-        let apy = (point.y - p.y) as i128;
-        let cross = apx * vy - apy * vx;
-        let dot = apx * vx + apy * vy;
-        // Perpendicular distance <= tolerance, and the projection lies
-        // inside the segment span extended by the tolerance (the rounding of
-        // emitted boundary coordinates).
-        (cross.abs() as f64) <= TOLERANCE * length
-            && (dot as f64) >= -TOLERANCE * length
-            && (dot as f64) <= length_squared as f64 + TOLERANCE * length
-    };
-    rides(a) && rides(m) && rides(b)
 }
 
 /// Executes a boolean clip operation on polygon sets.
@@ -919,6 +704,143 @@ pub fn offset_with_miter_limit(
     )
 }
 
+/// OrcaSlicer `ClipperOffsetShortestEdgeFactor` (`ClipperUtils.hpp`): the
+/// pre-offset edge-decimation threshold as a fraction of `|delta|`.
+///
+/// Canonical applies it in `append_offset_path` (`ClipperUtils.cpp`), which
+/// every `ClipperOffset` call in `ClipperUtils` feeds its rings through. The
+/// factor is dimensionless, so it transfers unchanged between canonical's
+/// 1 nm x 100 grid and PnP's 100 nm grid.
+pub const OFFSET_SHORTEST_EDGE_FACTOR: f64 = 0.005;
+
+/// Vertex distance, in grid units, below which `append_offset_path` drops a
+/// vertex: `0.005 * |delta|`.
+fn shortest_edge_units(delta_units: f64) -> f64 {
+    delta_units.abs() * OFFSET_SHORTEST_EDGE_FACTOR
+}
+
+/// Signed doubled area of a ring in grid units² (positive = CCW).
+///
+/// Doubled, because `append_offset_path`'s caller only ever asks whether the
+/// area is zero or which sign it has; `i128` keeps the shoelace sum exact for
+/// any ring length this pipeline produces.
+fn ring_double_area(path: &[Point64]) -> i128 {
+    if path.len() < 3 {
+        return 0;
+    }
+    let mut acc: i128 = 0;
+    for (a, b) in path.iter().zip(path.iter().cycle().skip(1)) {
+        acc += i128::from(a.x) * i128::from(b.y) - i128::from(b.x) * i128::from(a.y);
+    }
+    acc
+}
+
+/// OrcaSlicer `append_offset_path` (`ClipperUtils.cpp`), for closed rings.
+///
+/// Drops vertices closer than `shortest` to the **last kept** vertex — not
+/// merely the previous one, so a run of near-duplicates collapses to a single
+/// vertex — after trimming trailing vertices that sit within `shortest` of the
+/// first (the wrap-around edge of a closed ring). A ring left with fewer than
+/// three vertices is dropped entirely and `false` is returned.
+///
+/// `shortest == 0` degrades to exact-duplicate comparison, which is canonical's
+/// behaviour at a zero offset.
+fn append_offset_path(out: &mut Vec<Vec<Point64>>, path: &[Point64], shortest: f64) -> bool {
+    let Some(first) = path.first() else {
+        return false;
+    };
+    let mut high = path.len() - 1;
+    let shortest2 = shortest * shortest;
+    let same = |a: &Point64, b: &Point64| -> bool {
+        let dx = (a.x - b.x) as f64;
+        let dy = (a.y - b.y) as f64;
+        if shortest2 > 0.0 {
+            dx * dx + dy * dy < shortest2
+        } else {
+            dx == 0.0 && dy == 0.0
+        }
+    };
+    while high > 0 && same(&path[high], first) {
+        high -= 1;
+    }
+    let mut dst: Vec<Point64> = Vec::with_capacity(high + 1);
+    dst.push(*first);
+    let mut last = 0;
+    for i in 1..=high {
+        if !same(&path[i], &path[last]) {
+            dst.push(path[i]);
+            last = i;
+        }
+    }
+    if dst.len() < 3 {
+        return false;
+    }
+    out.push(dst);
+    true
+}
+
+/// Canonical `c2_offset_expolygons`' ring harvest (`ClipperUtils.cpp`): one
+/// decimated path per contour, then one per hole, with the degeneracy and
+/// winding normalisation canonical applies before `ClipperOffset::AddPaths`.
+///
+/// A contour that decimates to zero area is kept when `delta_units >= 0` and
+/// dropped otherwise (canonical: "a degenerate contour vanishes when shrunk and
+/// encloses no hole when grown"); a zero-area **hole** is always dropped. Both
+/// are canonical's branches verbatim.
+///
+/// The winding reversal is inert under [`ExPolygon`]'s invariant (contour CCW,
+/// holes CW) — it exists so a caller that violates it converges on canonical's
+/// behaviour instead of on Clipper2's grouped-mode guess.
+fn offset_paths(polys: &[ExPolygon], delta_units: f64) -> Vec<Vec<Point64>> {
+    let shortest = shortest_edge_units(delta_units);
+    let mut out: Vec<Vec<Point64>> = Vec::with_capacity(polys.len() * 2);
+    for exp in polys {
+        let contour = polygon_to_path(&exp.contour);
+        let contour_index = out.len();
+        if !append_offset_path(&mut out, &contour, shortest) {
+            continue;
+        }
+        let contour_area = ring_double_area(&out[contour_index]);
+        if contour_area == 0 {
+            if delta_units < 0.0 {
+                out.pop();
+            }
+            continue;
+        }
+        if contour_area < 0 {
+            out[contour_index].reverse();
+        }
+        for hole in &exp.holes {
+            let path = polygon_to_path(hole);
+            let hole_index = out.len();
+            if append_offset_path(&mut out, &path, shortest) {
+                let area = ring_double_area(&out[hole_index]);
+                if area == 0 {
+                    out.pop();
+                } else if area > 0 {
+                    out[hole_index].reverse();
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Canonical `c2_offset_closed`'s ring harvest for an already-flat path list —
+/// the **second** pass of `offset2_ex`, whose input is pass 1's output and whose
+/// threshold is `0.005 * |delta2|` (a different threshold from pass 1's).
+///
+/// Canonical filters degeneracy and winding in the first pass only, so this
+/// stage is decimation alone.
+fn offset_paths_flat(paths: &[Vec<Point64>], delta_units: f64) -> Vec<Vec<Point64>> {
+    let shortest = shortest_edge_units(delta_units);
+    let mut out: Vec<Vec<Point64>> = Vec::with_capacity(paths.len());
+    for path in paths {
+        append_offset_path(&mut out, path, shortest);
+    }
+    out
+}
+
 /// Single inflate pass with every Clipper2 knob explicit. All offset-shaped
 /// wrappers in this module route through here. Uses `ClipperOffset::execute_tree`
 /// (rather than the `inflate_paths_64` free function, which only returns a flat
@@ -943,8 +865,10 @@ fn inflate_once(
         return polygons.to_vec();
     }
 
-    // Convert polygons to paths
-    let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
+    // Harvest the rings exactly as canonical `c2_offset_expolygons` does:
+    // decimate against `0.005 * |delta|`, drop degenerate rings, normalise
+    // winding. See [`offset_paths`].
+    let paths = offset_paths(polygons, delta_units);
     if paths.is_empty() {
         return Vec::new();
     }
@@ -1091,10 +1015,12 @@ pub fn offset2_ex(
 
     // Pass 2: delta2 (typically positive / dilate). Capture the PolyTree so
     // the two-pass result's hole/island nesting survives — see
-    // [`expolygons_from_tree`].
+    // [`expolygons_from_tree`]. The intermediate is decimated at pass 2's own
+    // threshold, exactly as canonical's `c2_offset2_closed` does.
     let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
+    let pass2_paths = offset_paths_flat(&intermediate, delta2_units);
     let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
-    clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
+    clip_offset.add_paths(&pass2_paths, join_type, EndType::Polygon);
     let mut tree = PolyTree64::new();
     clip_offset.execute_tree(delta2_units, &mut tree);
 
@@ -1105,10 +1031,10 @@ pub fn offset2_ex(
 /// emptiness predicate so both observe **byte-identical** erosion output.
 ///
 /// Flat paths only (the caller re-derives nesting from pass 2's tree). The
-/// conversion and Clipper2 parameters are exactly `offset2_ex`'s: same
-/// `flat_map(expolygon_to_paths)` order, same mm→unit delta, same join type,
-/// same `EndType::Polygon`, same caller-supplied `miter_limit`, same zero arc
-/// tolerance.
+/// rings are harvested exactly as canonical `c2_offset_expolygons` harvests
+/// them — decimated, degenerate rings dropped, winding normalised — and then
+/// handed to the same primitive with the same mm→unit delta, join type,
+/// `EndType::Polygon`, caller-supplied `miter_limit` and zero arc tolerance.
 fn offset2_ex_first_pass(
     polys: &[ExPolygon],
     delta1_mm: f64,
@@ -1122,8 +1048,8 @@ fn offset2_ex_first_pass(
         OffsetJoinType::Round => JoinType::Round,
         OffsetJoinType::Square => JoinType::Square,
     };
-    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+    let paths1 = offset_paths(polys, delta1_units);
     inflate_paths_64(
         &paths1,
         delta1_units,
@@ -1448,6 +1374,104 @@ mod tests {
         Polygon {
             points: pts.iter().map(|&(x, y)| Point2 { x, y }).collect(),
         }
+    }
+
+    // --- t169: canonical `append_offset_path` --------------------------------
+    //
+    // These pin the helper's three distinctive rules — the wrap-around trim,
+    // comparison against the *last kept* vertex, and the `< 3` drop — each of
+    // which is invisible in a square's offset output but not in a pinhole's.
+
+    fn ring(pts: &[(i64, i64)]) -> Vec<Point64> {
+        pts.iter()
+            .map(|&(x, y)| Point64 { x, y })
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn append_offset_path_trims_a_wrap_around_near_duplicate() {
+        // The trailing vertex sits 1 unit from the first, inside a 50-unit
+        // threshold. Canonical trims it with the wrap loop; a port that only
+        // deduplicates forward (against the previous vertex) keeps it and
+        // returns 5 vertices here.
+        let path = ring(&[(0, 0), (1000, 0), (1000, 1000), (0, 1000), (1, 1)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 4);
+        assert_eq!(out[0][3], Point64 { x: 0, y: 1000 });
+    }
+
+    #[test]
+    fn append_offset_path_collapses_a_run_against_the_last_kept_vertex() {
+        // Four vertices spaced 10 units apart, threshold 50. Because `same`
+        // compares against the last *kept* vertex, the whole run collapses to
+        // the first one; comparing against the previous vertex alone would keep
+        // (0,0), (20,0) and (40,0) and return 6 vertices.
+        let path = ring(&[
+            (0, 0),
+            (10, 0),
+            (20, 0),
+            (30, 0),
+            (40, 0),
+            (1000, 0),
+            (1000, 1000),
+            (0, 1000),
+        ]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 4);
+        assert_eq!(out[0][1], Point64 { x: 1000, y: 0 });
+    }
+
+    #[test]
+    fn append_offset_path_drops_a_ring_left_with_two_vertices() {
+        // A 20-unit triangle under a 50-unit threshold collapses to one kept
+        // vertex; the ring must be dropped, not handed on degenerate.
+        let path = ring(&[(0, 0), (20, 0), (0, 20)]);
+        let mut out = Vec::new();
+        assert!(!append_offset_path(&mut out, &path, 50.0));
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn append_offset_path_keeps_a_ring_that_decimates_to_exactly_three() {
+        // The `< 3` boundary: three kept vertices survive.
+        let path = ring(&[(0, 0), (10, 0), (1000, 0), (0, 1000)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 50.0));
+        assert_eq!(out[0].len(), 3);
+    }
+
+    #[test]
+    fn append_offset_path_compares_exactly_at_a_zero_threshold() {
+        // At `shortest == 0` canonical falls back to exact equality: the leading
+        // duplicate and the closing repeat are removed, the corners are not.
+        let path = ring(&[(0, 0), (0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)]);
+        let mut out = Vec::new();
+        assert!(append_offset_path(&mut out, &path, 0.0));
+        assert_eq!(out[0].len(), 4);
+    }
+
+    #[test]
+    fn offset_paths_drops_a_degenerate_contour_only_when_eroding() {
+        // Canonical keeps a zero-area contour on a non-negative offset ("encloses
+        // no hole when grown") and drops it when shrinking; the hole branch always
+        // drops. A 4-vertex ring of zero area, plus a zero-area hole.
+        let degenerate = ExPolygon {
+            contour: make_polygon(&[(0, 0), (100, 0), (0, 0), (100, 0)]),
+            holes: vec![make_polygon(&[(10, 0), (20, 0), (10, 0), (20, 0)])],
+        };
+        let erode = offset_paths(std::slice::from_ref(&degenerate), -10_000.0);
+        assert!(
+            erode.is_empty(),
+            "a zero-area contour must vanish when shrunk, and its zero-area hole always"
+        );
+        let grow = offset_paths(std::slice::from_ref(&degenerate), 10_000.0);
+        assert_eq!(
+            grow.len(),
+            1,
+            "a zero-area contour survives a non-negative offset; its hole does not"
+        );
     }
 
     #[test]

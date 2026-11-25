@@ -288,7 +288,11 @@ fn z_grid_query_returns_hand_computed_object_record() {
                 layer_height: 0.25,
                 first_layer_height: 0.30,
                 support_raft_layers: 2,
-                layer_z_tops: vec![0.30, 0.55, 0.80, 1.05, 1.30, 1.55, 1.80],
+                // Canonical `generate_object_layers` keeps a layer while its
+                // midpoint is below the object height, so the 2.05 top stays:
+                // its midpoint is 1.925 < 2.0. A top-based walk would stop at
+                // 1.80.
+                layer_z_tops: vec![0.30, 0.55, 0.80, 1.05, 1.30, 1.55, 1.80, 2.05],
             }
         ]
     );

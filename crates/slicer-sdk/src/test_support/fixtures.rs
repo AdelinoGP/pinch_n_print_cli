@@ -177,6 +177,9 @@ pub struct SliceRegionViewBuilder {
     /// machinery at the WASM marshal boundary; module tests bypass that
     /// boundary and wire the carrier here.
     prev_layer_boundary: Vec<ExPolygon>,
+    /// Test-only producer band width behind the distance-derived quartile
+    /// (ticket 142).
+    overhang_band_width_mm: f32,
 }
 
 impl SliceRegionViewBuilder {
@@ -216,6 +219,7 @@ impl SliceRegionViewBuilder {
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
             prev_layer_boundary: Vec::new(),
+            overhang_band_width_mm: 0.0,
         }
     }
 
@@ -461,6 +465,15 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the producer-resolved band width behind the overhang-quartile
+    /// thresholds (ticket 142). Mirrors
+    /// [`SliceRegionView::set_overhang_band_width_mm`].
+    #[must_use]
+    pub fn overhang_band_width_mm(mut self, overhang_band_width_mm: f32) -> Self {
+        self.overhang_band_width_mm = overhang_band_width_mm;
+        self
+    }
+
     /// Set the previous-layer slice boundary polygons (packet 193, AC-6).
     ///
     /// Test-only carrier used by `arachne-perimeters/tests/overhang_distance_tdd`.
@@ -508,6 +521,7 @@ impl SliceRegionViewBuilder {
             tmp.set_overhang_areas(self.overhang_areas);
             tmp.set_overhang_quartile_polygons(self.overhang_quartile_polygons);
             tmp.set_prev_layer_boundary(self.prev_layer_boundary);
+            tmp.set_overhang_band_width_mm(self.overhang_band_width_mm);
             tmp
         }
     }

@@ -736,7 +736,7 @@ impl LayerModule for ArachnePerimeters {
             let z = region.z();
             let spatial_context = PerimeterSpatialContext::new(
                 region.prev_layer_boundary(),
-                region.overhang_quartile_polygons(),
+                region.overhang_band_width_mm(),
                 region.bridge_areas(),
             );
 
@@ -957,7 +957,6 @@ impl ArachnePerimeters {
         overhang_annotations_consumed: bool,
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
-        let overhang_bands = region.overhang_quartile_polygons();
         let prev_layer_boundary = region.prev_layer_boundary();
         let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
         // Canonical `traverse_extrusions` tests `pg_extrusions.size()`, which
@@ -1073,22 +1072,16 @@ impl ArachnePerimeters {
                 }
             }
 
-            if overhang_annotations_consumed {
+            // Ticket 142: distance and quartile are the same query. The raw
+            // signed distance decides presence (a vertex is overhanging iff it
+            // lies outside the previous layer) and the bucket; the stored
+            // distance keeps its historical +0.5 x width offset. Stamping both
+            // from one measurement replaces the old band-polygon lookup.
+            if overhang_annotations_consumed && !prev_layer_boundary.is_empty() {
                 for pt in &mut path.points {
-                    pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
-                        None
-                    } else {
-                        Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
-                    };
-                }
-            }
-
-            // AC-5 (packet 148): overhang_quartile is set per-vertex on
-            // every wall type, for every vertex whose path point lies
-            // inside a `overhang_quartile_polygons` band's polygon(s).
-            if overhang_annotations_consumed && !overhang_bands.is_empty() {
-                for pt in &mut path.points {
-                    pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
+                    let raw = context.signed_distance_to_boundary(pt.x, pt.y);
+                    pt.overhang_distance_mm = Some(raw + 0.5 * pt.width);
+                    pt.overhang_quartile = context.overhang_quartile_from_raw_distance(raw);
                 }
             }
 

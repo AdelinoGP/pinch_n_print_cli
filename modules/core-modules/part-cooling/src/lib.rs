@@ -119,12 +119,14 @@ impl FinalizationModule for PartCooling {
             if self.enable_overhang_bridge_fan {
                 let entities = view.ordered_entities();
                 let mut in_overhang = false;
+                let mut cached_event_speed: Option<u8> = None;
 
                 for (entity_idx, entity) in entities.iter().enumerate() {
-                    let event_speed = self.cooling_decision_for_event(view);
                     let is_overhang = Self::is_overhang_role(&entity.path.role);
 
                     if is_overhang && !in_overhang {
+                        let event_speed = *cached_event_speed
+                            .get_or_insert_with(|| self.cooling_decision_for_event(view));
                         // Overhang starts at this entity → bump fan before it.
                         let anchor = if entity_idx > 0 {
                             (entity_idx - 1) as u32

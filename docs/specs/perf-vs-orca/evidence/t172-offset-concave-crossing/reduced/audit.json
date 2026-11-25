@@ -1,0 +1,1031 @@
+{
+  "schema": 1,
+  "cells": {
+    "benchy-classic-off": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 2891.1703781126284,
+          "candidate_mm": 2900.7340088648243,
+          "delta_mm": 9.563630752195877,
+          "delta_pct_of_section": 0.3307875185978858,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 2,
+          "layers_equal": 1,
+          "first_differing_layer": 1
+        },
+        "Bridge": {
+          "baseline_mm": 882.4892971157738,
+          "candidate_mm": 878.8261237839477,
+          "delta_mm": -3.6631733318261013,
+          "delta_pct_of_section": -0.41509549677241353,
+          "layers_compared": 7,
+          "layers_more": 2,
+          "layers_less": 3,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 2674.729549314805,
+          "candidate_mm": 2674.7129385044,
+          "delta_mm": -0.01661081040492718,
+          "delta_pct_of_section": -0.0006210276627475264,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Gap infill": {
+          "baseline_mm": 612.7733656314601,
+          "candidate_mm": 620.3234416024472,
+          "delta_mm": 7.550075970987109,
+          "delta_pct_of_section": 1.2321155576347202,
+          "layers_compared": 54,
+          "layers_more": 29,
+          "layers_less": 24,
+          "layers_equal": 1,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 31016.964811261336,
+          "candidate_mm": 31017.092833009436,
+          "delta_mm": 0.12802174809985445,
+          "delta_pct_of_section": 0.00041274750408000455,
+          "layers_compared": 240,
+          "layers_more": 111,
+          "layers_less": 129,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1083.535465320614,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": -5.3460527942020235,
+          "delta_pct_of_section": -0.493389738066409,
+          "layers_compared": 12,
+          "layers_more": 3,
+          "layers_less": 9,
+          "layers_equal": 0,
+          "first_differing_layer": 31
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1267.7439310266843,
+          "candidate_mm": 1267.5580527216432,
+          "delta_mm": -0.1858783050411148,
+          "delta_pct_of_section": -0.014662133297737894,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "first_differing_layer": 32
+        },
+        "Outer wall": {
+          "baseline_mm": 32793.473439933776,
+          "candidate_mm": 32793.478320976385,
+          "delta_mm": 0.004881042608758435,
+          "delta_pct_of_section": 1.4884189128970448e-05,
+          "layers_compared": 240,
+          "layers_more": 129,
+          "layers_less": 111,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1030.9558351144592,
+          "candidate_mm": 1030.9595070431747,
+          "delta_mm": 0.0036719287154483027,
+          "delta_pct_of_section": 0.00035616741186984374,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 24227.367280332997,
+          "candidate_mm": 24178.19336189495,
+          "delta_mm": -49.1739184380458,
+          "delta_pct_of_section": -0.2029684772144583,
+          "layers_compared": 144,
+          "layers_more": 70,
+          "layers_less": 59,
+          "layers_equal": 15,
+          "first_differing_layer": 3
+        },
+        "Top surface": {
+          "baseline_mm": 3213.7709384636078,
+          "candidate_mm": 3206.564239035394,
+          "delta_mm": -7.2066994282135965,
+          "delta_pct_of_section": -0.2242443399422508,
+          "layers_compared": 40,
+          "layers_more": 17,
+          "layers_less": 18,
+          "layers_equal": 5,
+          "first_differing_layer": 23
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 101694.97429162814,
+        "candidate": 101646.63223996302,
+        "delta_mm": -48.34205166512402,
+        "delta_pct": -0.04753632320757044
+      }
+    },
+    "benchy-classic-on": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 2891.1703781126284,
+          "candidate_mm": 2900.7340088648243,
+          "delta_mm": 9.563630752195877,
+          "delta_pct_of_section": 0.3307875185978858,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 2,
+          "layers_equal": 1,
+          "first_differing_layer": 1
+        },
+        "Bridge": {
+          "baseline_mm": 882.4892971157738,
+          "candidate_mm": 878.8261237839477,
+          "delta_mm": -3.6631733318261013,
+          "delta_pct_of_section": -0.41509549677241353,
+          "layers_compared": 7,
+          "layers_more": 2,
+          "layers_less": 3,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 1995.793205425426,
+          "candidate_mm": 1971.626848859928,
+          "delta_mm": -24.166356565498063,
+          "delta_pct_of_section": -1.2108647579219878,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Gap infill": {
+          "baseline_mm": 612.7733656314601,
+          "candidate_mm": 620.3234416024472,
+          "delta_mm": 7.550075970987109,
+          "delta_pct_of_section": 1.2321155576347202,
+          "layers_compared": 54,
+          "layers_more": 29,
+          "layers_less": 24,
+          "layers_equal": 1,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 31016.964811261336,
+          "candidate_mm": 31017.092833009436,
+          "delta_mm": 0.12802174809985445,
+          "delta_pct_of_section": 0.00041274750408000455,
+          "layers_compared": 240,
+          "layers_more": 111,
+          "layers_less": 129,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1083.535465320614,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": -5.3460527942020235,
+          "delta_pct_of_section": -0.493389738066409,
+          "layers_compared": 12,
+          "layers_more": 3,
+          "layers_less": 9,
+          "layers_equal": 0,
+          "first_differing_layer": 31
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1267.7439310266843,
+          "candidate_mm": 1267.5580527216432,
+          "delta_mm": -0.1858783050411148,
+          "delta_pct_of_section": -0.014662133297737894,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "first_differing_layer": 32
+        },
+        "Outer wall": {
+          "baseline_mm": 32793.473439933776,
+          "candidate_mm": 32793.478320976385,
+          "delta_mm": 0.004881042608758435,
+          "delta_pct_of_section": 1.4884189128970448e-05,
+          "layers_compared": 240,
+          "layers_more": 129,
+          "layers_less": 111,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1267.7497079813681,
+          "candidate_mm": 1268.9209964624101,
+          "delta_mm": 1.1712884810419837,
+          "delta_pct_of_section": 0.09239114579699023,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 24227.367280332997,
+          "candidate_mm": 24178.19336189495,
+          "delta_mm": -49.1739184380458,
+          "delta_pct_of_section": -0.2029684772144583,
+          "layers_compared": 144,
+          "layers_more": 70,
+          "layers_less": 59,
+          "layers_equal": 15,
+          "first_differing_layer": 3
+        },
+        "Support": {
+          "baseline_mm": 82991.39886451219,
+          "candidate_mm": 81687.93289866934,
+          "delta_mm": -1303.4659658428427,
+          "delta_pct_of_section": -1.5706036814379032,
+          "layers_compared": 202,
+          "layers_more": 85,
+          "layers_less": 117,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 262.4383369639163,
+          "candidate_mm": 262.0080356197867,
+          "delta_mm": -0.43030134412958887,
+          "delta_pct_of_section": -0.1639628375593436,
+          "layers_compared": 6,
+          "layers_more": 4,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "first_differing_layer": 44
+        },
+        "Top surface": {
+          "baseline_mm": 3213.7709384636078,
+          "candidate_mm": 3206.564239035394,
+          "delta_mm": -7.2066994282135965,
+          "delta_pct_of_section": -0.2242443399422508,
+          "layers_compared": 40,
+          "layers_more": 17,
+          "layers_less": 18,
+          "layers_equal": 5,
+          "first_differing_layer": 23
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 184506.66902208177,
+        "candidate": 183131.4485740269,
+        "delta_mm": -1375.220448054868,
+        "delta_pct": -0.7453499948504743
+      }
+    },
+    "benchy-arachne-off": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 3023.8110555149574,
+          "candidate_mm": 3027.5095572342666,
+          "delta_mm": 3.6985017193092062,
+          "delta_pct_of_section": 0.12231259332701093,
+          "layers_compared": 7,
+          "layers_more": 3,
+          "layers_less": 4,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Bridge": {
+          "baseline_mm": 897.0605690658688,
+          "candidate_mm": 893.9620776063017,
+          "delta_mm": -3.0984914595670716,
+          "delta_pct_of_section": -0.34540493322469934,
+          "layers_compared": 7,
+          "layers_more": 1,
+          "layers_less": 4,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 2674.541353769997,
+          "candidate_mm": 2674.535434365824,
+          "delta_mm": -0.005919404172800569,
+          "delta_pct_of_section": -0.00022132408476154827,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 30778.450875248054,
+          "candidate_mm": 30791.283758043406,
+          "delta_mm": 12.832882795351907,
+          "delta_pct_of_section": 0.04169437522169797,
+          "layers_compared": 240,
+          "layers_more": 123,
+          "layers_less": 117,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1083.535465320614,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": -5.3460527942020235,
+          "delta_pct_of_section": -0.493389738066409,
+          "layers_compared": 12,
+          "layers_more": 3,
+          "layers_less": 9,
+          "layers_equal": 0,
+          "first_differing_layer": 31
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1303.2864934509803,
+          "candidate_mm": 1302.764878614426,
+          "delta_mm": -0.5216148365543631,
+          "delta_pct_of_section": -0.040023037081676184,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "first_differing_layer": 32
+        },
+        "Outer wall": {
+          "baseline_mm": 32742.76618006106,
+          "candidate_mm": 32742.882948214,
+          "delta_mm": 0.11676815294049447,
+          "delta_pct_of_section": 0.00035662274927645324,
+          "layers_compared": 240,
+          "layers_more": 122,
+          "layers_less": 118,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1030.8841739303232,
+          "candidate_mm": 1030.882202604647,
+          "delta_mm": -0.001971325676095148,
+          "delta_pct_of_section": -0.0001912266892777412,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 25249.03841611468,
+          "candidate_mm": 25236.369826120183,
+          "delta_mm": -12.66858999449687,
+          "delta_pct_of_section": -0.05017454441517029,
+          "layers_compared": 177,
+          "layers_more": 81,
+          "layers_less": 75,
+          "layers_equal": 21,
+          "first_differing_layer": 3
+        },
+        "Top surface": {
+          "baseline_mm": 3375.6246707542605,
+          "candidate_mm": 3388.0324034133314,
+          "delta_mm": 12.407732659070916,
+          "delta_pct_of_section": 0.36756849085056875,
+          "layers_compared": 44,
+          "layers_more": 25,
+          "layers_less": 16,
+          "layers_equal": 3,
+          "first_differing_layer": 23
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 102158.9992532308,
+        "candidate": 102166.4124987428,
+        "delta_mm": 7.413245511997957,
+        "delta_pct": 0.0072565760884384465
+      }
+    },
+    "benchy-arachne-on": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 3023.8110555149574,
+          "candidate_mm": 3027.5095572342666,
+          "delta_mm": 3.6985017193092062,
+          "delta_pct_of_section": 0.12231259332701093,
+          "layers_compared": 7,
+          "layers_more": 3,
+          "layers_less": 4,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Bridge": {
+          "baseline_mm": 897.0605690658688,
+          "candidate_mm": 893.9620776063017,
+          "delta_mm": -3.0984914595670716,
+          "delta_pct_of_section": -0.34540493322469934,
+          "layers_compared": 7,
+          "layers_more": 1,
+          "layers_less": 4,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 1995.1368885254144,
+          "candidate_mm": 1971.033070347015,
+          "delta_mm": -24.10381817839948,
+          "delta_pct_of_section": -1.2081285408047548,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 30778.450875248054,
+          "candidate_mm": 30791.283758043406,
+          "delta_mm": 12.832882795351907,
+          "delta_pct_of_section": 0.04169437522169797,
+          "layers_compared": 240,
+          "layers_more": 123,
+          "layers_less": 117,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Internal Bridge": {
+          "baseline_mm": 1083.535465320614,
+          "candidate_mm": 1078.189412526412,
+          "delta_mm": -5.3460527942020235,
+          "delta_pct_of_section": -0.493389738066409,
+          "layers_compared": 12,
+          "layers_more": 3,
+          "layers_less": 9,
+          "layers_equal": 0,
+          "first_differing_layer": 31
+        },
+        "Internal solid infill": {
+          "baseline_mm": 1303.2864934509803,
+          "candidate_mm": 1302.764878614426,
+          "delta_mm": -0.5216148365543631,
+          "delta_pct_of_section": -0.040023037081676184,
+          "layers_compared": 7,
+          "layers_more": 4,
+          "layers_less": 3,
+          "layers_equal": 0,
+          "first_differing_layer": 32
+        },
+        "Outer wall": {
+          "baseline_mm": 32742.76618006106,
+          "candidate_mm": 32742.882948214,
+          "delta_mm": 0.11676815294049447,
+          "delta_pct_of_section": 0.00035662274927645324,
+          "layers_compared": 240,
+          "layers_more": 122,
+          "layers_less": 118,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1267.7353819747348,
+          "candidate_mm": 1268.909238975575,
+          "delta_mm": 1.1738570008401439,
+          "delta_pct_of_section": 0.09259479679518309,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 25249.03841611468,
+          "candidate_mm": 25236.369826120183,
+          "delta_mm": -12.66858999449687,
+          "delta_pct_of_section": -0.05017454441517029,
+          "layers_compared": 177,
+          "layers_more": 81,
+          "layers_less": 75,
+          "layers_equal": 21,
+          "first_differing_layer": 3
+        },
+        "Support": {
+          "baseline_mm": 82991.39886451219,
+          "candidate_mm": 81687.93289866934,
+          "delta_mm": -1303.4659658428427,
+          "delta_pct_of_section": -1.5706036814379032,
+          "layers_compared": 202,
+          "layers_more": 85,
+          "layers_less": 117,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 262.4383369639163,
+          "candidate_mm": 262.0080356197867,
+          "delta_mm": -0.43030134412958887,
+          "delta_pct_of_section": -0.1639628375593436,
+          "layers_compared": 6,
+          "layers_more": 4,
+          "layers_less": 2,
+          "layers_equal": 0,
+          "first_differing_layer": 44
+        },
+        "Top surface": {
+          "baseline_mm": 3375.6246707542605,
+          "candidate_mm": 3388.0324034133314,
+          "delta_mm": 12.407732659070916,
+          "delta_pct_of_section": 0.36756849085056875,
+          "layers_compared": 44,
+          "layers_more": 25,
+          "layers_less": 16,
+          "layers_equal": 3,
+          "first_differing_layer": 23
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 184970.2831975067,
+        "candidate": 183650.87810538404,
+        "delta_mm": -1319.4050921226735,
+        "delta_pct": -0.7133065210879552
+      }
+    },
+    "base-classic-off": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 73.05918047966964,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": -0.8979600667677943,
+          "delta_pct_of_section": -1.2290858737700623,
+          "layers_compared": 41,
+          "layers_more": 10,
+          "layers_less": 15,
+          "layers_equal": 16,
+          "first_differing_layer": 4
+        },
+        "Bridge": {
+          "baseline_mm": 140.83020086068336,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 3.759526773512391,
+          "delta_pct_of_section": 2.6695458435307584,
+          "layers_compared": 46,
+          "layers_more": 21,
+          "layers_less": 23,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 715.0002710740285,
+          "candidate_mm": 714.91241788311,
+          "delta_mm": -0.08785319091850852,
+          "delta_pct_of_section": -0.012287154910660519,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Gap infill": {
+          "baseline_mm": 362.6725213478256,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": -4.069162392881822,
+          "delta_pct_of_section": -1.1219935763976012,
+          "layers_compared": 178,
+          "layers_more": 70,
+          "layers_less": 102,
+          "layers_equal": 6,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.5738072831,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.37890893024450634,
+          "delta_pct_of_section": 0.0003653381741206156,
+          "layers_compared": 494,
+          "layers_more": 259,
+          "layers_less": 235,
+          "layers_equal": 0,
+          "first_differing_layer": 2
+        },
+        "Internal Bridge": {
+          "baseline_mm": 3.5964160089524135,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.6174534394577549,
+          "delta_pct_of_section": 17.16857665856099,
+          "layers_compared": 3,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "first_differing_layer": 41
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.15111468516,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.5494098718772875,
+          "delta_pct_of_section": 0.0005148908136542731,
+          "layers_compared": 496,
+          "layers_more": 271,
+          "layers_less": 225,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 496.52347880541686,
+          "candidate_mm": 496.503461185616,
+          "delta_mm": -0.02001761980085348,
+          "delta_pct_of_section": -0.004031555536711731,
+          "layers_compared": 1,
+          "layers_more": 0,
+          "layers_less": 1,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 174760.94798222938,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": -574.9841280516121,
+          "delta_pct_of_section": -0.3290117927891302,
+          "layers_compared": 490,
+          "layers_more": 238,
+          "layers_less": 252,
+          "layers_equal": 0,
+          "first_differing_layer": 5
+        },
+        "Top surface": {
+          "baseline_mm": 225.70282667858302,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": -0.5741474448734323,
+          "delta_pct_of_section": -0.2543820355830365,
+          "layers_compared": 69,
+          "layers_more": 25,
+          "layers_less": 27,
+          "layers_equal": 17,
+          "first_differing_layer": 26
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 387197.0577994528,
+        "candidate": 386621.729829701,
+        "delta_mm": -575.3279697517864,
+        "delta_pct": -0.1485878981161513
+      }
+    },
+    "base-classic-on": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 73.05918047966964,
+          "candidate_mm": 72.16122041290184,
+          "delta_mm": -0.8979600667677943,
+          "delta_pct_of_section": -1.2290858737700623,
+          "layers_compared": 41,
+          "layers_more": 10,
+          "layers_less": 15,
+          "layers_equal": 16,
+          "first_differing_layer": 4
+        },
+        "Bridge": {
+          "baseline_mm": 140.83020086068336,
+          "candidate_mm": 144.58972763419575,
+          "delta_mm": 3.759526773512391,
+          "delta_pct_of_section": 2.6695458435307584,
+          "layers_compared": 46,
+          "layers_more": 21,
+          "layers_less": 23,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Gap infill": {
+          "baseline_mm": 362.6725213478256,
+          "candidate_mm": 358.60335895494376,
+          "delta_mm": -4.069162392881822,
+          "delta_pct_of_section": -1.1219935763976012,
+          "layers_compared": 178,
+          "layers_more": 70,
+          "layers_less": 102,
+          "layers_equal": 6,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 103714.5738072831,
+          "candidate_mm": 103714.95271621335,
+          "delta_mm": 0.37890893024450634,
+          "delta_pct_of_section": 0.0003653381741206156,
+          "layers_compared": 494,
+          "layers_more": 259,
+          "layers_less": 235,
+          "layers_equal": 0,
+          "first_differing_layer": 2
+        },
+        "Internal Bridge": {
+          "baseline_mm": 3.5964160089524135,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.6174534394577549,
+          "delta_pct_of_section": 17.16857665856099,
+          "layers_compared": 3,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "first_differing_layer": 41
+        },
+        "Outer wall": {
+          "baseline_mm": 106704.15111468516,
+          "candidate_mm": 106704.70052455703,
+          "delta_mm": 0.5494098718772875,
+          "delta_pct_of_section": 0.0005148908136542731,
+          "layers_compared": 496,
+          "layers_more": 271,
+          "layers_less": 225,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1729.3453200383058,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 1.7262401587909153,
+          "delta_pct_of_section": 0.09982044296119404,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 174760.94798222938,
+          "candidate_mm": 174185.96385417777,
+          "delta_mm": -574.9841280516121,
+          "delta_pct_of_section": -0.3290117927891302,
+          "layers_compared": 490,
+          "layers_more": 238,
+          "layers_less": 252,
+          "layers_equal": 0,
+          "first_differing_layer": 5
+        },
+        "Support": {
+          "baseline_mm": 393400.79062716215,
+          "candidate_mm": 390678.16222317837,
+          "delta_mm": -2722.6284039837774,
+          "delta_pct_of_section": -0.6920749700689074,
+          "layers_compared": 432,
+          "layers_more": 202,
+          "layers_less": 230,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2587.9928029999255,
+          "candidate_mm": 2613.623719707617,
+          "delta_mm": 25.63091670769154,
+          "delta_pct_of_section": 0.9903782065383232,
+          "layers_compared": 94,
+          "layers_more": 50,
+          "layers_less": 44,
+          "layers_equal": 0,
+          "first_differing_layer": 14
+        },
+        "Top surface": {
+          "baseline_mm": 225.70282667858302,
+          "candidate_mm": 225.1286792337096,
+          "delta_mm": -0.5741474448734323,
+          "delta_pct_of_section": -0.2543820355830365,
+          "layers_compared": 69,
+          "layers_more": 25,
+          "layers_less": 27,
+          "layers_equal": 17,
+          "first_differing_layer": 26
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 783703.6627997737,
+        "candidate": 780433.1714537154,
+        "delta_mm": -3270.4913460583193,
+        "delta_pct": -0.4173122445765432
+      }
+    },
+    "base-arachne-off": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 79.66544743095595,
+          "candidate_mm": 80.1381080050632,
+          "delta_mm": 0.4726605741072518,
+          "delta_pct_of_section": 0.5933068718617251,
+          "layers_compared": 44,
+          "layers_more": 19,
+          "layers_less": 13,
+          "layers_equal": 12,
+          "first_differing_layer": 3
+        },
+        "Bridge": {
+          "baseline_mm": 186.9457218109618,
+          "candidate_mm": 190.18745387725227,
+          "delta_mm": 3.241732066290467,
+          "delta_pct_of_section": 1.734049880835724,
+          "layers_compared": 58,
+          "layers_more": 29,
+          "layers_less": 27,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Brim": {
+          "baseline_mm": 709.2149264665629,
+          "candidate_mm": 711.1839403961368,
+          "delta_mm": 1.9690139295738618,
+          "delta_pct_of_section": 0.2776328946408172,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Inner wall": {
+          "baseline_mm": 103291.53643689981,
+          "candidate_mm": 103293.17375205089,
+          "delta_mm": 1.637315151077928,
+          "delta_pct_of_section": 0.0015851397002678473,
+          "layers_compared": 494,
+          "layers_more": 278,
+          "layers_less": 216,
+          "layers_equal": 0,
+          "first_differing_layer": 2
+        },
+        "Internal Bridge": {
+          "baseline_mm": 3.5964160089524135,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.6174534394577549,
+          "delta_pct_of_section": 17.16857665856099,
+          "layers_compared": 3,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "first_differing_layer": 41
+        },
+        "Outer wall": {
+          "baseline_mm": 106457.40771898018,
+          "candidate_mm": 106456.15727556855,
+          "delta_mm": -1.2504434116272023,
+          "delta_pct_of_section": -0.0011745950220092218,
+          "layers_compared": 496,
+          "layers_more": 260,
+          "layers_less": 236,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 494.94175135721355,
+          "candidate_mm": 495.47922553432306,
+          "delta_mm": 0.537474177109516,
+          "delta_pct_of_section": 0.10859342046527119,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 179091.89853072172,
+          "candidate_mm": 178780.44019611194,
+          "delta_mm": -311.45833460977883,
+          "delta_pct_of_section": -0.17390978439839966,
+          "layers_compared": 490,
+          "layers_more": 246,
+          "layers_less": 242,
+          "layers_equal": 2,
+          "first_differing_layer": 5
+        },
+        "Top surface": {
+          "baseline_mm": 282.2556671048259,
+          "candidate_mm": 280.58876163932234,
+          "delta_mm": -1.6669054655035325,
+          "delta_pct_of_section": -0.590565809573087,
+          "layers_compared": 78,
+          "layers_more": 31,
+          "layers_less": 36,
+          "layers_equal": 11,
+          "first_differing_layer": 24
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 390597.4626167812,
+        "candidate": 390291.5625826319,
+        "delta_mm": -305.9000341492938,
+        "delta_pct": -0.07831592967858451
+      }
+    },
+    "base-arachne-on": {
+      "sections": {
+        "Bottom surface": {
+          "baseline_mm": 79.66544743095595,
+          "candidate_mm": 80.1381080050632,
+          "delta_mm": 0.4726605741072518,
+          "delta_pct_of_section": 0.5933068718617251,
+          "layers_compared": 44,
+          "layers_more": 19,
+          "layers_less": 13,
+          "layers_equal": 12,
+          "first_differing_layer": 3
+        },
+        "Bridge": {
+          "baseline_mm": 186.9457218109618,
+          "candidate_mm": 190.18745387725227,
+          "delta_mm": 3.241732066290467,
+          "delta_pct_of_section": 1.734049880835724,
+          "layers_compared": 58,
+          "layers_more": 29,
+          "layers_less": 27,
+          "layers_equal": 2,
+          "first_differing_layer": 3
+        },
+        "Inner wall": {
+          "baseline_mm": 103291.53643689981,
+          "candidate_mm": 103293.17375205089,
+          "delta_mm": 1.637315151077928,
+          "delta_pct_of_section": 0.0015851397002678473,
+          "layers_compared": 494,
+          "layers_more": 278,
+          "layers_less": 216,
+          "layers_equal": 0,
+          "first_differing_layer": 2
+        },
+        "Internal Bridge": {
+          "baseline_mm": 3.5964160089524135,
+          "candidate_mm": 4.213869448410168,
+          "delta_mm": 0.6174534394577549,
+          "delta_pct_of_section": 17.16857665856099,
+          "layers_compared": 3,
+          "layers_more": 1,
+          "layers_less": 1,
+          "layers_equal": 1,
+          "first_differing_layer": 41
+        },
+        "Outer wall": {
+          "baseline_mm": 106457.40771898018,
+          "candidate_mm": 106456.15727556855,
+          "delta_mm": -1.2504434116272023,
+          "delta_pct_of_section": -0.0011745950220092218,
+          "layers_compared": 496,
+          "layers_more": 260,
+          "layers_less": 236,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Skirt": {
+          "baseline_mm": 1729.3453200383058,
+          "candidate_mm": 1731.0715601970967,
+          "delta_mm": 1.7262401587909153,
+          "delta_pct_of_section": 0.09982044296119404,
+          "layers_compared": 1,
+          "layers_more": 1,
+          "layers_less": 0,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Sparse infill": {
+          "baseline_mm": 179091.89853072172,
+          "candidate_mm": 178780.44019611194,
+          "delta_mm": -311.45833460977883,
+          "delta_pct_of_section": -0.17390978439839966,
+          "layers_compared": 490,
+          "layers_more": 246,
+          "layers_less": 242,
+          "layers_equal": 2,
+          "first_differing_layer": 5
+        },
+        "Support": {
+          "baseline_mm": 393400.79062716215,
+          "candidate_mm": 390678.16222317837,
+          "delta_mm": -2722.6284039837774,
+          "delta_pct_of_section": -0.6920749700689074,
+          "layers_compared": 432,
+          "layers_more": 202,
+          "layers_less": 230,
+          "layers_equal": 0,
+          "first_differing_layer": 1
+        },
+        "Support interface": {
+          "baseline_mm": 2587.9928029999255,
+          "candidate_mm": 2613.623719707617,
+          "delta_mm": 25.63091670769154,
+          "delta_pct_of_section": 0.9903782065383232,
+          "layers_compared": 94,
+          "layers_more": 50,
+          "layers_less": 44,
+          "layers_equal": 0,
+          "first_differing_layer": 14
+        },
+        "Top surface": {
+          "baseline_mm": 282.2556671048259,
+          "candidate_mm": 280.58876163932234,
+          "delta_mm": -1.6669054655035325,
+          "delta_pct_of_section": -0.590565809573087,
+          "layers_compared": 78,
+          "layers_more": 31,
+          "layers_less": 36,
+          "layers_equal": 11,
+          "first_differing_layer": 24
+        }
+      },
+      "total_extruding_mm": {
+        "baseline": 787111.4346891578,
+        "candidate": 784107.7569197846,
+        "delta_mm": -3003.677769373171,
+        "delta_pct": -0.38160769072798045
+      }
+    }
+  }
+}

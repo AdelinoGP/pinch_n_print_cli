@@ -1,0 +1,1193 @@
+{
+  "schema": 1,
+  "captured_utc": "2026-11-23T21:51:51.373850+00:00",
+  "note": "Exact Wasmtime instruction counts under --profile with probe fuel::* scopes active. Probe scope-enter/exit overhead is reflected in run_support_geometry_total_fuel (~7.00B vs 5.85B clean on benchy, ~56.12B vs 48.56B clean on base); clean unprobed fuel deltas are in reduced/screen.json.",
+  "exe_sha256": "181d6efc71308df35508c6a2f4a6d60d34c3da572391410017e26d8805cfd578",
+  "planner_wasm_sha256": "94f08b907d03accc4236d11c9e38073220bbe746b94e6f712b77ff0855f4be22",
+  "cells": {
+    "benchy-classic-on": {
+      "exit_code": 0,
+      "wall_s": 3.335,
+      "gcode_sha256": "a8c93535629eff1853e84442a73a65a6372d4c0ca9b5d16ec0f1a7f276ff0a2c",
+      "gcode_bytes": 8544099,
+      "reference_match": true,
+      "last_fuel": 7064140228,
+      "run_support_geometry_total_fuel": 7003380506,
+      "scopes": {
+        "br_phase1_batch": {
+          "calls": 18,
+          "inc_fuel": 57487140,
+          "exc_fuel": 55697262
+        },
+        "br_phase1_guest": {
+          "calls": 18,
+          "inc_fuel": 673732875,
+          "exc_fuel": 119154151
+        },
+        "br_phase2_lone": {
+          "calls": 18,
+          "inc_fuel": 35050,
+          "exc_fuel": 35050
+        },
+        "br_phase3_union": {
+          "calls": 18,
+          "inc_fuel": 125713413,
+          "exc_fuel": 125713413
+        },
+        "br_phase4_simplify": {
+          "calls": 18,
+          "inc_fuel": 26918,
+          "exc_fuel": 26918
+        },
+        "br_phase5_set_diff": {
+          "calls": 18,
+          "inc_fuel": 44115103,
+          "exc_fuel": 44115103
+        },
+        "br_phase6_iface_diff": {
+          "calls": 18,
+          "inc_fuel": 865706,
+          "exc_fuel": 865706
+        },
+        "br_phase7_territory": {
+          "calls": 18,
+          "inc_fuel": 43365,
+          "exc_fuel": 43365
+        },
+        "br_phase8_assemble": {
+          "calls": 18,
+          "inc_fuel": 112609,
+          "exc_fuel": 112609
+        },
+        "contact_generation": {
+          "calls": 1,
+          "inc_fuel": 52984468,
+          "exc_fuel": 37625629
+        },
+        "drop_group_and_mst": {
+          "calls": 225,
+          "inc_fuel": 401356437,
+          "exc_fuel": 41718235
+        },
+        "drop_merge_pass": {
+          "calls": 225,
+          "inc_fuel": 25108952,
+          "exc_fuel": 25108952
+        },
+        "drop_move_pass": {
+          "calls": 225,
+          "inc_fuel": 2436062188,
+          "exc_fuel": 410784481
+        },
+        "drop_nodes_total": {
+          "calls": 1,
+          "inc_fuel": 2886519205,
+          "exc_fuel": 23991628
+        },
+        "emit_build_roles_batched": {
+          "calls": 18,
+          "inc_fuel": 913931365,
+          "exc_fuel": 11799186
+        },
+        "emit_draw_ellipses": {
+          "calls": 225,
+          "inc_fuel": 797264664,
+          "exc_fuel": 60782256
+        },
+        "emit_layer_setup": {
+          "calls": 225,
+          "inc_fuel": 195682576,
+          "exc_fuel": 154597930
+        },
+        "emit_mst_and_tips": {
+          "calls": 225,
+          "inc_fuel": 337271819,
+          "exc_fuel": 50187418
+        },
+        "emit_node_roles": {
+          "calls": 225,
+          "inc_fuel": 472451897,
+          "exc_fuel": 56487508
+        },
+        "emit_origin_and_skeleton": {
+          "calls": 225,
+          "inc_fuel": 457537121,
+          "exc_fuel": 179011936
+        },
+        "emit_pass_total": {
+          "calls": 1,
+          "inc_fuel": 3360618126,
+          "exc_fuel": 28407256
+        },
+        "emit_prefetch_occupancy": {
+          "calls": 19,
+          "inc_fuel": 158071428,
+          "exc_fuel": 158071428
+        },
+        "fuel::assign_node_group": {
+          "calls": 27799,
+          "inc_fuel": 45738585,
+          "exc_fuel": 36046815
+        },
+        "fuel::expolygons_simplify": {
+          "calls": 7680,
+          "inc_fuel": 347856806,
+          "exc_fuel": 347856806
+        },
+        "fuel::is_line_cut_by_contour": {
+          "calls": 72801,
+          "inc_fuel": 883886863,
+          "exc_fuel": 883886863
+        },
+        "fuel::largest_part": {
+          "calls": 18,
+          "inc_fuel": 1789878,
+          "exc_fuel": 1789878
+        },
+        "fuel::move_out_expolys": {
+          "calls": 16737,
+          "inc_fuel": 100642909,
+          "exc_fuel": 40717747
+        },
+        "fuel::node_ellipse": {
+          "calls": 27342,
+          "inc_fuel": 391769678,
+          "exc_fuel": 391769678
+        },
+        "fuel::node_roles_ancestor_walk": {
+          "calls": 27799,
+          "inc_fuel": 68347453,
+          "exc_fuel": 68347453
+        },
+        "fuel::node_roles_is_floor": {
+          "calls": 27799,
+          "inc_fuel": 347616936,
+          "exc_fuel": 85806573
+        },
+        "fuel::occupancy_memo_lookup": {
+          "calls": 650,
+          "inc_fuel": 64426525,
+          "exc_fuel": 64426525
+        },
+        "fuel::point_in_any_expoly": {
+          "calls": 187257,
+          "inc_fuel": 846719031,
+          "exc_fuel": 846719031
+        },
+        "fuel::prim_mst": {
+          "calls": 312,
+          "inc_fuel": 313899617,
+          "exc_fuel": 313899617
+        },
+        "fuel::projection_onto": {
+          "calls": 56291,
+          "inc_fuel": 487547880,
+          "exc_fuel": 487547880
+        },
+        "fuel::region_bbox_and_winding": {
+          "calls": 22062,
+          "inc_fuel": 159878669,
+          "exc_fuel": 159878669
+        },
+        "fuel::skeleton_wall_counts": {
+          "calls": 200,
+          "inc_fuel": 255183306,
+          "exc_fuel": 255183306
+        },
+        "fuel::swallowed_by_collision": {
+          "calls": 63357,
+          "inc_fuel": 631797131,
+          "exc_fuel": 263728248
+        },
+        "fuel::tile_index_build": {
+          "calls": 193,
+          "inc_fuel": 262913063,
+          "exc_fuel": 262913063
+        },
+        "fuel::tile_index_query": {
+          "calls": 10600,
+          "inc_fuel": 131786992,
+          "exc_fuel": 131786992
+        },
+        "output_push_entries": {
+          "calls": 1,
+          "inc_fuel": 119995,
+          "exc_fuel": 119995
+        },
+        "post_emit_stamping_and_offgrid": {
+          "calls": 1,
+          "inc_fuel": 31325770,
+          "exc_fuel": 31325770
+        },
+        "prune_unsupported": {
+          "calls": 1,
+          "inc_fuel": 2072153,
+          "exc_fuel": 2072153
+        },
+        "run_support_geometry_total": {
+          "calls": 1,
+          "inc_fuel": 7003380506,
+          "exc_fuel": 40072825
+        },
+        "smooth_nodes": {
+          "calls": 1,
+          "inc_fuel": 436922028,
+          "exc_fuel": 436922028
+        },
+        "tree_volumes_new": {
+          "calls": 1,
+          "inc_fuel": 192745936,
+          "exc_fuel": 53753
+        },
+        "tv_ensure_avoidance": {
+          "calls": 20,
+          "inc_fuel": 113584165,
+          "exc_fuel": 113584165
+        },
+        "tv_ensure_collision": {
+          "calls": 31,
+          "inc_fuel": 307751876,
+          "exc_fuel": 136037565
+        },
+        "tv_foreign_territory": {
+          "calls": 1,
+          "inc_fuel": 9238,
+          "exc_fuel": 9238
+        },
+        "tv_outlines_below": {
+          "calls": 1,
+          "inc_fuel": 6230366,
+          "exc_fuel": 6230366
+        },
+        "tv_simplify_union": {
+          "calls": 1,
+          "inc_fuel": 186452579,
+          "exc_fuel": 10310084
+        }
+      },
+      "counters": {
+        "emit_active_nodes_total": 27799,
+        "emit_ancestor_walk_steps": 1432292,
+        "emit_skeleton_inner_iters": 7207849,
+        "emit_skeleton_points": 45268,
+        "emit_swallowed_calls": 63357,
+        "line_cut_cache_hits": 22550,
+        "line_cut_calls": 72801,
+        "move_out_early_outside": 16042,
+        "move_out_offset_calls": 695,
+        "move_out_total_calls": 16737,
+        "occupancy_memo_hits": 650,
+        "output_entries_pushed": 200,
+        "p1_bbox_disjoint_hits": 11462,
+        "point_in_any_expoly_calls": 187257,
+        "projection_onto_calls": 56291,
+        "tile_cache_hits": 3396,
+        "tile_covered_hits": 0,
+        "tile_empty_hits": 5435,
+        "tile_index_builds": 193,
+        "tile_orig_pts": 28230127,
+        "tile_poly_hits": 5165,
+        "tile_queries": 10600,
+        "tile_win_pts": 251534,
+        "tv_avoidance_buckets_materialized": 20,
+        "tv_avoidance_distinct_layers_queried": 1437,
+        "tv_avoidance_layers_materialized": 4800,
+        "tv_avoidance_max_layer_plus1_sum": 2189,
+        "tv_avoidance_queries": 27564,
+        "tv_collision_buckets_materialized": 31,
+        "tv_collision_distinct_layers_queried": 3442,
+        "tv_collision_layers_materialized": 7440,
+        "tv_collision_max_layer_plus1_sum": 3969,
+        "tv_collision_queries": 108808
+      }
+    },
+    "benchy-arachne-on": {
+      "exit_code": 0,
+      "wall_s": 3.674,
+      "gcode_sha256": "7a8d87ae1cedf4a947066940af7946a66f2895e53c44ab60aa0804a6c60d58b8",
+      "gcode_bytes": 8688377,
+      "reference_match": true,
+      "last_fuel": 7064139521,
+      "run_support_geometry_total_fuel": 7003380506,
+      "scopes": {
+        "br_phase1_batch": {
+          "calls": 18,
+          "inc_fuel": 57487140,
+          "exc_fuel": 55697262
+        },
+        "br_phase1_guest": {
+          "calls": 18,
+          "inc_fuel": 673732875,
+          "exc_fuel": 119154151
+        },
+        "br_phase2_lone": {
+          "calls": 18,
+          "inc_fuel": 35050,
+          "exc_fuel": 35050
+        },
+        "br_phase3_union": {
+          "calls": 18,
+          "inc_fuel": 125713413,
+          "exc_fuel": 125713413
+        },
+        "br_phase4_simplify": {
+          "calls": 18,
+          "inc_fuel": 26918,
+          "exc_fuel": 26918
+        },
+        "br_phase5_set_diff": {
+          "calls": 18,
+          "inc_fuel": 44115103,
+          "exc_fuel": 44115103
+        },
+        "br_phase6_iface_diff": {
+          "calls": 18,
+          "inc_fuel": 865706,
+          "exc_fuel": 865706
+        },
+        "br_phase7_territory": {
+          "calls": 18,
+          "inc_fuel": 43365,
+          "exc_fuel": 43365
+        },
+        "br_phase8_assemble": {
+          "calls": 18,
+          "inc_fuel": 112609,
+          "exc_fuel": 112609
+        },
+        "contact_generation": {
+          "calls": 1,
+          "inc_fuel": 52984468,
+          "exc_fuel": 37625629
+        },
+        "drop_group_and_mst": {
+          "calls": 225,
+          "inc_fuel": 401356437,
+          "exc_fuel": 41718235
+        },
+        "drop_merge_pass": {
+          "calls": 225,
+          "inc_fuel": 25108952,
+          "exc_fuel": 25108952
+        },
+        "drop_move_pass": {
+          "calls": 225,
+          "inc_fuel": 2436062188,
+          "exc_fuel": 410784481
+        },
+        "drop_nodes_total": {
+          "calls": 1,
+          "inc_fuel": 2886519205,
+          "exc_fuel": 23991628
+        },
+        "emit_build_roles_batched": {
+          "calls": 18,
+          "inc_fuel": 913931365,
+          "exc_fuel": 11799186
+        },
+        "emit_draw_ellipses": {
+          "calls": 225,
+          "inc_fuel": 797264664,
+          "exc_fuel": 60782256
+        },
+        "emit_layer_setup": {
+          "calls": 225,
+          "inc_fuel": 195682576,
+          "exc_fuel": 154597930
+        },
+        "emit_mst_and_tips": {
+          "calls": 225,
+          "inc_fuel": 337271819,
+          "exc_fuel": 50187418
+        },
+        "emit_node_roles": {
+          "calls": 225,
+          "inc_fuel": 472451897,
+          "exc_fuel": 56487508
+        },
+        "emit_origin_and_skeleton": {
+          "calls": 225,
+          "inc_fuel": 457537121,
+          "exc_fuel": 179011936
+        },
+        "emit_pass_total": {
+          "calls": 1,
+          "inc_fuel": 3360618126,
+          "exc_fuel": 28407256
+        },
+        "emit_prefetch_occupancy": {
+          "calls": 19,
+          "inc_fuel": 158071428,
+          "exc_fuel": 158071428
+        },
+        "fuel::assign_node_group": {
+          "calls": 27799,
+          "inc_fuel": 45738585,
+          "exc_fuel": 36046815
+        },
+        "fuel::expolygons_simplify": {
+          "calls": 7680,
+          "inc_fuel": 347856806,
+          "exc_fuel": 347856806
+        },
+        "fuel::is_line_cut_by_contour": {
+          "calls": 72801,
+          "inc_fuel": 883886863,
+          "exc_fuel": 883886863
+        },
+        "fuel::largest_part": {
+          "calls": 18,
+          "inc_fuel": 1789878,
+          "exc_fuel": 1789878
+        },
+        "fuel::move_out_expolys": {
+          "calls": 16737,
+          "inc_fuel": 100642909,
+          "exc_fuel": 40717747
+        },
+        "fuel::node_ellipse": {
+          "calls": 27342,
+          "inc_fuel": 391769678,
+          "exc_fuel": 391769678
+        },
+        "fuel::node_roles_ancestor_walk": {
+          "calls": 27799,
+          "inc_fuel": 68347453,
+          "exc_fuel": 68347453
+        },
+        "fuel::node_roles_is_floor": {
+          "calls": 27799,
+          "inc_fuel": 347616936,
+          "exc_fuel": 85806573
+        },
+        "fuel::occupancy_memo_lookup": {
+          "calls": 650,
+          "inc_fuel": 64426525,
+          "exc_fuel": 64426525
+        },
+        "fuel::point_in_any_expoly": {
+          "calls": 187257,
+          "inc_fuel": 846719031,
+          "exc_fuel": 846719031
+        },
+        "fuel::prim_mst": {
+          "calls": 312,
+          "inc_fuel": 313899617,
+          "exc_fuel": 313899617
+        },
+        "fuel::projection_onto": {
+          "calls": 56291,
+          "inc_fuel": 487547880,
+          "exc_fuel": 487547880
+        },
+        "fuel::region_bbox_and_winding": {
+          "calls": 22062,
+          "inc_fuel": 159878669,
+          "exc_fuel": 159878669
+        },
+        "fuel::skeleton_wall_counts": {
+          "calls": 200,
+          "inc_fuel": 255183306,
+          "exc_fuel": 255183306
+        },
+        "fuel::swallowed_by_collision": {
+          "calls": 63357,
+          "inc_fuel": 631797131,
+          "exc_fuel": 263728248
+        },
+        "fuel::tile_index_build": {
+          "calls": 193,
+          "inc_fuel": 262913063,
+          "exc_fuel": 262913063
+        },
+        "fuel::tile_index_query": {
+          "calls": 10600,
+          "inc_fuel": 131786992,
+          "exc_fuel": 131786992
+        },
+        "output_push_entries": {
+          "calls": 1,
+          "inc_fuel": 119995,
+          "exc_fuel": 119995
+        },
+        "post_emit_stamping_and_offgrid": {
+          "calls": 1,
+          "inc_fuel": 31325770,
+          "exc_fuel": 31325770
+        },
+        "prune_unsupported": {
+          "calls": 1,
+          "inc_fuel": 2072153,
+          "exc_fuel": 2072153
+        },
+        "run_support_geometry_total": {
+          "calls": 1,
+          "inc_fuel": 7003380506,
+          "exc_fuel": 40072825
+        },
+        "smooth_nodes": {
+          "calls": 1,
+          "inc_fuel": 436922028,
+          "exc_fuel": 436922028
+        },
+        "tree_volumes_new": {
+          "calls": 1,
+          "inc_fuel": 192745936,
+          "exc_fuel": 53753
+        },
+        "tv_ensure_avoidance": {
+          "calls": 20,
+          "inc_fuel": 113584165,
+          "exc_fuel": 113584165
+        },
+        "tv_ensure_collision": {
+          "calls": 31,
+          "inc_fuel": 307751876,
+          "exc_fuel": 136037565
+        },
+        "tv_foreign_territory": {
+          "calls": 1,
+          "inc_fuel": 9238,
+          "exc_fuel": 9238
+        },
+        "tv_outlines_below": {
+          "calls": 1,
+          "inc_fuel": 6230366,
+          "exc_fuel": 6230366
+        },
+        "tv_simplify_union": {
+          "calls": 1,
+          "inc_fuel": 186452579,
+          "exc_fuel": 10310084
+        }
+      },
+      "counters": {
+        "emit_active_nodes_total": 27799,
+        "emit_ancestor_walk_steps": 1432292,
+        "emit_skeleton_inner_iters": 7207849,
+        "emit_skeleton_points": 45268,
+        "emit_swallowed_calls": 63357,
+        "line_cut_cache_hits": 22550,
+        "line_cut_calls": 72801,
+        "move_out_early_outside": 16042,
+        "move_out_offset_calls": 695,
+        "move_out_total_calls": 16737,
+        "occupancy_memo_hits": 650,
+        "output_entries_pushed": 200,
+        "p1_bbox_disjoint_hits": 11462,
+        "point_in_any_expoly_calls": 187257,
+        "projection_onto_calls": 56291,
+        "tile_cache_hits": 3396,
+        "tile_covered_hits": 0,
+        "tile_empty_hits": 5435,
+        "tile_index_builds": 193,
+        "tile_orig_pts": 28230127,
+        "tile_poly_hits": 5165,
+        "tile_queries": 10600,
+        "tile_win_pts": 251534,
+        "tv_avoidance_buckets_materialized": 20,
+        "tv_avoidance_distinct_layers_queried": 1437,
+        "tv_avoidance_layers_materialized": 4800,
+        "tv_avoidance_max_layer_plus1_sum": 2189,
+        "tv_avoidance_queries": 27564,
+        "tv_collision_buckets_materialized": 31,
+        "tv_collision_distinct_layers_queried": 3442,
+        "tv_collision_layers_materialized": 7440,
+        "tv_collision_max_layer_plus1_sum": 3969,
+        "tv_collision_queries": 108808
+      }
+    },
+    "base-classic-on": {
+      "exit_code": 0,
+      "wall_s": 24.6644,
+      "gcode_sha256": "7e115231d4b095b13be567aef7fed0a969d559b95f1dd552011fe46bcf36b6ee",
+      "gcode_bytes": 39605478,
+      "reference_match": true,
+      "last_fuel": 56511587972,
+      "run_support_geometry_total_fuel": 56124660340,
+      "scopes": {
+        "br_phase1_batch": {
+          "calls": 37,
+          "inc_fuel": 395314707,
+          "exc_fuel": 383208079
+        },
+        "br_phase1_guest": {
+          "calls": 37,
+          "inc_fuel": 4766600103,
+          "exc_fuel": 733479774
+        },
+        "br_phase2_lone": {
+          "calls": 37,
+          "inc_fuel": 73205,
+          "exc_fuel": 73205
+        },
+        "br_phase3_union": {
+          "calls": 37,
+          "inc_fuel": 745422210,
+          "exc_fuel": 745422210
+        },
+        "br_phase4_simplify": {
+          "calls": 37,
+          "inc_fuel": 57403,
+          "exc_fuel": 57403
+        },
+        "br_phase5_set_diff": {
+          "calls": 37,
+          "inc_fuel": 195343465,
+          "exc_fuel": 195343465
+        },
+        "br_phase6_iface_diff": {
+          "calls": 37,
+          "inc_fuel": 20385457,
+          "exc_fuel": 20385457
+        },
+        "br_phase7_territory": {
+          "calls": 37,
+          "inc_fuel": 91868,
+          "exc_fuel": 91868
+        },
+        "br_phase8_assemble": {
+          "calls": 37,
+          "inc_fuel": 246470,
+          "exc_fuel": 246470
+        },
+        "contact_generation": {
+          "calls": 1,
+          "inc_fuel": 422337196,
+          "exc_fuel": 358532559
+        },
+        "drop_group_and_mst": {
+          "calls": 434,
+          "inc_fuel": 6591778112,
+          "exc_fuel": 246408117
+        },
+        "drop_merge_pass": {
+          "calls": 434,
+          "inc_fuel": 153481668,
+          "exc_fuel": 153462569
+        },
+        "drop_move_pass": {
+          "calls": 434,
+          "inc_fuel": 19262164576,
+          "exc_fuel": 2425566827
+        },
+        "drop_nodes_total": {
+          "calls": 1,
+          "inc_fuel": 26160596581,
+          "exc_fuel": 153172225
+        },
+        "emit_build_roles_batched": {
+          "calls": 37,
+          "inc_fuel": 6193019543,
+          "exc_fuel": 69484655
+        },
+        "emit_draw_ellipses": {
+          "calls": 434,
+          "inc_fuel": 4490662028,
+          "exc_fuel": 338665980
+        },
+        "emit_layer_setup": {
+          "calls": 434,
+          "inc_fuel": 912987910,
+          "exc_fuel": 696710712
+        },
+        "emit_mst_and_tips": {
+          "calls": 434,
+          "inc_fuel": 2177756540,
+          "exc_fuel": 276761760
+        },
+        "emit_node_roles": {
+          "calls": 434,
+          "inc_fuel": 3888717314,
+          "exc_fuel": 317859723
+        },
+        "emit_origin_and_skeleton": {
+          "calls": 434,
+          "inc_fuel": 6308466948,
+          "exc_fuel": 948359485
+        },
+        "emit_pass_total": {
+          "calls": 1,
+          "inc_fuel": 24811747034,
+          "exc_fuel": 147661410
+        },
+        "emit_prefetch_occupancy": {
+          "calls": 37,
+          "inc_fuel": 692475341,
+          "exc_fuel": 692475341
+        },
+        "fuel::assign_node_group": {
+          "calls": 162507,
+          "inc_fuel": 471475207,
+          "exc_fuel": 252146395
+        },
+        "fuel::expolygons_simplify": {
+          "calls": 24800,
+          "inc_fuel": 2487570892,
+          "exc_fuel": 2487570892
+        },
+        "fuel::is_line_cut_by_contour": {
+          "calls": 426174,
+          "inc_fuel": 7693791858,
+          "exc_fuel": 7693791858
+        },
+        "fuel::largest_part": {
+          "calls": 37,
+          "inc_fuel": 12106628,
+          "exc_fuel": 12106628
+        },
+        "fuel::move_out_expolys": {
+          "calls": 100099,
+          "inc_fuel": 683394724,
+          "exc_fuel": 206714218
+        },
+        "fuel::node_ellipse": {
+          "calls": 159575,
+          "inc_fuel": 2278471466,
+          "exc_fuel": 2278471466
+        },
+        "fuel::node_roles_ancestor_walk": {
+          "calls": 162507,
+          "inc_fuel": 519532945,
+          "exc_fuel": 519532945
+        },
+        "fuel::node_roles_is_floor": {
+          "calls": 162507,
+          "inc_fuel": 3051324646,
+          "exc_fuel": 490542324
+        },
+        "fuel::occupancy_memo_lookup": {
+          "calls": 1300,
+          "inc_fuel": 349907650,
+          "exc_fuel": 349907650
+        },
+        "fuel::point_in_any_expoly": {
+          "calls": 1083864,
+          "inc_fuel": 7735551008,
+          "exc_fuel": 7735551008
+        },
+        "fuel::prim_mst": {
+          "calls": 868,
+          "inc_fuel": 5873894788,
+          "exc_fuel": 5873894788
+        },
+        "fuel::projection_onto": {
+          "calls": 327166,
+          "inc_fuel": 4533758228,
+          "exc_fuel": 4533758228
+        },
+        "fuel::region_bbox_and_winding": {
+          "calls": 136477,
+          "inc_fuel": 984465876,
+          "exc_fuel": 984465876
+        },
+        "fuel::skeleton_wall_counts": {
+          "calls": 432,
+          "inc_fuel": 5226477011,
+          "exc_fuel": 5226477011
+        },
+        "fuel::swallowed_by_collision": {
+          "calls": 357736,
+          "inc_fuel": 3774519362,
+          "exc_fuel": 1487137992
+        },
+        "fuel::tile_index_build": {
+          "calls": 430,
+          "inc_fuel": 1437278817,
+          "exc_fuel": 1437278817
+        },
+        "fuel::tile_index_query": {
+          "calls": 68381,
+          "inc_fuel": 1611375636,
+          "exc_fuel": 1611375636
+        },
+        "output_push_entries": {
+          "calls": 1,
+          "inc_fuel": 244156,
+          "exc_fuel": 244156
+        },
+        "post_emit_stamping_and_offgrid": {
+          "calls": 1,
+          "inc_fuel": 239641530,
+          "exc_fuel": 239641530
+        },
+        "prune_unsupported": {
+          "calls": 1,
+          "inc_fuel": 12050618,
+          "exc_fuel": 12050618
+        },
+        "run_support_geometry_total": {
+          "calls": 1,
+          "inc_fuel": 56124660340,
+          "exc_fuel": 232735683
+        },
+        "smooth_nodes": {
+          "calls": 1,
+          "inc_fuel": 2588908301,
+          "exc_fuel": 2588908301
+        },
+        "tree_volumes_new": {
+          "calls": 1,
+          "inc_fuel": 1656399241,
+          "exc_fuel": 105017
+        },
+        "tv_ensure_avoidance": {
+          "calls": 38,
+          "inc_fuel": 535010781,
+          "exc_fuel": 535010781
+        },
+        "tv_ensure_collision": {
+          "calls": 49,
+          "inc_fuel": 1263087896,
+          "exc_fuel": 348429408
+        },
+        "tv_foreign_territory": {
+          "calls": 1,
+          "inc_fuel": 16150,
+          "exc_fuel": 16150
+        },
+        "tv_outlines_below": {
+          "calls": 1,
+          "inc_fuel": 37284093,
+          "exc_fuel": 37284093
+        },
+        "tv_simplify_union": {
+          "calls": 1,
+          "inc_fuel": 1618993981,
+          "exc_fuel": 46081577
+        }
+      },
+      "counters": {
+        "emit_active_nodes_total": 162507,
+        "emit_ancestor_walk_steps": 12653021,
+        "emit_skeleton_inner_iters": 148521689,
+        "emit_skeleton_points": 276560,
+        "emit_swallowed_calls": 357736,
+        "line_cut_cache_hits": 131816,
+        "line_cut_calls": 426174,
+        "move_out_early_outside": 97687,
+        "move_out_offset_calls": 2412,
+        "move_out_total_calls": 100099,
+        "occupancy_memo_hits": 1300,
+        "output_entries_pushed": 432,
+        "p1_bbox_disjoint_hits": 68096,
+        "point_in_any_expoly_calls": 1083864,
+        "projection_onto_calls": 327166,
+        "tile_cache_hits": 23468,
+        "tile_covered_hits": 0,
+        "tile_empty_hits": 37742,
+        "tile_index_builds": 430,
+        "tile_orig_pts": 426868700,
+        "tile_poly_hits": 30639,
+        "tile_queries": 68381,
+        "tile_win_pts": 3629342,
+        "tv_avoidance_buckets_materialized": 38,
+        "tv_avoidance_distinct_layers_queried": 7704,
+        "tv_avoidance_layers_materialized": 18848,
+        "tv_avoidance_max_layer_plus1_sum": 8187,
+        "tv_avoidance_queries": 160597,
+        "tv_collision_buckets_materialized": 49,
+        "tv_collision_distinct_layers_queried": 12360,
+        "tv_collision_layers_materialized": 24304,
+        "tv_collision_max_layer_plus1_sum": 12643,
+        "tv_collision_queries": 625739
+      }
+    },
+    "base-arachne-on": {
+      "exit_code": 0,
+      "wall_s": 25.8043,
+      "gcode_sha256": "da1e41d42080e3d5484ab9f932edc27def7dee4b1fa0192023531c09909e7031",
+      "gcode_bytes": 39417439,
+      "reference_match": true,
+      "last_fuel": 56511588163,
+      "run_support_geometry_total_fuel": 56124660340,
+      "scopes": {
+        "br_phase1_batch": {
+          "calls": 37,
+          "inc_fuel": 395314707,
+          "exc_fuel": 383208079
+        },
+        "br_phase1_guest": {
+          "calls": 37,
+          "inc_fuel": 4766600103,
+          "exc_fuel": 733479774
+        },
+        "br_phase2_lone": {
+          "calls": 37,
+          "inc_fuel": 73205,
+          "exc_fuel": 73205
+        },
+        "br_phase3_union": {
+          "calls": 37,
+          "inc_fuel": 745422210,
+          "exc_fuel": 745422210
+        },
+        "br_phase4_simplify": {
+          "calls": 37,
+          "inc_fuel": 57403,
+          "exc_fuel": 57403
+        },
+        "br_phase5_set_diff": {
+          "calls": 37,
+          "inc_fuel": 195343465,
+          "exc_fuel": 195343465
+        },
+        "br_phase6_iface_diff": {
+          "calls": 37,
+          "inc_fuel": 20385457,
+          "exc_fuel": 20385457
+        },
+        "br_phase7_territory": {
+          "calls": 37,
+          "inc_fuel": 91868,
+          "exc_fuel": 91868
+        },
+        "br_phase8_assemble": {
+          "calls": 37,
+          "inc_fuel": 246470,
+          "exc_fuel": 246470
+        },
+        "contact_generation": {
+          "calls": 1,
+          "inc_fuel": 422337196,
+          "exc_fuel": 358532559
+        },
+        "drop_group_and_mst": {
+          "calls": 434,
+          "inc_fuel": 6591778112,
+          "exc_fuel": 246408117
+        },
+        "drop_merge_pass": {
+          "calls": 434,
+          "inc_fuel": 153481668,
+          "exc_fuel": 153462569
+        },
+        "drop_move_pass": {
+          "calls": 434,
+          "inc_fuel": 19262164576,
+          "exc_fuel": 2425566827
+        },
+        "drop_nodes_total": {
+          "calls": 1,
+          "inc_fuel": 26160596581,
+          "exc_fuel": 153172225
+        },
+        "emit_build_roles_batched": {
+          "calls": 37,
+          "inc_fuel": 6193019543,
+          "exc_fuel": 69484655
+        },
+        "emit_draw_ellipses": {
+          "calls": 434,
+          "inc_fuel": 4490662028,
+          "exc_fuel": 338665980
+        },
+        "emit_layer_setup": {
+          "calls": 434,
+          "inc_fuel": 912987910,
+          "exc_fuel": 696710712
+        },
+        "emit_mst_and_tips": {
+          "calls": 434,
+          "inc_fuel": 2177756540,
+          "exc_fuel": 276761760
+        },
+        "emit_node_roles": {
+          "calls": 434,
+          "inc_fuel": 3888717314,
+          "exc_fuel": 317859723
+        },
+        "emit_origin_and_skeleton": {
+          "calls": 434,
+          "inc_fuel": 6308466948,
+          "exc_fuel": 948359485
+        },
+        "emit_pass_total": {
+          "calls": 1,
+          "inc_fuel": 24811747034,
+          "exc_fuel": 147661410
+        },
+        "emit_prefetch_occupancy": {
+          "calls": 37,
+          "inc_fuel": 692475341,
+          "exc_fuel": 692475341
+        },
+        "fuel::assign_node_group": {
+          "calls": 162507,
+          "inc_fuel": 471475207,
+          "exc_fuel": 252146395
+        },
+        "fuel::expolygons_simplify": {
+          "calls": 24800,
+          "inc_fuel": 2487570892,
+          "exc_fuel": 2487570892
+        },
+        "fuel::is_line_cut_by_contour": {
+          "calls": 426174,
+          "inc_fuel": 7693791858,
+          "exc_fuel": 7693791858
+        },
+        "fuel::largest_part": {
+          "calls": 37,
+          "inc_fuel": 12106628,
+          "exc_fuel": 12106628
+        },
+        "fuel::move_out_expolys": {
+          "calls": 100099,
+          "inc_fuel": 683394724,
+          "exc_fuel": 206714218
+        },
+        "fuel::node_ellipse": {
+          "calls": 159575,
+          "inc_fuel": 2278471466,
+          "exc_fuel": 2278471466
+        },
+        "fuel::node_roles_ancestor_walk": {
+          "calls": 162507,
+          "inc_fuel": 519532945,
+          "exc_fuel": 519532945
+        },
+        "fuel::node_roles_is_floor": {
+          "calls": 162507,
+          "inc_fuel": 3051324646,
+          "exc_fuel": 490542324
+        },
+        "fuel::occupancy_memo_lookup": {
+          "calls": 1300,
+          "inc_fuel": 349907650,
+          "exc_fuel": 349907650
+        },
+        "fuel::point_in_any_expoly": {
+          "calls": 1083864,
+          "inc_fuel": 7735551008,
+          "exc_fuel": 7735551008
+        },
+        "fuel::prim_mst": {
+          "calls": 868,
+          "inc_fuel": 5873894788,
+          "exc_fuel": 5873894788
+        },
+        "fuel::projection_onto": {
+          "calls": 327166,
+          "inc_fuel": 4533758228,
+          "exc_fuel": 4533758228
+        },
+        "fuel::region_bbox_and_winding": {
+          "calls": 136477,
+          "inc_fuel": 984465876,
+          "exc_fuel": 984465876
+        },
+        "fuel::skeleton_wall_counts": {
+          "calls": 432,
+          "inc_fuel": 5226477011,
+          "exc_fuel": 5226477011
+        },
+        "fuel::swallowed_by_collision": {
+          "calls": 357736,
+          "inc_fuel": 3774519362,
+          "exc_fuel": 1487137992
+        },
+        "fuel::tile_index_build": {
+          "calls": 430,
+          "inc_fuel": 1437278817,
+          "exc_fuel": 1437278817
+        },
+        "fuel::tile_index_query": {
+          "calls": 68381,
+          "inc_fuel": 1611375636,
+          "exc_fuel": 1611375636
+        },
+        "output_push_entries": {
+          "calls": 1,
+          "inc_fuel": 244156,
+          "exc_fuel": 244156
+        },
+        "post_emit_stamping_and_offgrid": {
+          "calls": 1,
+          "inc_fuel": 239641530,
+          "exc_fuel": 239641530
+        },
+        "prune_unsupported": {
+          "calls": 1,
+          "inc_fuel": 12050618,
+          "exc_fuel": 12050618
+        },
+        "run_support_geometry_total": {
+          "calls": 1,
+          "inc_fuel": 56124660340,
+          "exc_fuel": 232735683
+        },
+        "smooth_nodes": {
+          "calls": 1,
+          "inc_fuel": 2588908301,
+          "exc_fuel": 2588908301
+        },
+        "tree_volumes_new": {
+          "calls": 1,
+          "inc_fuel": 1656399241,
+          "exc_fuel": 105017
+        },
+        "tv_ensure_avoidance": {
+          "calls": 38,
+          "inc_fuel": 535010781,
+          "exc_fuel": 535010781
+        },
+        "tv_ensure_collision": {
+          "calls": 49,
+          "inc_fuel": 1263087896,
+          "exc_fuel": 348429408
+        },
+        "tv_foreign_territory": {
+          "calls": 1,
+          "inc_fuel": 16150,
+          "exc_fuel": 16150
+        },
+        "tv_outlines_below": {
+          "calls": 1,
+          "inc_fuel": 37284093,
+          "exc_fuel": 37284093
+        },
+        "tv_simplify_union": {
+          "calls": 1,
+          "inc_fuel": 1618993981,
+          "exc_fuel": 46081577
+        }
+      },
+      "counters": {
+        "emit_active_nodes_total": 162507,
+        "emit_ancestor_walk_steps": 12653021,
+        "emit_skeleton_inner_iters": 148521689,
+        "emit_skeleton_points": 276560,
+        "emit_swallowed_calls": 357736,
+        "line_cut_cache_hits": 131816,
+        "line_cut_calls": 426174,
+        "move_out_early_outside": 97687,
+        "move_out_offset_calls": 2412,
+        "move_out_total_calls": 100099,
+        "occupancy_memo_hits": 1300,
+        "output_entries_pushed": 432,
+        "p1_bbox_disjoint_hits": 68096,
+        "point_in_any_expoly_calls": 1083864,
+        "projection_onto_calls": 327166,
+        "tile_cache_hits": 23468,
+        "tile_covered_hits": 0,
+        "tile_empty_hits": 37742,
+        "tile_index_builds": 430,
+        "tile_orig_pts": 426868700,
+        "tile_poly_hits": 30639,
+        "tile_queries": 68381,
+        "tile_win_pts": 3629342,
+        "tv_avoidance_buckets_materialized": 38,
+        "tv_avoidance_distinct_layers_queried": 7704,
+        "tv_avoidance_layers_materialized": 18848,
+        "tv_avoidance_max_layer_plus1_sum": 8187,
+        "tv_avoidance_queries": 160597,
+        "tv_collision_buckets_materialized": 49,
+        "tv_collision_distinct_layers_queried": 12360,
+        "tv_collision_layers_materialized": 24304,
+        "tv_collision_max_layer_plus1_sum": 12643,
+        "tv_collision_queries": 625739
+      }
+    }
+  }
+}

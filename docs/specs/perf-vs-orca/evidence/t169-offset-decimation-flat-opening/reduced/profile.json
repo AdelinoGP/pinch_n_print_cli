@@ -1,0 +1,254 @@
+{
+  "schema": 1,
+  "arms": {
+    "baseline": {
+      "benchy-classic-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::offset2_ex": 3041257738,
+            "polygon_ops::clip_polygons": 4137322
+          },
+          "wall": {
+            "polygon_ops::offset": 5392600000,
+            "polygon_ops::offset2_ex": 1458600000,
+            "polygon_ops::clip_polygons": 2365000000,
+            "polygon_ops::closing_ex": 312400000
+          }
+        }
+      },
+      "benchy-classic-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 1439107027,
+            "polygon_ops::offset": 92464669,
+            "polygon_ops::offset2_ex": 3041149896
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 11279100000,
+            "polygon_ops::offset": 13861000000,
+            "polygon_ops::offset2_ex": 1551700000,
+            "polygon_ops::closing_ex": 325900000
+          }
+        }
+      },
+      "benchy-arachne-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 4245404,
+            "polygon_ops::offset": 321361668
+          },
+          "wall": {
+            "polygon_ops::offset": 5221600000,
+            "polygon_ops::offset2_ex": 1492600000,
+            "polygon_ops::clip_polygons": 2379600000,
+            "polygon_ops::closing_ex": 311100000
+          }
+        }
+      },
+      "benchy-arachne-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 1438942486,
+            "polygon_ops::offset": 413831082
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 11349700000,
+            "polygon_ops::offset": 13693300000,
+            "polygon_ops::offset2_ex": 1492600000,
+            "polygon_ops::closing_ex": 313000000
+          }
+        }
+      },
+      "base-classic-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::offset2_ex": 32551199148,
+            "polygon_ops::clip_polygons": 798524
+          },
+          "wall": {
+            "polygon_ops::offset": 82061000000,
+            "polygon_ops::offset2_ex": 15640000000,
+            "polygon_ops::clip_polygons": 23684000000,
+            "polygon_ops::closing_ex": 2534000000
+          }
+        }
+      },
+      "base-classic-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 11584934041,
+            "polygon_ops::offset": 975181915,
+            "polygon_ops::offset2_ex": 32551027874
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 201784000000,
+            "polygon_ops::offset": 247894000000,
+            "polygon_ops::offset2_ex": 15948000000,
+            "polygon_ops::closing_ex": 2543000000
+          }
+        }
+      },
+      "base-arachne-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::offset": 2432782141,
+            "polygon_ops::clip_polygons": 842949
+          },
+          "wall": {
+            "polygon_ops::offset": 80454000000,
+            "polygon_ops::offset2_ex": 15919900000,
+            "polygon_ops::clip_polygons": 23620000000,
+            "polygon_ops::closing_ex": 2505000000
+          }
+        }
+      },
+      "base-arachne-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 11587417164,
+            "polygon_ops::offset": 3408333198
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 201224000000,
+            "polygon_ops::offset": 245847000000,
+            "polygon_ops::offset2_ex": 15416000000,
+            "polygon_ops::closing_ex": 2476000000
+          }
+        }
+      }
+    },
+    "candidate": {
+      "benchy-classic-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 4062173,
+            "polygon_ops::offset2_ex": 2544085784
+          },
+          "wall": {
+            "polygon_ops::offset": 3182100000,
+            "polygon_ops::clip_polygons": 2425500000,
+            "polygon_ops::offset2_ex": 1207200000,
+            "polygon_ops::closing_ex": 310900000
+          }
+        }
+      },
+      "benchy-classic-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 1334445931,
+            "polygon_ops::offset": 75979116,
+            "polygon_ops::offset2_ex": 2544110538
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 10824400000,
+            "polygon_ops::offset": 7604600000,
+            "polygon_ops::offset2_ex": 1162100000,
+            "polygon_ops::closing_ex": 330800000
+          }
+        }
+      },
+      "benchy-arachne-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 4694125,
+            "polygon_ops::offset": 331146157
+          },
+          "wall": {
+            "polygon_ops::offset": 2903700000,
+            "polygon_ops::clip_polygons": 2369000000,
+            "polygon_ops::offset2_ex": 1210600000,
+            "polygon_ops::closing_ex": 310300000
+          }
+        }
+      },
+      "benchy-arachne-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 1335002568,
+            "polygon_ops::offset": 407111981
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 10863800000,
+            "polygon_ops::offset": 7511800000,
+            "polygon_ops::offset2_ex": 1208400000,
+            "polygon_ops::closing_ex": 347900000
+          }
+        }
+      },
+      "base-classic-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::offset2_ex": 25539881816,
+            "polygon_ops::clip_polygons": 787851
+          },
+          "wall": {
+            "polygon_ops::offset": 40251000000,
+            "polygon_ops::clip_polygons": 22960000000,
+            "polygon_ops::offset2_ex": 13003000000,
+            "polygon_ops::closing_ex": 2510000000
+          }
+        }
+      },
+      "base-classic-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 11730784778,
+            "polygon_ops::offset": 988761082,
+            "polygon_ops::offset2_ex": 25539760146
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 198098000000,
+            "polygon_ops::offset": 110348000000,
+            "polygon_ops::offset2_ex": 12739000000,
+            "polygon_ops::closing_ex": 2555000000
+          }
+        }
+      },
+      "base-arachne-off": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::offset": 2484402661,
+            "polygon_ops::clip_polygons": 822156
+          },
+          "wall": {
+            "polygon_ops::offset": 39337000000,
+            "polygon_ops::clip_polygons": 24101000000,
+            "polygon_ops::offset2_ex": 13302700000,
+            "polygon_ops::closing_ex": 2525000000
+          }
+        }
+      },
+      "base-arachne-on": {
+        "exit_code": 0,
+        "scopes": {
+          "fuel": {
+            "polygon_ops::clip_polygons": 11732088676,
+            "polygon_ops::offset": 3473838154
+          },
+          "wall": {
+            "polygon_ops::clip_polygons": 200357000000,
+            "polygon_ops::offset": 115228000000,
+            "polygon_ops::offset2_ex": 13471800000,
+            "polygon_ops::closing_ex": 2475000000
+          }
+        }
+      }
+    }
+  },
+  "notes": "attribution only; --profile inflates wall"
+}

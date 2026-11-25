@@ -153,6 +153,7 @@ pub struct OutRec {
     pub bounds: Rect64,
     pub path: Path64,
     pub is_open: bool,
+    pub source_id: u32,
 }
 
 impl OutRec {
@@ -169,6 +170,7 @@ impl OutRec {
             bounds: Rect64::new(0, 0, 0, 0),
             path: Path64::new(),
             is_open: false,
+            source_id: 0,
         }
     }
 }
@@ -235,14 +237,25 @@ pub struct LocalMinima {
     pub vertex: usize, // index into vertex arena
     pub polytype: PathType,
     pub is_open: bool,
+    pub source_id: u32,
 }
 
 impl LocalMinima {
     pub fn new(vertex: usize, polytype: PathType, is_open: bool) -> Self {
+        Self::with_source_id(vertex, polytype, is_open, 0)
+    }
+
+    pub fn with_source_id(
+        vertex: usize,
+        polytype: PathType,
+        is_open: bool,
+        source_id: u32,
+    ) -> Self {
         Self {
             vertex,
             polytype,
             is_open,
+            source_id,
         }
     }
 }
@@ -500,15 +513,38 @@ impl ClipperBase {
     /// Add a local minimum
     /// Direct port from clipper.engine.cpp AddLocMin
     pub fn add_loc_min(&mut self, vert_idx: usize, polytype: PathType, is_open: bool) {
+        self.add_loc_min_tagged(vert_idx, polytype, is_open, 0);
+    }
+
+    /// Add a local minimum tagged with its originating subject id.
+    pub fn add_loc_min_tagged(
+        &mut self,
+        vert_idx: usize,
+        polytype: PathType,
+        is_open: bool,
+        source_id: u32,
+    ) {
         // Check that the vertex is a local minima
         self.vertex_arena[vert_idx].flags |= VertexFlags::LOCAL_MIN;
-        self.minima_list
-            .push(LocalMinima::new(vert_idx, polytype, is_open));
+        self.minima_list.push(LocalMinima::with_source_id(
+            vert_idx, polytype, is_open, source_id,
+        ));
     }
 
     /// Add a path for clipping (converts to vertex representation)
     /// Direct port from clipper.engine.cpp AddPath / AddPaths_
     pub fn add_path(&mut self, path: &Path64, polytype: PathType, is_open: bool) {
+        self.add_path_tagged(path, polytype, is_open, 0);
+    }
+
+    /// Add a path for clipping, tagging every local minimum created from it with `source_id`.
+    pub fn add_path_tagged(
+        &mut self,
+        path: &Path64,
+        polytype: PathType,
+        is_open: bool,
+        source_id: u32,
+    ) {
         let mut path = path.clone();
 
         // Validate path
@@ -563,7 +599,7 @@ impl ClipperBase {
             // We need to handle ascending/descending sequences and add local minima
             // The first local min for an open path is the start if it's lower than next,
             // or wherever we first start going up after going down
-            self.find_and_add_local_minima_open(first_vert_idx, vert_count, polytype);
+            self.find_and_add_local_minima_open(first_vert_idx, vert_count, polytype, source_id);
         } else {
             self.find_and_add_local_minima_closed(first_vert_idx, vert_count, polytype);
         }
@@ -638,6 +674,7 @@ impl ClipperBase {
         first_vert_idx: usize,
         vert_count: usize,
         polytype: PathType,
+        source_id: u32,
     ) {
         let last_vert_idx = first_vert_idx + vert_count - 1;
 
@@ -650,7 +687,7 @@ impl ClipperBase {
         let mut going_up;
         if first_pt.y > second_pt.y {
             // Going up from first vertex - first is a local min
-            self.add_loc_min(first_vert_idx, polytype, true);
+            self.add_loc_min_tagged(first_vert_idx, polytype, true, source_id);
             going_up = true;
         } else if first_pt.y < second_pt.y {
             // Going down - first is NOT a local min, it's a local max
@@ -665,12 +702,12 @@ impl ClipperBase {
             if i >= last_vert_idx {
                 // Completely horizontal open path - still add as local minimum
                 // so it participates in the sweep line (matches C++ Clipper2 behavior)
-                self.add_loc_min(first_vert_idx, polytype, true);
+                self.add_loc_min_tagged(first_vert_idx, polytype, true, source_id);
                 going_up = true;
             } else {
                 going_up = self.vertex_arena[i].pt.y < first_pt.y;
                 if going_up {
-                    self.add_loc_min(first_vert_idx, polytype, true);
+                    self.add_loc_min_tagged(first_vert_idx, polytype, true, source_id);
                 } else {
                     self.vertex_arena[first_vert_idx].flags |= VertexFlags::LOCAL_MAX;
                 }
@@ -687,7 +724,7 @@ impl ClipperBase {
                 going_up = false;
             } else if next_pt.y < curr_pt.y && !going_up {
                 going_up = true;
-                self.add_loc_min(i, polytype, true);
+                self.add_loc_min_tagged(i, polytype, true, source_id);
             }
         }
 
@@ -696,7 +733,7 @@ impl ClipperBase {
         let prev_pt = self.vertex_arena[last_vert_idx - 1].pt;
         if !going_up {
             // Was descending - last vertex is a local min
-            self.add_loc_min(last_vert_idx, polytype, true);
+            self.add_loc_min_tagged(last_vert_idx, polytype, true, source_id);
         } else if last_pt.y < prev_pt.y || (last_pt.y == prev_pt.y && going_up) {
             self.vertex_arena[last_vert_idx].flags |= VertexFlags::LOCAL_MAX;
         }
@@ -1345,8 +1382,10 @@ impl ClipperBase {
     /// Start an open path output
     /// Direct port from clipper.engine.cpp StartOpenPath (line 1696)
     fn start_open_path(&mut self, e_idx: usize, pt: Point64) -> usize {
+        let source_id = self.minima_list[self.active_arena[e_idx].local_min].source_id;
         let outrec_idx = self.new_out_rec();
         self.outrec_list[outrec_idx].is_open = true;
+        self.outrec_list[outrec_idx].source_id = source_id;
 
         if self.active_arena[e_idx].wind_dx > 0 {
             self.outrec_list[outrec_idx].front_edge = Some(e_idx);
@@ -1377,8 +1416,10 @@ impl ClipperBase {
         self.active_arena[e2_idx].outrec = Some(outrec_idx);
 
         if self.is_open_idx(e1_idx) {
+            let source_id = self.minima_list[self.active_arena[e1_idx].local_min].source_id;
             self.outrec_list[outrec_idx].owner = None;
             self.outrec_list[outrec_idx].is_open = true;
+            self.outrec_list[outrec_idx].source_id = source_id;
             if self.active_arena[e1_idx].wind_dx > 0 {
                 self.set_sides(outrec_idx, e1_idx, e2_idx);
             } else {
@@ -1518,8 +1559,14 @@ impl ClipperBase {
         self.outrec_list[or2].back_edge = None;
         self.outrec_list[or2].pts = None;
 
+        debug_assert!(
+            !self.outrec_list[or1].is_open
+                || self.outrec_list[or1].source_id == self.outrec_list[or2].source_id
+        );
+
         if self.is_open_end_idx(e1_idx) {
             self.outrec_list[or2].pts = self.outrec_list[or1].pts;
+            self.outrec_list[or2].source_id = self.outrec_list[or1].source_id;
             self.outrec_list[or1].pts = None;
         } else {
             set_owner(&mut self.outrec_list, or2, or1);

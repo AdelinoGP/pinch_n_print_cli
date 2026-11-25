@@ -1,0 +1,1834 @@
+{
+  "schema": "t147-supports-rejection/v1",
+  "units": "mm / mm2; overlaps are top-plane exact-Z occupancy intersections",
+  "planner_plane": "layer.z - 0.5 * layer_height (layer sample midpoint)",
+  "validator_plane": "layer.z (SupportPlanEntry.anchor_z / exact-Z query)",
+  "support_half_width_mm": 0.2,
+  "layer_height_mm": 0.2,
+  "cells": {
+    "benchy-classic-on": {
+      "cell": "benchy-classic-on",
+      "diagnostics": 101,
+      "rejected_entries": 1,
+      "retained_entries": 201,
+      "rejected_layers": [
+        170
+      ],
+      "rejected_layers_sorted": [
+        170
+      ],
+      "unique_demands_rejected": 101,
+      "unique_demands_retained": 458,
+      "unique_demands_only_rejected": 0,
+      "support_path_mm": {
+        "pnp": 82644.646,
+        "orca": 53323.741
+      },
+      "missing_support_path_mm": 192.601,
+      "missing_support_path_area_bound_mm": 610.3,
+      "missing_share_pct": 0.233,
+      "immediate_candidate_total": 1,
+      "immediate_candidate_orca_supported": 1,
+      "entries": [
+        {
+          "layer": 170,
+          "z_mm": 34.2,
+          "body_area_mm2": 256.326,
+          "top_occupancy_area_mm2": 136.55,
+          "top_overlap_mm2": 5.834218,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 2.27609,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 4,
+              "area_mm2": 256.326,
+              "overlap_units2": 583421804.0
+            }
+          ],
+          "missing_path_estimate_mm": 192.601,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 169,
+                "z_mm": 34.0,
+                "mm": 250.664
+              }
+            ],
+            "above": [
+              {
+                "layer": 171,
+                "z_mm": 34.4,
+                "mm": 134.538
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 68,
+              "known": true,
+              "candidate_layer": 171,
+              "candidate_z_mm": 34.4,
+              "area_mm2": 22.403,
+              "orca_plane_mm": 34.2,
+              "orca_coverage": 0.3685,
+              "pnp_plane_mm": 34.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        }
+      ],
+      "pnp_gcode_sha256": "d9fc80baf6ae1e71e2f1a7df4e907120b6c42c046ec1d8a77b9b53751cab3f78",
+      "orca_gcode_sha256": "d62f4e3f63631516fafdd9515a55fb4bbb38c109d31c6ce210a8cee0a6368637",
+      "pnp_gcode": "target\\t147\\benchy-classic-on.probe3.gcode",
+      "orca_gcode": "target\\matched-pair\\t145-benchy\\gcode\\benchy-classic-on-orca-m3.gcode"
+    },
+    "base-classic-on": {
+      "cell": "base-classic-on",
+      "diagnostics": 44474,
+      "rejected_entries": 32,
+      "retained_entries": 400,
+      "rejected_layers": [
+        15,
+        18,
+        19,
+        27,
+        33,
+        34,
+        35,
+        36,
+        38,
+        39,
+        40,
+        41,
+        80,
+        99,
+        132,
+        155,
+        156,
+        177,
+        192,
+        216,
+        218,
+        259,
+        266,
+        316,
+        329,
+        351,
+        352,
+        362,
+        387,
+        395,
+        411,
+        414
+      ],
+      "rejected_layers_sorted": [
+        15,
+        18,
+        19,
+        27,
+        33,
+        34,
+        35,
+        36,
+        38,
+        39,
+        40,
+        41,
+        80,
+        99,
+        132,
+        155,
+        156,
+        177,
+        192,
+        216,
+        218,
+        259,
+        266,
+        316,
+        329,
+        351,
+        352,
+        362,
+        387,
+        395,
+        411,
+        414
+      ],
+      "unique_demands_rejected": 2892,
+      "unique_demands_retained": 2966,
+      "unique_demands_only_rejected": 0,
+      "support_path_mm": {
+        "pnp": 354855.082,
+        "orca": 265993.875
+      },
+      "missing_support_path_mm": 36466.736,
+      "missing_support_path_area_bound_mm": 116453.814,
+      "missing_share_pct": 10.2765,
+      "immediate_candidate_total": 32,
+      "immediate_candidate_orca_supported": 19,
+      "entries": [
+        {
+          "layer": 15,
+          "z_mm": 3.2,
+          "body_area_mm2": 3308.487,
+          "top_occupancy_area_mm2": 221.072,
+          "top_overlap_mm2": 1.460549,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.044146,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 4,
+              "area_mm2": 3275.428,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 33.058,
+              "overlap_units2": 146054850.5
+            }
+          ],
+          "missing_path_estimate_mm": 2473.249,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 14,
+                "z_mm": 3.0,
+                "mm": 2484.244
+              }
+            ],
+            "above": [
+              {
+                "layer": 16,
+                "z_mm": 3.4,
+                "mm": 2462.253
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 15,
+              "known": true,
+              "candidate_layer": 16,
+              "candidate_z_mm": 3.4,
+              "area_mm2": 17.001,
+              "orca_plane_mm": 3.2,
+              "orca_coverage": 0.7253,
+              "pnp_plane_mm": 3.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 18,
+          "z_mm": 3.8,
+          "body_area_mm2": 3179.627,
+          "top_occupancy_area_mm2": 298.931,
+          "top_overlap_mm2": 0.001172,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 3.7e-05,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 5,
+              "area_mm2": 3179.627,
+              "overlap_units2": 117175.0
+            }
+          ],
+          "missing_path_estimate_mm": 2385.269,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 17,
+                "z_mm": 3.6,
+                "mm": 2395.017
+              }
+            ],
+            "above": [
+              {
+                "layer": 20,
+                "z_mm": 4.2,
+                "mm": 2375.522
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 18,
+              "known": true,
+              "candidate_layer": 19,
+              "candidate_z_mm": 4.0,
+              "area_mm2": 20.978,
+              "orca_plane_mm": 3.8,
+              "orca_coverage": 0.7139,
+              "pnp_plane_mm": 3.8,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 19,
+          "z_mm": 4.0,
+          "body_area_mm2": 3128.988,
+          "top_occupancy_area_mm2": 330.589,
+          "top_overlap_mm2": 0.150926,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.004823,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 4,
+              "area_mm2": 3128.988,
+              "overlap_units2": 15092584.5
+            }
+          ],
+          "missing_path_estimate_mm": 2385.269,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 17,
+                "z_mm": 3.6,
+                "mm": 2395.017
+              }
+            ],
+            "above": [
+              {
+                "layer": 20,
+                "z_mm": 4.2,
+                "mm": 2375.522
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 19,
+              "known": true,
+              "candidate_layer": 20,
+              "candidate_z_mm": 4.2,
+              "area_mm2": 18.116,
+              "orca_plane_mm": 4.0,
+              "orca_coverage": 0.6741,
+              "pnp_plane_mm": 4.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 27,
+          "z_mm": 5.6,
+          "body_area_mm2": 2860.503,
+          "top_occupancy_area_mm2": 521.679,
+          "top_overlap_mm2": 0.113607,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.003972,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 5,
+              "area_mm2": 2846.739,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 13.763,
+              "overlap_units2": 11360734.0
+            }
+          ],
+          "missing_path_estimate_mm": 2419.363,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 26,
+                "z_mm": 5.4,
+                "mm": 2475.843
+              }
+            ],
+            "above": [
+              {
+                "layer": 28,
+                "z_mm": 5.8,
+                "mm": 2362.884
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 27,
+              "known": true,
+              "candidate_layer": 28,
+              "candidate_z_mm": 5.8,
+              "area_mm2": 20.592,
+              "orca_plane_mm": 5.6,
+              "orca_coverage": 0.7227,
+              "pnp_plane_mm": 5.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 33,
+          "z_mm": 6.8,
+          "body_area_mm2": 2605.073,
+          "top_occupancy_area_mm2": 688.069,
+          "top_overlap_mm2": 0.016289,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.000625,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 8,
+              "area_mm2": 2584.77,
+              "overlap_units2": 1628867.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 20.303,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 1770.515,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 32,
+                "z_mm": 6.6,
+                "mm": 2141.74
+              }
+            ],
+            "above": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 33,
+              "known": true,
+              "candidate_layer": 34,
+              "candidate_z_mm": 7.0,
+              "area_mm2": 17.068,
+              "orca_plane_mm": 6.8,
+              "orca_coverage": 0.9958,
+              "pnp_plane_mm": 6.8,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 34,
+          "z_mm": 7.0,
+          "body_area_mm2": 2572.017,
+          "top_occupancy_area_mm2": 713.714,
+          "top_overlap_mm2": 0.079976,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.003109,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 2526.343,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 45.674,
+              "overlap_units2": 7997573.5
+            }
+          ],
+          "missing_path_estimate_mm": 1770.515,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 32,
+                "z_mm": 6.6,
+                "mm": 2141.74
+              }
+            ],
+            "above": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 34,
+              "known": true,
+              "candidate_layer": 35,
+              "candidate_z_mm": 7.2,
+              "area_mm2": 17.895,
+              "orca_plane_mm": 7.0,
+              "orca_coverage": 0.6624,
+              "pnp_plane_mm": 7.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 35,
+          "z_mm": 7.2,
+          "body_area_mm2": 2543.339,
+          "top_occupancy_area_mm2": 742.964,
+          "top_overlap_mm2": 0.193666,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.007615,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 8,
+              "area_mm2": 2504.51,
+              "overlap_units2": 16423766.5
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 38.829,
+              "overlap_units2": 2942840.0
+            }
+          ],
+          "missing_path_estimate_mm": 1770.515,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 32,
+                "z_mm": 6.6,
+                "mm": 2141.74
+              }
+            ],
+            "above": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 35,
+              "known": true,
+              "candidate_layer": 36,
+              "candidate_z_mm": 7.4,
+              "area_mm2": 19.671,
+              "orca_plane_mm": 7.2,
+              "orca_coverage": 0.5538,
+              "pnp_plane_mm": 7.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 36,
+          "z_mm": 7.4,
+          "body_area_mm2": 2448.314,
+          "top_occupancy_area_mm2": 776.282,
+          "top_overlap_mm2": 0.210736,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.008607,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 8,
+              "area_mm2": 2416.009,
+              "overlap_units2": 21073579.5
+            },
+            {
+              "role": "TopInterface",
+              "count": 2,
+              "area_mm2": 32.305,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 1770.515,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 32,
+                "z_mm": 6.6,
+                "mm": 2141.74
+              }
+            ],
+            "above": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 36,
+              "known": true,
+              "candidate_layer": 37,
+              "candidate_z_mm": 7.6,
+              "area_mm2": 20.58,
+              "orca_plane_mm": 7.4,
+              "orca_coverage": 0.5672,
+              "pnp_plane_mm": 7.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 38,
+          "z_mm": 7.8,
+          "body_area_mm2": 2343.847,
+          "top_occupancy_area_mm2": 837.927,
+          "top_overlap_mm2": 0.000653,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 2.8e-05,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 8,
+              "area_mm2": 2244.465,
+              "overlap_units2": 65295.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 3,
+              "area_mm2": 99.382,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 1599.504,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ],
+            "above": [
+              {
+                "layer": 42,
+                "z_mm": 8.6,
+                "mm": 1799.717
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 38,
+              "known": true,
+              "candidate_layer": 39,
+              "candidate_z_mm": 8.0,
+              "area_mm2": 17.669,
+              "orca_plane_mm": 7.8,
+              "orca_coverage": 0.5232,
+              "pnp_plane_mm": 7.8,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 39,
+          "z_mm": 8.0,
+          "body_area_mm2": 2257.254,
+          "top_occupancy_area_mm2": 865.683,
+          "top_overlap_mm2": 1.470591,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.06515,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 11,
+              "area_mm2": 2160.574,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 3,
+              "area_mm2": 96.68,
+              "overlap_units2": 147059107.5
+            }
+          ],
+          "missing_path_estimate_mm": 1599.504,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ],
+            "above": [
+              {
+                "layer": 42,
+                "z_mm": 8.6,
+                "mm": 1799.717
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 39,
+              "known": true,
+              "candidate_layer": 40,
+              "candidate_z_mm": 8.2,
+              "area_mm2": 28.626,
+              "orca_plane_mm": 8.0,
+              "orca_coverage": 0.6883,
+              "pnp_plane_mm": 8.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 40,
+          "z_mm": 8.2,
+          "body_area_mm2": 2169.728,
+          "top_occupancy_area_mm2": 905.878,
+          "top_overlap_mm2": 0.149621,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.006896,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 11,
+              "area_mm2": 2150.849,
+              "overlap_units2": 9934660.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 2,
+              "area_mm2": 18.879,
+              "overlap_units2": 5027398.5
+            }
+          ],
+          "missing_path_estimate_mm": 1599.504,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ],
+            "above": [
+              {
+                "layer": 42,
+                "z_mm": 8.6,
+                "mm": 1799.717
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 40,
+              "known": true,
+              "candidate_layer": 41,
+              "candidate_z_mm": 8.4,
+              "area_mm2": 35.4,
+              "orca_plane_mm": 8.2,
+              "orca_coverage": 0.5955,
+              "pnp_plane_mm": 8.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 41,
+          "z_mm": 8.4,
+          "body_area_mm2": 2116.624,
+          "top_occupancy_area_mm2": 938.293,
+          "top_overlap_mm2": 0.002074,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 9.8e-05,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 11,
+              "area_mm2": 2109.592,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 7.033,
+              "overlap_units2": 207385.5
+            }
+          ],
+          "missing_path_estimate_mm": 1599.504,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 37,
+                "z_mm": 7.6,
+                "mm": 1399.29
+              }
+            ],
+            "above": [
+              {
+                "layer": 42,
+                "z_mm": 8.6,
+                "mm": 1799.717
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 41,
+              "known": true,
+              "candidate_layer": 42,
+              "candidate_z_mm": 8.6,
+              "area_mm2": 29.783,
+              "orca_plane_mm": 8.4,
+              "orca_coverage": 0.9498,
+              "pnp_plane_mm": 8.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 80,
+          "z_mm": 16.2,
+          "body_area_mm2": 1933.853,
+          "top_occupancy_area_mm2": 1166.625,
+          "top_overlap_mm2": 0.028029,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.001449,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 1913.041,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 20.812,
+              "overlap_units2": 2802888.0
+            }
+          ],
+          "missing_path_estimate_mm": 1307.196,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 79,
+                "z_mm": 16.0,
+                "mm": 1381.519
+              }
+            ],
+            "above": [
+              {
+                "layer": 81,
+                "z_mm": 16.4,
+                "mm": 1232.872
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 80,
+              "known": true,
+              "candidate_layer": 81,
+              "candidate_z_mm": 16.4,
+              "area_mm2": 4.205,
+              "orca_plane_mm": 16.2,
+              "orca_coverage": 0.1951,
+              "pnp_plane_mm": 16.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 99,
+          "z_mm": 20.0,
+          "body_area_mm2": 1743.819,
+          "top_occupancy_area_mm2": 1221.378,
+          "top_overlap_mm2": 0.080924,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.004641,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 1727.107,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 16.712,
+              "overlap_units2": 8092405.5
+            }
+          ],
+          "missing_path_estimate_mm": 1215.559,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 98,
+                "z_mm": 19.8,
+                "mm": 1350.077
+              }
+            ],
+            "above": [
+              {
+                "layer": 100,
+                "z_mm": 20.2,
+                "mm": 1081.04
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 99,
+              "known": true,
+              "candidate_layer": 100,
+              "candidate_z_mm": 20.2,
+              "area_mm2": 6.191,
+              "orca_plane_mm": 20.0,
+              "orca_coverage": 0.1899,
+              "pnp_plane_mm": 20.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 132,
+          "z_mm": 26.6,
+          "body_area_mm2": 1606.389,
+          "top_occupancy_area_mm2": 1009.999,
+          "top_overlap_mm2": 0.097966,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.006099,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 1585.28,
+              "overlap_units2": 9796614.5
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 21.109,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 1013.096,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 131,
+                "z_mm": 26.4,
+                "mm": 1053.792
+              }
+            ],
+            "above": [
+              {
+                "layer": 133,
+                "z_mm": 26.8,
+                "mm": 972.401
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 128,
+              "known": true,
+              "candidate_layer": 133,
+              "candidate_z_mm": 26.8,
+              "area_mm2": 2.581,
+              "orca_plane_mm": 26.6,
+              "orca_coverage": 0.1635,
+              "pnp_plane_mm": 26.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 155,
+          "z_mm": 31.2,
+          "body_area_mm2": 1433.539,
+          "top_occupancy_area_mm2": 1038.85,
+          "top_overlap_mm2": 0.393021,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.027416,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 1403.994,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 2,
+              "area_mm2": 29.546,
+              "overlap_units2": 39302104.5
+            }
+          ],
+          "missing_path_estimate_mm": 994.37,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 154,
+                "z_mm": 31.0,
+                "mm": 1067.465
+              }
+            ],
+            "above": [
+              {
+                "layer": 157,
+                "z_mm": 31.6,
+                "mm": 921.274
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 148,
+              "known": true,
+              "candidate_layer": 156,
+              "candidate_z_mm": 31.4,
+              "area_mm2": 8.915,
+              "orca_plane_mm": 31.2,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 31.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 156,
+          "z_mm": 31.4,
+          "body_area_mm2": 1419.415,
+          "top_occupancy_area_mm2": 1043.388,
+          "top_overlap_mm2": 0.687461,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.048433,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 1395.626,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 23.789,
+              "overlap_units2": 68746072.5
+            }
+          ],
+          "missing_path_estimate_mm": 994.37,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 154,
+                "z_mm": 31.0,
+                "mm": 1067.465
+              }
+            ],
+            "above": [
+              {
+                "layer": 157,
+                "z_mm": 31.6,
+                "mm": 921.274
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 149,
+              "known": true,
+              "candidate_layer": 157,
+              "candidate_z_mm": 31.6,
+              "area_mm2": 8.595,
+              "orca_plane_mm": 31.4,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 31.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 177,
+          "z_mm": 35.6,
+          "body_area_mm2": 1351.311,
+          "top_occupancy_area_mm2": 983.136,
+          "top_overlap_mm2": 0.471152,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.034866,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 1331.27,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 20.041,
+              "overlap_units2": 47115249.0
+            }
+          ],
+          "missing_path_estimate_mm": 995.538,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 176,
+                "z_mm": 35.4,
+                "mm": 962.618
+              }
+            ],
+            "above": [
+              {
+                "layer": 178,
+                "z_mm": 35.8,
+                "mm": 1028.458
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 170,
+              "known": true,
+              "candidate_layer": 178,
+              "candidate_z_mm": 35.8,
+              "area_mm2": 1.746,
+              "orca_plane_mm": 35.6,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 35.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 192,
+          "z_mm": 38.6,
+          "body_area_mm2": 1298.505,
+          "top_occupancy_area_mm2": 1042.262,
+          "top_overlap_mm2": 0.290842,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.022398,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 1288.333,
+              "overlap_units2": 29084205.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 10.172,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 821.889,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 191,
+                "z_mm": 38.4,
+                "mm": 833.264
+              }
+            ],
+            "above": [
+              {
+                "layer": 193,
+                "z_mm": 38.8,
+                "mm": 810.515
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 179,
+              "known": true,
+              "candidate_layer": 193,
+              "candidate_z_mm": 38.8,
+              "area_mm2": 3.132,
+              "orca_plane_mm": 38.6,
+              "orca_coverage": 0.5123,
+              "pnp_plane_mm": 38.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 216,
+          "z_mm": 43.4,
+          "body_area_mm2": 1221.754,
+          "top_occupancy_area_mm2": 1018.669,
+          "top_overlap_mm2": 0.394819,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.032316,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 5,
+              "area_mm2": 1196.122,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 25.632,
+              "overlap_units2": 39481875.5
+            }
+          ],
+          "missing_path_estimate_mm": 930.873,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 215,
+                "z_mm": 43.2,
+                "mm": 898.521
+              }
+            ],
+            "above": [
+              {
+                "layer": 217,
+                "z_mm": 43.6,
+                "mm": 963.225
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 195,
+              "known": true,
+              "candidate_layer": 217,
+              "candidate_z_mm": 43.6,
+              "area_mm2": 2.935,
+              "orca_plane_mm": 43.4,
+              "orca_coverage": 0.5387,
+              "pnp_plane_mm": 43.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 218,
+          "z_mm": 43.8,
+          "body_area_mm2": 1192.278,
+          "top_occupancy_area_mm2": 1022.869,
+          "top_overlap_mm2": 0.002512,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.000211,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 1192.278,
+              "overlap_units2": 251232.0
+            }
+          ],
+          "missing_path_estimate_mm": 967.104,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 217,
+                "z_mm": 43.6,
+                "mm": 963.225
+              }
+            ],
+            "above": [
+              {
+                "layer": 219,
+                "z_mm": 44.0,
+                "mm": 970.983
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 197,
+              "known": true,
+              "candidate_layer": 219,
+              "candidate_z_mm": 44.0,
+              "area_mm2": 4.828,
+              "orca_plane_mm": 43.8,
+              "orca_coverage": 0.26,
+              "pnp_plane_mm": 43.8,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 259,
+          "z_mm": 52.0,
+          "body_area_mm2": 980.567,
+          "top_occupancy_area_mm2": 999.068,
+          "top_overlap_mm2": 8e-06,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 1e-06,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 980.567,
+              "overlap_units2": 839.0
+            }
+          ],
+          "missing_path_estimate_mm": 910.242,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 258,
+                "z_mm": 51.8,
+                "mm": 965.89
+              }
+            ],
+            "above": [
+              {
+                "layer": 260,
+                "z_mm": 52.2,
+                "mm": 854.594
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 238,
+              "known": true,
+              "candidate_layer": 260,
+              "candidate_z_mm": 52.2,
+              "area_mm2": 3.553,
+              "orca_plane_mm": 52.0,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 52.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 266,
+          "z_mm": 53.4,
+          "body_area_mm2": 900.475,
+          "top_occupancy_area_mm2": 1002.884,
+          "top_overlap_mm2": 0.011366,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.001262,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 900.475,
+              "overlap_units2": 1136585.5
+            }
+          ],
+          "missing_path_estimate_mm": 610.734,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 265,
+                "z_mm": 53.2,
+                "mm": 540.649
+              }
+            ],
+            "above": [
+              {
+                "layer": 267,
+                "z_mm": 53.6,
+                "mm": 680.819
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 245,
+              "known": true,
+              "candidate_layer": 267,
+              "candidate_z_mm": 53.6,
+              "area_mm2": 0.985,
+              "orca_plane_mm": 53.4,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 53.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 316,
+          "z_mm": 63.4,
+          "body_area_mm2": 552.199,
+          "top_occupancy_area_mm2": 746.72,
+          "top_overlap_mm2": 0.380652,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.068934,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 3,
+              "area_mm2": 547.613,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 4.587,
+              "overlap_units2": 38065199.0
+            }
+          ],
+          "missing_path_estimate_mm": 626.413,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 315,
+                "z_mm": 63.2,
+                "mm": 639.844
+              }
+            ],
+            "above": [
+              {
+                "layer": 317,
+                "z_mm": 63.6,
+                "mm": 612.981
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 272,
+              "known": true,
+              "candidate_layer": 317,
+              "candidate_z_mm": 63.6,
+              "area_mm2": 11.605,
+              "orca_plane_mm": 63.4,
+              "orca_coverage": 0.0377,
+              "pnp_plane_mm": 63.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 329,
+          "z_mm": 66.0,
+          "body_area_mm2": 539.099,
+          "top_occupancy_area_mm2": 695.48,
+          "top_overlap_mm2": 4.8e-05,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 9e-06,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 5,
+              "area_mm2": 529.806,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 9.293,
+              "overlap_units2": 4829.5
+            }
+          ],
+          "missing_path_estimate_mm": 607.952,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 328,
+                "z_mm": 65.8,
+                "mm": 536.769
+              }
+            ],
+            "above": [
+              {
+                "layer": 330,
+                "z_mm": 66.2,
+                "mm": 679.135
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 281,
+              "known": true,
+              "candidate_layer": 330,
+              "candidate_z_mm": 66.2,
+              "area_mm2": 2.08,
+              "orca_plane_mm": 66.0,
+              "orca_coverage": 0.3079,
+              "pnp_plane_mm": 66.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 351,
+          "z_mm": 70.4,
+          "body_area_mm2": 329.61,
+          "top_occupancy_area_mm2": 680.927,
+          "top_overlap_mm2": 0.01706,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.005176,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 10,
+              "area_mm2": 309.388,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 20.222,
+              "overlap_units2": 1705977.5
+            }
+          ],
+          "missing_path_estimate_mm": 296.829,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 350,
+                "z_mm": 70.2,
+                "mm": 328.409
+              }
+            ],
+            "above": [
+              {
+                "layer": 353,
+                "z_mm": 70.8,
+                "mm": 265.25
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 303,
+              "known": true,
+              "candidate_layer": 352,
+              "candidate_z_mm": 70.6,
+              "area_mm2": 12.15,
+              "orca_plane_mm": 70.4,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 70.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 352,
+          "z_mm": 70.6,
+          "body_area_mm2": 316.341,
+          "top_occupancy_area_mm2": 685.859,
+          "top_overlap_mm2": 0.009647,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.003049,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 10,
+              "area_mm2": 305.327,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 11.014,
+              "overlap_units2": 964679.5
+            }
+          ],
+          "missing_path_estimate_mm": 296.829,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 350,
+                "z_mm": 70.2,
+                "mm": 328.409
+              }
+            ],
+            "above": [
+              {
+                "layer": 353,
+                "z_mm": 70.8,
+                "mm": 265.25
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 304,
+              "known": true,
+              "candidate_layer": 353,
+              "candidate_z_mm": 70.8,
+              "area_mm2": 7.948,
+              "orca_plane_mm": 70.6,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 70.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 362,
+          "z_mm": 72.6,
+          "body_area_mm2": 270.171,
+          "top_occupancy_area_mm2": 667.446,
+          "top_overlap_mm2": 0.137146,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.050763,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 6,
+              "area_mm2": 270.171,
+              "overlap_units2": 13714622.0
+            }
+          ],
+          "missing_path_estimate_mm": 324.278,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 361,
+                "z_mm": 72.4,
+                "mm": 284.067
+              }
+            ],
+            "above": [
+              {
+                "layer": 363,
+                "z_mm": 72.8,
+                "mm": 364.488
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 314,
+              "known": true,
+              "candidate_layer": 363,
+              "candidate_z_mm": 72.8,
+              "area_mm2": 5.048,
+              "orca_plane_mm": 72.6,
+              "orca_coverage": 0.0241,
+              "pnp_plane_mm": 72.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 387,
+          "z_mm": 77.6,
+          "body_area_mm2": 128.628,
+          "top_occupancy_area_mm2": 606.035,
+          "top_overlap_mm2": 0.019795,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.015389,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 9,
+              "area_mm2": 125.439,
+              "overlap_units2": 1979457.5
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 3.189,
+              "overlap_units2": 0.0
+            }
+          ],
+          "missing_path_estimate_mm": 207.33,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 386,
+                "z_mm": 77.4,
+                "mm": 223.284
+              }
+            ],
+            "above": [
+              {
+                "layer": 388,
+                "z_mm": 77.8,
+                "mm": 191.376
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 331,
+              "known": true,
+              "candidate_layer": 388,
+              "candidate_z_mm": 77.8,
+              "area_mm2": 4.895,
+              "orca_plane_mm": 77.6,
+              "orca_coverage": 0.0051,
+              "pnp_plane_mm": 77.6,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 395,
+          "z_mm": 79.2,
+          "body_area_mm2": 97.98,
+          "top_occupancy_area_mm2": 587.075,
+          "top_overlap_mm2": 0.002211,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.002257,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 7,
+              "area_mm2": 82.002,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 2,
+              "area_mm2": 15.977,
+              "overlap_units2": 221140.5
+            }
+          ],
+          "missing_path_estimate_mm": 119.027,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 394,
+                "z_mm": 79.0,
+                "mm": 134.249
+              }
+            ],
+            "above": [
+              {
+                "layer": 396,
+                "z_mm": 79.4,
+                "mm": 103.805
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 339,
+              "known": true,
+              "candidate_layer": 396,
+              "candidate_z_mm": 79.4,
+              "area_mm2": 6.053,
+              "orca_plane_mm": 79.2,
+              "orca_coverage": 0.0162,
+              "pnp_plane_mm": 79.2,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 411,
+          "z_mm": 82.4,
+          "body_area_mm2": 36.228,
+          "top_occupancy_area_mm2": 541.759,
+          "top_overlap_mm2": 0.012043,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.033243,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 5,
+              "area_mm2": 36.228,
+              "overlap_units2": 1204344.0
+            }
+          ],
+          "missing_path_estimate_mm": 56.745,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 410,
+                "z_mm": 82.2,
+                "mm": 61.714
+              }
+            ],
+            "above": [
+              {
+                "layer": 412,
+                "z_mm": 82.6,
+                "mm": 51.777
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 352,
+              "known": true,
+              "candidate_layer": 412,
+              "candidate_z_mm": 82.6,
+              "area_mm2": 2.134,
+              "orca_plane_mm": 82.4,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 82.4,
+              "pnp_coverage": 0.0
+            }
+          ]
+        },
+        {
+          "layer": 414,
+          "z_mm": 83.0,
+          "body_area_mm2": 24.64,
+          "top_occupancy_area_mm2": 536.796,
+          "top_overlap_mm2": 0.005423,
+          "mid_overlap_mm2": 0.0,
+          "overlap_pct_of_body": 0.02201,
+          "roles": [
+            {
+              "role": "SupportBody",
+              "count": 3,
+              "area_mm2": 14.522,
+              "overlap_units2": 0.0
+            },
+            {
+              "role": "TopInterface",
+              "count": 1,
+              "area_mm2": 10.118,
+              "overlap_units2": 542316.5
+            }
+          ],
+          "missing_path_estimate_mm": 27.136,
+          "neighbors": {
+            "below": [
+              {
+                "layer": 413,
+                "z_mm": 82.8,
+                "mm": 30.87
+              }
+            ],
+            "above": [
+              {
+                "layer": 415,
+                "z_mm": 83.2,
+                "mm": 23.403
+              }
+            ]
+          },
+          "immediate_candidates": [
+            {
+              "candidate_id": 355,
+              "known": true,
+              "candidate_layer": 415,
+              "candidate_z_mm": 83.2,
+              "area_mm2": 2.737,
+              "orca_plane_mm": 83.0,
+              "orca_coverage": 0.0,
+              "pnp_plane_mm": 83.0,
+              "pnp_coverage": 0.0
+            }
+          ]
+        }
+      ],
+      "pnp_gcode_sha256": "585c6a8edc2fd1de72dd2a86933fdad25c7ed144662dd80bbc68fb7856e4f629",
+      "orca_gcode_sha256": "a555343070d675848486aaea37041b44bc1f773a9a4fca2ae64301cb52795917",
+      "pnp_gcode": "target\\t147\\base-classic-on.probe3.gcode",
+      "orca_gcode": "target\\matched-pair\\t145-benchy\\gcode\\base-classic-on-orca-m3.gcode"
+    }
+  },
+  "matched_config": "docs/specs/perf-vs-orca/evidence/matched-pair/configs/pnp-classic-supports-on.json"
+}

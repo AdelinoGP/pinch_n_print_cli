@@ -1,0 +1,87 @@
+{
+  "canonical_v250": {
+    "checkout": "D:/slicerProject/Orca(pnp_gui), v2.5.0, 40ecc66f78",
+    "clipper2_version": "2.0.1 (Orca fork)",
+    "files": {
+      "src/clipper.offset.cpp": {
+        "lines": 686,
+        "sha256": "3f8d85a3447a0550ebd17ba56e4d1c792bfb07d4eceb13fe51a1600ea5fc23bd"
+      },
+      "src/clipper.engine.cpp": {
+        "lines": 3189,
+        "sha256": "f48b00ee684a3d852fd9b9543f195d23f3c8c9a0563b2280ff1c75928653839a"
+      },
+      "include/clipper2/clipper.offset.h": {
+        "lines": 129,
+        "sha256": "a71460a683553438377dbc2399921254bc57bcc333c081d6b3bcd52982f6d69b"
+      }
+    },
+    "markers": {
+      "OffsetConcaveCrossing": true,
+      "GetLowestClosedPathInfo": true,
+      "DoRound_std_round": true,
+      "offset_cleanup_preserve_collinear": true,
+      "node_allocator_scalable_malloc": true
+    }
+  },
+  "cpp_152": {
+    "checkout": "OrcaSlicerDocumented/deps_src/clipper2 (pre-2.5.0 3e1daccd7c)",
+    "clipper2_version": "1.5.2",
+    "files": {
+      "src/clipper.offset.cpp": {
+        "lines": 658,
+        "sha256": "7bb53cb00f83f7383e96ccc84f5f6971a7923654c13abc61baf965b4a1dca363"
+      },
+      "src/clipper.engine.cpp": {
+        "lines": 3151,
+        "sha256": "8a4880a0ebda980175f7f6c62139357eba79f512d61b511e3e78beec159fbde2"
+      }
+    },
+    "markers": {
+      "OffsetConcaveCrossing": false,
+      "GetLowestClosedPathInfo": false,
+      "DoRound_std_round": false,
+      "offset_cleanup_preserve_collinear": false,
+      "node_allocator_scalable_malloc": false
+    }
+  },
+  "vendor_clipper2_rust": {
+    "crate_version": "1.1.0",
+    "ported_cpp_version": "1.5.4",
+    "files": {
+      "src/offset.rs": {
+        "lines": 961,
+        "sha256": "94f485e6c4e4097cae229b0b1be411fbc81e8d6ccbd633cf084c7554eddeec23"
+      },
+      "src/engine.rs": {
+        "lines": 3357,
+        "sha256": "dadc076c23bbfbc791265a6e87131e1ba00183b50bad03ca6899a4f0ebbed6df"
+      },
+      "src/version.rs": {
+        "sha256": "3dd0107cfefe9b1822314c6b8001f45a98c3e2b15b1ec25a3eff40d4a47ecd37"
+      }
+    },
+    "markers": {
+      "offset_concave_crossing": false,
+      "path2_contains_path1": true,
+      "micro_self_intersection_duplicate_op": true,
+      "offset_cleanup_preserve_collinear": true,
+      "do_round_std_round": false,
+      "get_line_intersect_pt": false,
+      "node_allocator": "arena Vec / mimalloc (not applicable)"
+    }
+  },
+  "upstream_1_2_0": {
+    "ported_cpp_version": "1.5.4",
+    "has_offset_concave_crossing": false,
+    "note": "crates.io 1.2.0 (2026-09-18) adds using_z and a clean_collinear fix; no 2.x kernel and no Orca concave patch.",
+    "version_rs_sha256": "551db7e03bf984297edcedff5caee6138b2022f4beb5e1b98315ad51bac94dc4",
+    "offset_rs_sha256": "44b9cc8588e2e6bcdf49723a1cfd1e4e9f6ccdc121d7496aab7d785c905604e8"
+  },
+  "patch": {
+    "file": "offset_concave_crossing.patch",
+    "sha256": "9f4c2f0e85ce981d8952b7b11edd6375062e22ab6728ec05685280dda137f455",
+    "patched_offset_sha256": "70b7a7c7984688328d19696968d4e9130db0d76dd58fd5f8d4484279eb3e6768",
+    "vendor_tests": "403 passed, 0 failed (cargo test --release in the patched scratch crate)"
+  }
+}

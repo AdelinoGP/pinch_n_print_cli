@@ -29,6 +29,7 @@ pub mod paint_policy;
 pub mod perimeter_spatial;
 pub mod perimeter_utils;
 pub mod polygon_ops;
+mod polygon_ops_spatial_union;
 pub mod polygon_tree;
 /// Profiling-scope seam: `slicer-core` declares the sink, others install it.
 ///
@@ -63,6 +64,8 @@ pub use stage_io::{
     SurfaceGroupRecord,
 };
 pub use triangle_mesh_slicer::slice_mesh_ex;
+#[cfg(feature = "host-algos")]
+pub use triangle_mesh_slicer::slice_mesh_ex_parallel;
 
 /// Applies a 4×4 column-major transform `matrix` to point `p`.
 ///

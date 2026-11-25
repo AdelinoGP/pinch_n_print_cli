@@ -503,13 +503,28 @@ pub struct SupportFamilyAssignment {
     pub family_id: String,
 }
 
+/// One object's model cross-section at one layer's print plane (`layer.z`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SupportAnalysisPlaneEntry {
+    /// Model layer whose print plane this cross-section is taken at.
+    pub global_support_layer_index: u32,
+    /// Object identity.
+    pub object_id: ObjectId,
+    /// World-space cross-section polygons at `layer.z`.
+    pub polygons: Vec<ExPolygon>,
+}
+
 /// Read-only strategy-neutral analysis supplied to support planners.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportAnalysisView {
     /// Candidates shared by support families.
     pub candidates: Vec<SupportAnalysisCandidate>,
-    /// Model occupancy by full support-layer source identity.
+    /// Model occupancy by full support-layer source identity, sampled at the
+    /// layer **midpoint** (canonical `compute_slice_z`).
     pub model_occupancy: Vec<SupportAnalysisGeometryEntry>,
+    /// Object-wide model occupancy at each layer's **print plane** (`layer.z`),
+    /// the plane the host's exact-Z occupancy gate validates.
+    pub print_plane_occupancy: Vec<SupportAnalysisPlaneEntry>,
     /// Termination surfaces by full support-layer source identity.
     pub termination_surfaces: Vec<SupportAnalysisGeometryEntry>,
     /// Shared host-derived settings.

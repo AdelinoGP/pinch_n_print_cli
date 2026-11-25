@@ -945,3 +945,93 @@ fn test_top_x_bankers_rounding() {
         result
     );
 }
+
+#[test]
+fn test_execute_open_tagged_crossing_collinear_holes_and_empty() {
+    // Clip polygon with an interior hole so a single subject splits into multiple pieces.
+    let clips = vec![
+        vec![
+            Point64::new(0, 0),
+            Point64::new(1000, 0),
+            Point64::new(1000, 1000),
+            Point64::new(0, 1000),
+        ],
+        // CW hole (opposite winding under NonZero)
+        vec![
+            Point64::new(400, 400),
+            Point64::new(400, 600),
+            Point64::new(600, 600),
+            Point64::new(600, 400),
+        ],
+    ];
+
+    let tagged_subjects: Vec<(u32, Path64)> = vec![
+        // Empty and single-point subjects must be ignored without shifting other tags.
+        (10, vec![]),
+        (11, vec![Point64::new(500, 500)]),
+        // Horizontal line passing straight through the hole -> 2 spans, tag 101.
+        (101, vec![Point64::new(-100, 500), Point64::new(1100, 500)]),
+        // Coincident/collinear overlapping line on the same y=500 -> tag 102 stays distinct!
+        (102, vec![Point64::new(100, 500), Point64::new(900, 500)]),
+        // Crossing diagonal + vertical zigzag with local minima/maxima -> tag 203.
+        (
+            203,
+            vec![
+                Point64::new(-50, 200),
+                Point64::new(500, 800),
+                Point64::new(700, 200),
+                Point64::new(1050, 900),
+            ],
+        ),
+        // Crossing the diagonal and sharing vertex (500, 800) -> tag 204.
+        (204, vec![Point64::new(100, 800), Point64::new(900, 200)]),
+        // Completely outside -> produces no output for tag 305.
+        (305, vec![Point64::new(1200, 0), Point64::new(1500, 1000)]),
+    ];
+
+    let mut batch = Clipper64::new();
+    for (tag, path) in &tagged_subjects {
+        batch.add_open_subject_tagged(path, *tag);
+    }
+    batch.add_clip(&clips);
+    let tagged_out = batch
+        .execute_open_tagged(ClipType::Intersection, FillRule::NonZero)
+        .expect("execute_open_tagged should succeed");
+
+    // Verify 1:1 equivalence per tag against independent single-subject executes.
+    for (tag, path) in &tagged_subjects {
+        let mut single = Clipper64::new();
+        single.add_open_subject(&vec![path.clone()]);
+        single.add_clip(&clips);
+        let mut closed = Paths64::new();
+        let mut expected = Paths64::new();
+        assert!(single.execute(
+            ClipType::Intersection,
+            FillRule::NonZero,
+            &mut closed,
+            Some(&mut expected),
+        ));
+
+        let actual: Paths64 = tagged_out
+            .iter()
+            .filter(|(t, _)| t == tag)
+            .map(|(_, p)| p.clone())
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "tagged batch output for source_id={tag} diverged from single-subject execute"
+        );
+    }
+
+    // Confirm both coincident collinear subjects produced their own 2 spans cleanly.
+    assert_eq!(
+        tagged_out.iter().filter(|(t, _)| *t == 101).count(),
+        2,
+        "subject 101 must split into 2 spans across the hole"
+    );
+    assert_eq!(
+        tagged_out.iter().filter(|(t, _)| *t == 102).count(),
+        2,
+        "coincident subject 102 must independently split into 2 spans across the hole"
+    );
+}

@@ -1,0 +1,16 @@
+{
+ "candidate": {
+  "command": "cargo test --manifest-path modules/core-modules/seam-planner-default/Cargo.toml --lib",
+  "passed": 29,
+  "failed": 2,
+  "failed_tests": [
+   "tests::batched_inset_offsets_match_the_serial_reference_per_region",
+   "tests::candidate_less_region_still_emits_one_keyed_plan_entry"
+  ]
+ },
+ "baseline": {
+  "command": "cargo test --manifest-path modules/core-modules/seam-planner-default/Cargo.toml --lib",
+  "passed": 31,
+  "failed": 0
+ }
+}

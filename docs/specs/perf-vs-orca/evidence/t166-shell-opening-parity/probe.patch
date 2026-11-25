@@ -1,0 +1,77 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index d4dee772..f87cb67f 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -143,6 +143,7 @@ pub fn commit_shell_classification_builtin(
+     // independent of the others. This loop stays sequential because the axis is
+     // degenerate on ordinary prints (one timeline; see the module header);
+     // `compute_region_updates` parallelises over the timeline instead.
++    let t166_t0 = std::time::Instant::now();
+     let per_region_updates: Vec<Vec<RegionEdit>> = timelines
+         .iter()
+         .map(|((object_id, region_id), timeline)| {
+@@ -150,11 +151,23 @@ pub fn commit_shell_classification_builtin(
+                 resolve_shell_counts(region_map.as_ref(), object_id, *region_id, timeline);
+             let opening_r =
+                 resolve_opening_radius(region_map.as_ref(), object_id, *region_id, timeline);
++            eprintln!("T166 region opening_r={opening_r} k_top={k_top} k_bot={k_bot} layers={}", timeline.len());
+             compute_region_updates(
+                 &new_vec, object_id, *region_id, timeline, k_top, k_bot, opening_r,
+             )
+         })
+         .collect();
++    {
++        use std::sync::atomic::Ordering::Relaxed;
++        eprintln!(
++            "T166 pass12_wall_ms={} opening_thread_ms={} opening_calls={} pts_in={} pts_mid={}",
++            t166_t0.elapsed().as_millis(),
++            T166_OPEN_NS.load(Relaxed) / 1_000_000,
++            T166_OPEN_CALLS.load(Relaxed),
++            T166_OPEN_PTS_IN.load(Relaxed),
++            T166_OPEN_PTS_MID.load(Relaxed),
++        );
++    }
+ 
+     // Apply updates serially. Each update targets a single SlicedRegion (by
+     // object_id + region_id within the SliceIR at slice_idx); regions from
+@@ -543,12 +556,38 @@ const FALLBACK_OPENING_RADIUS_MM: f32 = 0.2;
+ /// wider geometry essentially unchanged. Mirrors
+ /// `slicer_core::triangle_mesh_slicer::apply_slice_closing_radius` but with
+ /// reversed offset order.
++pub static T166_OPEN_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static T166_OPEN_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static T166_OPEN_PTS_IN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++pub static T166_OPEN_PTS_MID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++fn t166_pts(p: &[ExPolygon]) -> u64 {
++    p.iter()
++        .map(|e| (e.contour.points.len() + e.holes.iter().map(|h| h.points.len()).sum::<usize>()) as u64)
++        .sum()
++}
++fn t166_canon() -> bool {
++    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *C.get_or_init(|| std::env::var_os("PNP_T166_CANON_OPENING").is_some())
++}
+ fn apply_opening(polys: &[ExPolygon], r: f32) -> Vec<ExPolygon> {
+     if polys.is_empty() || r <= 0.0 {
+         return polys.to_vec();
+     }
+-    let eroded = offset(polys, -r, OffsetJoinType::Round, 0.0);
+-    offset(&eroded, r, OffsetJoinType::Round, 0.0)
++    use std::sync::atomic::Ordering::Relaxed;
++    let t = std::time::Instant::now();
++    T166_OPEN_PTS_IN.fetch_add(t166_pts(polys), Relaxed);
++    let out = if t166_canon() {
++        // canonical detect_surfaces_type: opening_ex(.., ext_perimeter_width / 10), jtMiter, limit 3
++        let rr = (r * 2.0 / 10.0) as f64;
++        slicer_core::polygon_ops::offset2_ex(polys, -rr, rr, OffsetJoinType::Miter, 3.0)
++    } else {
++        let eroded = offset(polys, -r, OffsetJoinType::Round, 0.0);
++        T166_OPEN_PTS_MID.fetch_add(t166_pts(&eroded), Relaxed);
++        offset(&eroded, r, OffsetJoinType::Round, 0.0)
++    };
++    T166_OPEN_NS.fetch_add(t.elapsed().as_nanos() as u64, Relaxed);
++    T166_OPEN_CALLS.fetch_add(1, Relaxed);
++    out
+ }
+ 
+ /// Resolve the opening radius from the region's `line_width` (half-width =

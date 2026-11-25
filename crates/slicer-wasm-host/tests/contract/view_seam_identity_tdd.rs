@@ -330,10 +330,15 @@ fn native_projection_filters_and_resolves_configured_regions() {
                 }],
             )]),
         )]),
+        overhang_areas: HashMap::from([(
+            "selected".to_owned(),
+            HashMap::from([(3, vec![polygon.clone()])]),
+        )]),
         prev_layer_boundaries: HashMap::from([(
             "selected".to_owned(),
             HashMap::from([(3, vec![polygon])]),
         )]),
+        overhang_band_width_mm: 0.4,
         ..Default::default()
     };
     let claims = vec!["support-family:tree".to_owned()];

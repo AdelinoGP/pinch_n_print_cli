@@ -50,7 +50,17 @@ pub struct GuestSpec {
 pub fn workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().expect("read current directory");
     match locate_root_from(&cwd) {
-        Some(ws) => ws.canonicalize().unwrap_or(ws),
+        // Never return the verbatim `\\?\` spelling `canonicalize` produces on
+        // Windows.  Callers hand this root to `cargo` as `CARGO_TARGET_DIR`
+        // (dist, guest builds, accelerated test runs), and a verbatim target
+        // dir reaches every build script's `OUT_DIR` and every external
+        // compiler argument a build script builds from it — which breaks
+        // `libmimalloc-sys`'s C compile under MSVC (`c1xx: fatal error C1083`
+        // on `'\\mimalloc-static.cc'`, the accelerated host build's failure
+        // from packet 142 to t161).  See
+        // `rustc_driver::strip_verbatim_prefix` for the same hazard on the
+        // compiler-wrapper path.
+        Some(ws) => crate::rustc_driver::strip_verbatim_prefix(&ws.canonicalize().unwrap_or(ws)),
         None => panic!(
             "xtask: cannot locate the workspace root by walking up from {} \
              (no ancestor directory contains both Cargo.toml and crates/). \
@@ -1480,8 +1490,17 @@ fn guest_input_paths(spec: &GuestSpec) -> Vec<PathBuf> {
 }
 
 fn relative_input_path(ws_root: &Path, path: &Path) -> String {
-    path.strip_prefix(ws_root)
-        .unwrap_or(path)
+    // Both sides are flattened first: closure manifests arrive from
+    // `canonicalize`, whose Windows answer is the verbatim `\\?\` spelling,
+    // while the root may be ordinary (or the reverse). Comparing the raw
+    // spellings makes `strip_prefix` fail and leaks an absolute path into the
+    // fingerprint, so the same code inputs hash differently depending on how
+    // the path was built.
+    let flat_root = crate::rustc_driver::strip_verbatim_prefix(ws_root);
+    let flat_path = crate::rustc_driver::strip_verbatim_prefix(path);
+    flat_path
+        .strip_prefix(&flat_root)
+        .unwrap_or(&flat_path)
         .to_string_lossy()
         .replace('\\', "/")
 }
@@ -4767,6 +4786,59 @@ mod shared_target_tests {
                 None
             }
         })
+    }
+
+    /// `workspace_root()` is handed to `cargo` as `CARGO_TARGET_DIR` by the
+    /// dist, guest-build and accelerated-test paths. On Windows `canonicalize`
+    /// answers with the verbatim `\\?\` spelling, which then reaches every
+    /// build script's `OUT_DIR` and every external-compiler argument built
+    /// from it - MSVC reads `-c \\?\D:\...\x.cc` as the UNC path `\\x.cc` and
+    /// fails with `c1xx: fatal error C1083`. That is exactly how the
+    /// accelerated host build failed from packet 142 to t161, so the root must
+    /// stay in the ordinary drive-letter form.
+    #[test]
+    fn workspace_root_is_never_verbatim() {
+        let root = workspace_root();
+        let text = root.to_string_lossy();
+        assert!(
+            root.is_absolute(),
+            "workspace root must be absolute: {text}"
+        );
+        assert!(
+            !text.starts_with(r"\\?\"),
+            "workspace root must not carry the verbatim prefix: {text}"
+        );
+    }
+
+    /// Guest fingerprints must hash the same code inputs to the same value
+    /// regardless of how the path was spelled. Closure manifests arrive from
+    /// `canonicalize` (verbatim `\\?\` on Windows) while the workspace root
+    /// may be ordinary, and before this was flattened the mixed spelling made
+    /// `strip_prefix` fail and leaked an absolute path into the hash - which
+    /// turned every guest stale when the root changed spelling.
+    #[test]
+    fn relative_input_path_is_spelling_independent() {
+        let verbatim_root = Path::new(r"\\?\D:\ws");
+        let normal_root = Path::new(r"D:\ws");
+        let verbatim_file = Path::new(r"\\?\D:\ws\modules\x\src\lib.rs");
+        let normal_file = Path::new(r"D:\ws\modules\x\src\lib.rs");
+        for (root, file) in [
+            (verbatim_root, verbatim_file),
+            (normal_root, verbatim_file),
+            (verbatim_root, normal_file),
+            (normal_root, normal_file),
+        ] {
+            assert_eq!(
+                relative_input_path(root, file),
+                "modules/x/src/lib.rs",
+                "root {root:?} against file {file:?} must yield the same relative path"
+            );
+        }
+        assert_eq!(
+            relative_input_path(normal_root, Path::new(r"C:\other\x.rs")),
+            "C:/other/x.rs",
+            "a path outside the root keeps its flattened absolute spelling"
+        );
     }
 
     #[test]

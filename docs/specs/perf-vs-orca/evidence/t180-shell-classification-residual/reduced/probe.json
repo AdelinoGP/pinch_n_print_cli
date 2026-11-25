@@ -1,0 +1,3304 @@
+{
+  "schema": 1,
+  "note": "Reduced attribution from observation-only probe (probe.patch, cleanly reverted). All 15 runs match t175/reference.json byte-for-byte. Stage and bracket times are attribution-only; no wall claim is made for probed runs.",
+  "capture_meta": {
+    "captured_utc": "2026-11-22T05:54:35.521428+00:00",
+    "exe_sha256": "e2d247af69ac0fcf14c14d11eb7cfdbe72998283a7236d0c2769279367d11490",
+    "rayon_num_threads": 12,
+    "total_runs": 15,
+    "exit_zero_ok": 15,
+    "ref_match_ok": 15,
+    "qual_runs": 3,
+    "qual_clean_ok": 3
+  },
+  "runs": [
+    {
+      "cell": "benchy-classic-off",
+      "tag": "pass1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 1.7338,
+      "stage_wall_ms": 468.166,
+      "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "gcode_bytes": 4077945,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-off.pass1.probe.json"
+    },
+    {
+      "cell": "benchy-classic-off",
+      "tag": "pass2",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 1.7418,
+      "stage_wall_ms": 464.659,
+      "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "gcode_bytes": 4077945,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-off.pass2.probe.json"
+    },
+    {
+      "cell": "benchy-classic-off",
+      "tag": "pass3",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 1.733,
+      "stage_wall_ms": 467.711,
+      "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "gcode_bytes": 4077945,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-off.pass3.probe.json"
+    },
+    {
+      "cell": "benchy-classic-off",
+      "tag": "qual",
+      "instrumented": true,
+      "exit_code": 0,
+      "wall_seconds": 1.7582,
+      "stage_wall_ms": 465.4,
+      "gcode_sha256": "4c67ef0b73a885e20a9701a695c06d38507b0d17d3aaaff9d5e1046923e60d73",
+      "gcode_bytes": 4077945,
+      "reference_match": true,
+      "instrument_events": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "code_1200_count": 0,
+        "slice_complete_ms": 1664,
+        "shell_stage_ms": null
+      },
+      "probe_file": "benchy-classic-off.qual.probe.json"
+    },
+    {
+      "cell": "benchy-classic-on",
+      "tag": "pass1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 3.4989,
+      "stage_wall_ms": 486.292,
+      "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "gcode_bytes": 8544096,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-on.pass1.probe.json"
+    },
+    {
+      "cell": "benchy-classic-on",
+      "tag": "pass2",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 3.4283,
+      "stage_wall_ms": 470.882,
+      "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "gcode_bytes": 8544096,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-on.pass2.probe.json"
+    },
+    {
+      "cell": "benchy-classic-on",
+      "tag": "pass3",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 3.4541,
+      "stage_wall_ms": 483.753,
+      "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "gcode_bytes": 8544096,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-classic-on.pass3.probe.json"
+    },
+    {
+      "cell": "benchy-classic-on",
+      "tag": "qual",
+      "instrumented": true,
+      "exit_code": 0,
+      "wall_seconds": 3.4605,
+      "stage_wall_ms": 464.854,
+      "gcode_sha256": "fdca4e2d3d0cc32b80985c898e99b71fe7dd01330bce539bf5f3110bb84bcf82",
+      "gcode_bytes": 8544096,
+      "reference_match": true,
+      "instrument_events": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "code_1200_count": 0,
+        "slice_complete_ms": 3353,
+        "shell_stage_ms": null
+      },
+      "probe_file": "benchy-classic-on.qual.probe.json"
+    },
+    {
+      "cell": "base-classic-off",
+      "tag": "pass1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 10.8923,
+      "stage_wall_ms": 3403.204,
+      "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "gcode_bytes": 21230739,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "base-classic-off.pass1.probe.json"
+    },
+    {
+      "cell": "base-classic-off",
+      "tag": "pass2",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 10.6017,
+      "stage_wall_ms": 3405.911,
+      "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "gcode_bytes": 21230739,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "base-classic-off.pass2.probe.json"
+    },
+    {
+      "cell": "base-classic-off",
+      "tag": "pass3",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 10.656,
+      "stage_wall_ms": 3435.911,
+      "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "gcode_bytes": 21230739,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "base-classic-off.pass3.probe.json"
+    },
+    {
+      "cell": "base-classic-off",
+      "tag": "qual",
+      "instrumented": true,
+      "exit_code": 0,
+      "wall_seconds": 10.8721,
+      "stage_wall_ms": 3491.686,
+      "gcode_sha256": "02ffa2d6e7e74732901d05c199bb09e4f49d12e4ab6f14662d349df538234fab",
+      "gcode_bytes": 21230739,
+      "reference_match": true,
+      "instrument_events": {
+        "degraded": false,
+        "fatal_error_count": 0,
+        "non_fatal_error_count": 0,
+        "code_1200_count": 0,
+        "slice_complete_ms": 9536,
+        "shell_stage_ms": null
+      },
+      "probe_file": "base-classic-off.qual.probe.json"
+    },
+    {
+      "cell": "benchy-arachne-off",
+      "tag": "inv1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 1.8212,
+      "stage_wall_ms": 473.11,
+      "gcode_sha256": "fd6313841eed2096778901ddb65be5bdc22e366a188b636928a62ee637288dd1",
+      "gcode_bytes": 4225196,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "benchy-arachne-off.inv1.probe.json"
+    },
+    {
+      "cell": "base-classic-on",
+      "tag": "inv1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 28.5813,
+      "stage_wall_ms": 3389.811,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "base-classic-on.inv1.probe.json"
+    },
+    {
+      "cell": "base-arachne-off",
+      "tag": "inv1",
+      "instrumented": false,
+      "exit_code": 0,
+      "wall_seconds": 11.0955,
+      "stage_wall_ms": 3432.847,
+      "gcode_sha256": "e806296f52f7200f5eaf91495e822e1ccf52a958a319f93672e40b8f0b03376c",
+      "gcode_bytes": 21041068,
+      "reference_match": true,
+      "instrument_events": null,
+      "probe_file": "base-arachne-off.inv1.probe.json"
+    }
+  ],
+  "invariance": {
+    "benchy_classic_off_vs_on": {
+      "pair": [
+        "benchy-classic-off:pass1",
+        "benchy-classic-on:pass1"
+      ],
+      "identical_calls_and_verts": true,
+      "diff_sites": []
+    },
+    "benchy_classic_vs_arachne": {
+      "pair": [
+        "benchy-classic-off:pass1",
+        "benchy-arachne-off:inv1"
+      ],
+      "identical_calls_and_verts": true,
+      "diff_sites": []
+    },
+    "base_classic_off_vs_on": {
+      "pair": [
+        "base-classic-off:pass1",
+        "base-classic-on:inv1"
+      ],
+      "identical_calls_and_verts": true,
+      "diff_sites": []
+    },
+    "base_classic_vs_arachne": {
+      "pair": [
+        "base-classic-off:pass1",
+        "base-arachne-off:inv1"
+      ],
+      "identical_calls_and_verts": true,
+      "diff_sites": []
+    }
+  },
+  "cells": {
+    "benchy-classic-off": {
+      "cell": "benchy-classic-off",
+      "pass_stage_walls_ms": [
+        468.166,
+        464.659,
+        467.711
+      ],
+      "median_pass_number": 3,
+      "median_brackets_ms": {
+        "stage_wall_ms": 467.711,
+        "B0_setup": 2.152,
+        "B1_pass1": 67.541,
+        "B2a_p2t_proj": 9.726,
+        "B2b_p2t_merge": 4.186,
+        "B2c_p2b_proj": 32.526,
+        "B2d_p2b_merge": 6.868,
+        "B2e_int_solid_diff": 8.018,
+        "B3_apply_maps": 0.958,
+        "B4_ext_bridge": 37.334,
+        "B5a_ib_solids_cfg": 1.347,
+        "B5b_ib_phaseA": 128.856,
+        "B5c_ib_phaseB_pre": 50.123,
+        "B5d_ib_phaseB_com": 117.435,
+        "B5e_ib_extra": 0.004,
+        "B6_replace": 0.0
+      },
+      "median_pass": {
+        "stage_wall_ms": 467.711,
+        "sum_brackets_ms": 467.573,
+        "bracket_gap_ms": 0.137,
+        "serial_ms": 141.194,
+        "parallel_ms": 326.379,
+        "serial_pct": 30.19,
+        "parallel_pct": 69.78,
+        "total_thread_ms": 2387.015,
+        "eff_par": 5.1,
+        "params": {
+          "timelines_count": 1,
+          "timeline_len": 240,
+          "k_top": 3,
+          "k_bot": 3,
+          "opening_radius_um": 40,
+          "shell_width_um": 400,
+          "extra_bridge_enabled": 0,
+          "nofilter_enabled": 0
+        },
+        "brackets": [
+          {
+            "name": "B0_setup",
+            "mode": "SER",
+            "wall_ms": 2.127,
+            "share_of_stage_pct": 0.45,
+            "thread_ms": 2.127,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B1_pass1",
+            "mode": "PAR",
+            "wall_ms": 65.722,
+            "share_of_stage_pct": 14.05,
+            "thread_ms": 776.537,
+            "eff_par": 11.82,
+            "count": 240,
+            "p50_ms": 2.451,
+            "p95_ms": 6.585,
+            "max_ms": 25.705,
+            "max_idx": 1
+          },
+          {
+            "name": "B2a_p2t_proj",
+            "mode": "PAR",
+            "wall_ms": 9.933,
+            "share_of_stage_pct": 2.12,
+            "thread_ms": 105.485,
+            "eff_par": 10.62,
+            "count": 139,
+            "p50_ms": 0.686,
+            "p95_ms": 1.448,
+            "max_ms": 3.664,
+            "max_idx": 2
+          },
+          {
+            "name": "B2b_p2t_merge",
+            "mode": "SER",
+            "wall_ms": 4.186,
+            "share_of_stage_pct": 0.89,
+            "thread_ms": 4.186,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2c_p2b_proj",
+            "mode": "PAR",
+            "wall_ms": 33.347,
+            "share_of_stage_pct": 7.13,
+            "thread_ms": 186.987,
+            "eff_par": 5.61,
+            "count": 164,
+            "p50_ms": 0.777,
+            "p95_ms": 1.679,
+            "max_ms": 32.988,
+            "max_idx": 2
+          },
+          {
+            "name": "B2d_p2b_merge",
+            "mode": "SER",
+            "wall_ms": 7.194,
+            "share_of_stage_pct": 1.54,
+            "thread_ms": 7.194,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2e_int_solid_diff",
+            "mode": "SER",
+            "wall_ms": 7.861,
+            "share_of_stage_pct": 1.68,
+            "thread_ms": 7.861,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B3_apply_maps",
+            "mode": "SER",
+            "wall_ms": 0.958,
+            "share_of_stage_pct": 0.2,
+            "thread_ms": 0.958,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B4_ext_bridge",
+            "mode": "PAR",
+            "wall_ms": 37.334,
+            "share_of_stage_pct": 7.98,
+            "thread_ms": 362.969,
+            "eff_par": 9.72,
+            "count": 240,
+            "p50_ms": 1.283,
+            "p95_ms": 3.582,
+            "max_ms": 19.766,
+            "max_idx": 2
+          },
+          {
+            "name": "B5a_ib_solids_cfg",
+            "mode": "SER",
+            "wall_ms": 1.43,
+            "share_of_stage_pct": 0.31,
+            "thread_ms": 1.43,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5b_ib_phaseA",
+            "mode": "PAR",
+            "wall_ms": 128.957,
+            "share_of_stage_pct": 27.57,
+            "thread_ms": 330.849,
+            "eff_par": 2.57,
+            "count": 240,
+            "p50_ms": 0.001,
+            "p95_ms": 5.492,
+            "max_ms": 128.889,
+            "max_idx": 1
+          },
+          {
+            "name": "B5c_ib_phaseB_pre",
+            "mode": "PAR",
+            "wall_ms": 51.086,
+            "share_of_stage_pct": 10.92,
+            "thread_ms": 482.993,
+            "eff_par": 9.45,
+            "count": 43,
+            "p50_ms": 9.554,
+            "p95_ms": 23.055,
+            "max_ms": 36.901,
+            "max_idx": 40
+          },
+          {
+            "name": "B5d_ib_phaseB_com",
+            "mode": "SER",
+            "wall_ms": 117.435,
+            "share_of_stage_pct": 25.11,
+            "thread_ms": 117.435,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5e_ib_extra",
+            "mode": "SER",
+            "wall_ms": 0.004,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.004,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B6_replace",
+            "mode": "SER",
+            "wall_ms": 0.001,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.001,
+            "eff_par": 1.0
+          }
+        ],
+        "op_kinds": {
+          "clip": {
+            "calls": 2308,
+            "thread_ms": 811.575
+          },
+          "offset": {
+            "calls": 1062,
+            "thread_ms": 709.001
+          },
+          "offset2_ex": {
+            "calls": 462,
+            "thread_ms": 424.403
+          },
+          "cpu": {
+            "calls": 351,
+            "thread_ms": 281.83
+          },
+          "closing_ex": {
+            "calls": 254,
+            "thread_ms": 143.862
+          }
+        },
+        "clipper_total_calls": 4086,
+        "clipper_total_thread_ms": 2088.841,
+        "sites": [
+          {
+            "name": "p1_bot_open",
+            "op_kind": "offset2_ex",
+            "calls": 240,
+            "total_ms": 270.487,
+            "max_ms": 9.405,
+            "in_polys": 7787,
+            "in_verts": 553967,
+            "out_verts": 147446,
+            "empty_out": 76
+          },
+          {
+            "name": "p1_bot_diff",
+            "op_kind": "clip",
+            "calls": 240,
+            "total_ms": 187.28,
+            "max_ms": 14.36,
+            "in_polys": 1161,
+            "in_verts": 888171,
+            "out_verts": 553967,
+            "empty_out": 0
+          },
+          {
+            "name": "p1_top_diff",
+            "op_kind": "clip",
+            "calls": 240,
+            "total_ms": 161.497,
+            "max_ms": 6.469,
+            "in_polys": 1160,
+            "in_verts": 881498,
+            "out_verts": 337490,
+            "empty_out": 18
+          },
+          {
+            "name": "p1_top_open",
+            "op_kind": "offset2_ex",
+            "calls": 222,
+            "total_ms": 153.916,
+            "max_ms": 4.944,
+            "in_polys": 7512,
+            "in_verts": 337490,
+            "out_verts": 64361,
+            "empty_out": 83
+          },
+          {
+            "name": "ib_comp_pos_offset",
+            "op_kind": "offset",
+            "calls": 55,
+            "total_ms": 139.205,
+            "max_ms": 6.892,
+            "in_polys": 4233,
+            "in_verts": 155985,
+            "out_verts": 65677,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_determine_deg",
+            "op_kind": "cpu",
+            "calls": 25,
+            "total_ms": 111.602,
+            "max_ms": 21.048,
+            "in_polys": 259,
+            "in_verts": 49327,
+            "out_verts": 25,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_erode",
+            "op_kind": "offset",
+            "calls": 46,
+            "total_ms": 108.784,
+            "max_ms": 15.357,
+            "in_polys": 112,
+            "in_verts": 118369,
+            "out_verts": 30809,
+            "empty_out": 2
+          },
+          {
+            "name": "p2b_offset",
+            "op_kind": "offset",
+            "calls": 174,
+            "total_ms": 106.997,
+            "max_ms": 28.107,
+            "in_polys": 666,
+            "in_verts": 156600,
+            "out_verts": 11078,
+            "empty_out": 160
+          },
+          {
+            "name": "ib_unsup_solids_grow",
+            "op_kind": "offset",
+            "calls": 44,
+            "total_ms": 105.925,
+            "max_ms": 102.405,
+            "in_polys": 76,
+            "in_verts": 11490,
+            "out_verts": 4508,
+            "empty_out": 14
+          },
+          {
+            "name": "ext_bridge_clip_polylines",
+            "op_kind": "cpu",
+            "calls": 163,
+            "total_ms": 90.2,
+            "max_ms": 6.036,
+            "in_polys": 946,
+            "in_verts": 349560,
+            "out_verts": 114721,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_score_cpu",
+            "op_kind": "cpu",
+            "calls": 163,
+            "total_ms": 80.028,
+            "max_ms": 5.178,
+            "in_polys": 85207,
+            "in_verts": 105854,
+            "out_verts": 163,
+            "empty_out": 0
+          },
+          {
+            "name": "p2b_intersect",
+            "op_kind": "clip",
+            "calls": 174,
+            "total_ms": 78.22,
+            "max_ms": 6.586,
+            "in_polys": 1129,
+            "in_verts": 523749,
+            "out_verts": 156600,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_anchor_off",
+            "op_kind": "offset",
+            "calls": 163,
+            "total_ms": 70.434,
+            "max_ms": 2.88,
+            "in_polys": 444,
+            "in_verts": 356331,
+            "out_verts": 354692,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_overhang_diff",
+            "op_kind": "clip",
+            "calls": 163,
+            "total_ms": 68.505,
+            "max_ms": 4.781,
+            "in_polys": 1046,
+            "in_verts": 477102,
+            "out_verts": 126672,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_solids_shrink",
+            "op_kind": "offset",
+            "calls": 44,
+            "total_ms": 61.256,
+            "max_ms": 4.97,
+            "in_polys": 565,
+            "in_verts": 97075,
+            "out_verts": 11490,
+            "empty_out": 14
+          },
+          {
+            "name": "p2t_intersect",
+            "op_kind": "clip",
+            "calls": 176,
+            "total_ms": 60.89,
+            "max_ms": 2.051,
+            "in_polys": 1170,
+            "in_verts": 490350,
+            "out_verts": 70615,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_gather_diff",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 53.116,
+            "max_ms": 2.794,
+            "in_polys": 537,
+            "in_verts": 202863,
+            "out_verts": 156332,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_complement_diff",
+            "op_kind": "clip",
+            "calls": 163,
+            "total_ms": 52.575,
+            "max_ms": 2.874,
+            "in_polys": 607,
+            "in_verts": 355344,
+            "out_verts": 222268,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_closing",
+            "op_kind": "closing_ex",
+            "calls": 46,
+            "total_ms": 49.412,
+            "max_ms": 5.753,
+            "in_polys": 112,
+            "in_verts": 118859,
+            "out_verts": 118369,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_closing",
+            "op_kind": "closing_ex",
+            "calls": 55,
+            "total_ms": 46.417,
+            "max_ms": 2.468,
+            "in_polys": 128,
+            "in_verts": 128223,
+            "out_verts": 127697,
+            "empty_out": 0
+          },
+          {
+            "name": "p2t_offset",
+            "op_kind": "offset",
+            "calls": 176,
+            "total_ms": 42.965,
+            "max_ms": 1.558,
+            "in_polys": 635,
+            "in_verts": 70615,
+            "out_verts": 9264,
+            "empty_out": 116
+          },
+          {
+            "name": "ib_gather_solid_closing",
+            "op_kind": "closing_ex",
+            "calls": 55,
+            "total_ms": 25.166,
+            "max_ms": 1.298,
+            "in_polys": 409,
+            "in_verts": 75505,
+            "out_verts": 75166,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_anchor_total_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 22.93,
+            "max_ms": 4.662,
+            "in_polys": 37,
+            "in_verts": 36323,
+            "out_verts": 18176,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_neg_offset",
+            "op_kind": "offset",
+            "calls": 28,
+            "total_ms": 20.65,
+            "max_ms": 2.43,
+            "in_polys": 407,
+            "in_verts": 25336,
+            "out_verts": 1810,
+            "empty_out": 8
+          },
+          {
+            "name": "ib_ang_anchor_lim_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 20.537,
+            "max_ms": 2.68,
+            "in_polys": 835,
+            "in_verts": 39623,
+            "out_verts": 27461,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_union",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 19.808,
+            "max_ms": 0.941,
+            "in_polys": 128,
+            "in_verts": 128223,
+            "out_verts": 128223,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_surf_clip",
+            "op_kind": "clip",
+            "calls": 116,
+            "total_ms": 18.725,
+            "max_ms": 0.424,
+            "in_polys": 804,
+            "in_verts": 156485,
+            "out_verts": 13080,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_solid_union",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 16.488,
+            "max_ms": 0.89,
+            "in_polys": 665,
+            "in_verts": 114371,
+            "out_verts": 75505,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_closing",
+            "op_kind": "closing_ex",
+            "calls": 20,
+            "total_ms": 12.713,
+            "max_ms": 2.166,
+            "in_polys": 831,
+            "in_verts": 34638,
+            "out_verts": 33946,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_diff",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 9.183,
+            "max_ms": 1.518,
+            "in_polys": 113,
+            "in_verts": 54412,
+            "out_verts": 42878,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_win_inter",
+            "op_kind": "clip",
+            "calls": 28,
+            "total_ms": 8.45,
+            "max_ms": 0.463,
+            "in_polys": 1288,
+            "in_verts": 62253,
+            "out_verts": 25336,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_total_closing",
+            "op_kind": "closing_ex",
+            "calls": 20,
+            "total_ms": 8.132,
+            "max_ms": 1.021,
+            "in_polys": 32,
+            "in_verts": 31337,
+            "out_verts": 31233,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union3",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 7.926,
+            "max_ms": 1.08,
+            "in_polys": 963,
+            "in_verts": 50638,
+            "out_verts": 34638,
+            "empty_out": 0
+          },
+          {
+            "name": "p2e_int_solid_diff",
+            "op_kind": "clip",
+            "calls": 148,
+            "total_ms": 7.827,
+            "max_ms": 0.29,
+            "in_polys": 1242,
+            "in_verts": 137986,
+            "out_verts": 9264,
+            "empty_out": 102
+          },
+          {
+            "name": "ib_ang_exp_inter",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 7.816,
+            "max_ms": 0.996,
+            "in_polys": 752,
+            "in_verts": 50393,
+            "out_verts": 33862,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_unsup_inter",
+            "op_kind": "clip",
+            "calls": 116,
+            "total_ms": 7.792,
+            "max_ms": 0.569,
+            "in_polys": 559,
+            "in_verts": 82756,
+            "out_verts": 7933,
+            "empty_out": 36
+          },
+          {
+            "name": "p2b_merge_union",
+            "op_kind": "clip",
+            "calls": 14,
+            "total_ms": 7.152,
+            "max_ms": 3.143,
+            "in_polys": 71,
+            "in_verts": 29077,
+            "out_verts": 29077,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_diff",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 6.061,
+            "max_ms": 0.793,
+            "in_polys": 863,
+            "in_verts": 43105,
+            "out_verts": 43080,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_lim_union",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 5.687,
+            "max_ms": 0.749,
+            "in_polys": 863,
+            "in_verts": 43105,
+            "out_verts": 39623,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_diff",
+            "op_kind": "clip",
+            "calls": 44,
+            "total_ms": 4.675,
+            "max_ms": 0.366,
+            "in_polys": 251,
+            "in_verts": 35317,
+            "out_verts": 27311,
+            "empty_out": 1
+          },
+          {
+            "name": "p2t_merge_union",
+            "op_kind": "clip",
+            "calls": 60,
+            "total_ms": 4.115,
+            "max_ms": 0.21,
+            "in_polys": 295,
+            "in_verts": 45774,
+            "out_verts": 45774,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_rem_lower_diff",
+            "op_kind": "clip",
+            "calls": 12,
+            "total_ms": 4.077,
+            "max_ms": 0.875,
+            "in_polys": 622,
+            "in_verts": 28242,
+            "out_verts": 25808,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union2",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 3.246,
+            "max_ms": 0.624,
+            "in_polys": 90,
+            "in_verts": 26061,
+            "out_verts": 23075,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_surf_offset",
+            "op_kind": "offset",
+            "calls": 116,
+            "total_ms": 2.858,
+            "max_ms": 0.193,
+            "in_polys": 116,
+            "in_verts": 12554,
+            "out_verts": 12291,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union1",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 2.827,
+            "max_ms": 0.334,
+            "in_polys": 81,
+            "in_verts": 22767,
+            "out_verts": 22767,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_worth_off",
+            "op_kind": "offset",
+            "calls": 58,
+            "total_ms": 2.546,
+            "max_ms": 0.447,
+            "in_polys": 58,
+            "in_verts": 6888,
+            "out_verts": 5553,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_clip",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 2.121,
+            "max_ms": 0.179,
+            "in_polys": 68,
+            "in_verts": 22534,
+            "out_verts": 3457,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_closing",
+            "op_kind": "closing_ex",
+            "calls": 58,
+            "total_ms": 2.021,
+            "max_ms": 0.145,
+            "in_polys": 58,
+            "in_verts": 9068,
+            "out_verts": 9068,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_exp_worth_off",
+            "op_kind": "offset",
+            "calls": 58,
+            "total_ms": 1.654,
+            "max_ms": 0.106,
+            "in_polys": 58,
+            "in_verts": 9068,
+            "out_verts": 8872,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_coll_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 1.555,
+            "max_ms": 0.6,
+            "in_polys": 25,
+            "in_verts": 3457,
+            "out_verts": 2781,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_worth_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.424,
+            "max_ms": 0.109,
+            "in_polys": 116,
+            "in_verts": 14699,
+            "out_verts": 9068,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_rem_diff",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.302,
+            "max_ms": 0.105,
+            "in_polys": 116,
+            "in_verts": 18018,
+            "out_verts": 86,
+            "empty_out": 57
+          },
+          {
+            "name": "ib_qual_final_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.173,
+            "max_ms": 0.09,
+            "in_polys": 116,
+            "in_verts": 18214,
+            "out_verts": 9072,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_retain_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 0.933,
+            "max_ms": 0.112,
+            "in_polys": 117,
+            "in_verts": 12862,
+            "out_verts": 2731,
+            "empty_out": 33
+          },
+          {
+            "name": "ib_ang_cand_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 0.703,
+            "max_ms": 0.123,
+            "in_polys": 25,
+            "in_verts": 3523,
+            "out_verts": 3457,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_unsup_inter",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 0.516,
+            "max_ms": 0.118,
+            "in_polys": 56,
+            "in_verts": 5626,
+            "out_verts": 2725,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_rem_lower_union",
+            "op_kind": "clip",
+            "calls": 12,
+            "total_ms": 0.141,
+            "max_ms": 0.035,
+            "in_polys": 15,
+            "in_verts": 2087,
+            "out_verts": 2087,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_coll_inter",
+            "op_kind": "clip",
+            "calls": 5,
+            "total_ms": 0.026,
+            "max_ms": 0.01,
+            "in_polys": 10,
+            "in_verts": 371,
+            "out_verts": 0,
+            "empty_out": 5
+          }
+        ],
+        "locality": {
+          "pass1": {
+            "top_identical": 0,
+            "bot_identical": 0,
+            "top_empty_clip": 1,
+            "bot_empty_clip": 1,
+            "top_diff_slivers": 6185,
+            "top_diff_polys": 7512,
+            "bot_diff_slivers": 6357,
+            "bot_diff_polys": 7787,
+            "sum_layer_polys": 581,
+            "max_layer_polys": 6
+          },
+          "pass2_top": {
+            "seeds": 139,
+            "steps": 176,
+            "break_inter_empty": 1,
+            "break_off_empty": 116,
+            "nbr_polys_ovl": 388,
+            "nbr_polys_tot": 535,
+            "nbr_verts_in_bbox": 150301,
+            "nbr_verts_tot": 420399,
+            "inter_slivers": 391,
+            "inter_polys_tot": 635,
+            "merge_contribs": 60,
+            "merge_unique_targets": 46,
+            "merge_empty_existing": 9,
+            "merge_max_per_target": 2
+          },
+          "pass2_bot": {
+            "seeds": 164,
+            "steps": 174,
+            "break_inter_empty": 0,
+            "break_off_empty": 160,
+            "nbr_polys_ovl": 363,
+            "nbr_polys_tot": 464,
+            "nbr_verts_in_bbox": 186954,
+            "nbr_verts_tot": 369194,
+            "inter_slivers": 473,
+            "inter_polys_tot": 666,
+            "merge_contribs": 14,
+            "merge_unique_targets": 14,
+            "merge_empty_existing": 3,
+            "merge_max_per_target": 1
+          },
+          "pass2e_int_solid": {
+            "total": 148,
+            "seed_empty": 9,
+            "no_p2_contrib": 102,
+            "both_nonempty": 37,
+            "nonempty_out": 46
+          },
+          "b4_ext_bridge": {
+            "nonempty_layers": 163
+          },
+          "ib_phase_a": {
+            "total": 240,
+            "no_lower": 1,
+            "empty_is": 193,
+            "ran_unsup": 46,
+            "unsup_empty": 3,
+            "survived": 43,
+            "lf_verts_in_box": 26101,
+            "lf_verts_tot": 118859,
+            "ls_verts_in_box": 25656,
+            "ls_verts_tot": 98269
+          },
+          "ib_phase_b_precomp": {
+            "total": 43,
+            "some": 12,
+            "none": 31,
+            "wasted_none_thread_ms": 258.394,
+            "wasted_none_gather_ms": 122.828,
+            "wasted_none_pos_off_ms": 104.577,
+            "kept_some_gather_ms": 24.118,
+            "kept_some_pos_off_ms": 20.684,
+            "gather_layers": {
+              "layers_1": 55,
+              "layers_gt1": 0
+            },
+            "surf_total": 116,
+            "surf_deep_empty": 0,
+            "surf_qual_some": 58,
+            "surf_qual_none": 58,
+            "qual_layers": 20,
+            "qual_cands_total": 25,
+            "qual_cands_max": 2
+          },
+          "ib_phase_b_commit": {
+            "published": 31,
+            "recomputes": 12,
+            "recomp_ovl_is": 12,
+            "recomp_wall_ms": 117.378,
+            "recomp_gather_ms": 16.365,
+            "recomp_remove_ms": 4.225,
+            "recomp_compute_ms": 96.779,
+            "recomp_layers": [
+              {
+                "layer": 31,
+                "ms": 7.028,
+                "ovl_is": true
+              },
+              {
+                "layer": 41,
+                "ms": 4.304,
+                "ovl_is": true
+              },
+              {
+                "layer": 101,
+                "ms": 4.409,
+                "ovl_is": true
+              },
+              {
+                "layer": 190,
+                "ms": 7.208,
+                "ovl_is": true
+              },
+              {
+                "layer": 191,
+                "ms": 7.181,
+                "ovl_is": true
+              },
+              {
+                "layer": 192,
+                "ms": 8.74,
+                "ovl_is": true
+              },
+              {
+                "layer": 193,
+                "ms": 11.288,
+                "ovl_is": true
+              },
+              {
+                "layer": 194,
+                "ms": 13.529,
+                "ovl_is": true
+              },
+              {
+                "layer": 195,
+                "ms": 15.391,
+                "ovl_is": true
+              },
+              {
+                "layer": 196,
+                "ms": 16.319,
+                "ovl_is": true
+              },
+              {
+                "layer": 197,
+                "ms": 16.546,
+                "ovl_is": true
+              },
+              {
+                "layer": 198,
+                "ms": 5.435,
+                "ovl_is": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "benchy-classic-on": {
+      "cell": "benchy-classic-on",
+      "pass_stage_walls_ms": [
+        486.292,
+        470.882,
+        483.753
+      ],
+      "median_pass_number": 3,
+      "median_brackets_ms": {
+        "stage_wall_ms": 483.753,
+        "B0_setup": 2.192,
+        "B1_pass1": 67.199,
+        "B2a_p2t_proj": 9.592,
+        "B2b_p2t_merge": 4.31,
+        "B2c_p2b_proj": 32.643,
+        "B2d_p2b_merge": 7.046,
+        "B2e_int_solid_diff": 7.973,
+        "B3_apply_maps": 0.958,
+        "B4_ext_bridge": 37.493,
+        "B5a_ib_solids_cfg": 1.179,
+        "B5b_ib_phaseA": 129.877,
+        "B5c_ib_phaseB_pre": 56.791,
+        "B5d_ib_phaseB_com": 119.943,
+        "B5e_ib_extra": 0.004,
+        "B6_replace": 0.0
+      },
+      "median_pass": {
+        "stage_wall_ms": 483.753,
+        "sum_brackets_ms": 483.617,
+        "bracket_gap_ms": 0.136,
+        "serial_ms": 150.863,
+        "parallel_ms": 332.754,
+        "serial_pct": 31.19,
+        "parallel_pct": 68.79,
+        "total_thread_ms": 2400.408,
+        "eff_par": 4.96,
+        "params": {
+          "timelines_count": 1,
+          "timeline_len": 240,
+          "k_top": 3,
+          "k_bot": 3,
+          "opening_radius_um": 40,
+          "shell_width_um": 400,
+          "extra_bridge_enabled": 0,
+          "nofilter_enabled": 0
+        },
+        "brackets": [
+          {
+            "name": "B0_setup",
+            "mode": "SER",
+            "wall_ms": 2.192,
+            "share_of_stage_pct": 0.45,
+            "thread_ms": 2.192,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B1_pass1",
+            "mode": "PAR",
+            "wall_ms": 66.116,
+            "share_of_stage_pct": 13.67,
+            "thread_ms": 774.729,
+            "eff_par": 11.72,
+            "count": 240,
+            "p50_ms": 2.382,
+            "p95_ms": 6.599,
+            "max_ms": 25.147,
+            "max_idx": 1
+          },
+          {
+            "name": "B2a_p2t_proj",
+            "mode": "PAR",
+            "wall_ms": 9.523,
+            "share_of_stage_pct": 1.97,
+            "thread_ms": 104.74,
+            "eff_par": 11.0,
+            "count": 139,
+            "p50_ms": 0.671,
+            "p95_ms": 1.425,
+            "max_ms": 3.61,
+            "max_idx": 2
+          },
+          {
+            "name": "B2b_p2t_merge",
+            "mode": "SER",
+            "wall_ms": 4.104,
+            "share_of_stage_pct": 0.85,
+            "thread_ms": 4.104,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2c_p2b_proj",
+            "mode": "PAR",
+            "wall_ms": 32.508,
+            "share_of_stage_pct": 6.72,
+            "thread_ms": 184.954,
+            "eff_par": 5.69,
+            "count": 164,
+            "p50_ms": 0.768,
+            "p95_ms": 1.685,
+            "max_ms": 32.094,
+            "max_idx": 2
+          },
+          {
+            "name": "B2d_p2b_merge",
+            "mode": "SER",
+            "wall_ms": 7.046,
+            "share_of_stage_pct": 1.46,
+            "thread_ms": 7.046,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2e_int_solid_diff",
+            "mode": "SER",
+            "wall_ms": 7.939,
+            "share_of_stage_pct": 1.64,
+            "thread_ms": 7.939,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B3_apply_maps",
+            "mode": "SER",
+            "wall_ms": 1.14,
+            "share_of_stage_pct": 0.24,
+            "thread_ms": 1.14,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B4_ext_bridge",
+            "mode": "PAR",
+            "wall_ms": 37.461,
+            "share_of_stage_pct": 7.74,
+            "thread_ms": 362.184,
+            "eff_par": 9.67,
+            "count": 240,
+            "p50_ms": 1.299,
+            "p95_ms": 3.481,
+            "max_ms": 20.248,
+            "max_idx": 2
+          },
+          {
+            "name": "B5a_ib_solids_cfg",
+            "mode": "SER",
+            "wall_ms": 1.179,
+            "share_of_stage_pct": 0.24,
+            "thread_ms": 1.179,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5b_ib_phaseA",
+            "mode": "PAR",
+            "wall_ms": 130.354,
+            "share_of_stage_pct": 26.95,
+            "thread_ms": 329.42,
+            "eff_par": 2.53,
+            "count": 240,
+            "p50_ms": 0.001,
+            "p95_ms": 5.517,
+            "max_ms": 130.289,
+            "max_idx": 1
+          },
+          {
+            "name": "B5c_ib_phaseB_pre",
+            "mode": "PAR",
+            "wall_ms": 56.791,
+            "share_of_stage_pct": 11.74,
+            "thread_ms": 493.517,
+            "eff_par": 8.69,
+            "count": 43,
+            "p50_ms": 9.251,
+            "p95_ms": 25.594,
+            "max_ms": 37.87,
+            "max_idx": 40
+          },
+          {
+            "name": "B5d_ib_phaseB_com",
+            "mode": "SER",
+            "wall_ms": 127.259,
+            "share_of_stage_pct": 26.31,
+            "thread_ms": 127.259,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5e_ib_extra",
+            "mode": "SER",
+            "wall_ms": 0.004,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.004,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B6_replace",
+            "mode": "SER",
+            "wall_ms": 0.0,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.0,
+            "eff_par": 1.0
+          }
+        ],
+        "op_kinds": {
+          "clip": {
+            "calls": 2308,
+            "thread_ms": 814.748
+          },
+          "offset": {
+            "calls": 1062,
+            "thread_ms": 710.121
+          },
+          "offset2_ex": {
+            "calls": 462,
+            "thread_ms": 423.765
+          },
+          "cpu": {
+            "calls": 351,
+            "thread_ms": 290.407
+          },
+          "closing_ex": {
+            "calls": 254,
+            "thread_ms": 145.207
+          }
+        },
+        "clipper_total_calls": 4086,
+        "clipper_total_thread_ms": 2093.84,
+        "sites": [
+          {
+            "name": "p1_bot_open",
+            "op_kind": "offset2_ex",
+            "calls": 240,
+            "total_ms": 270.25,
+            "max_ms": 9.58,
+            "in_polys": 7787,
+            "in_verts": 553967,
+            "out_verts": 147446,
+            "empty_out": 76
+          },
+          {
+            "name": "p1_bot_diff",
+            "op_kind": "clip",
+            "calls": 240,
+            "total_ms": 185.824,
+            "max_ms": 14.065,
+            "in_polys": 1161,
+            "in_verts": 888171,
+            "out_verts": 553967,
+            "empty_out": 0
+          },
+          {
+            "name": "p1_top_diff",
+            "op_kind": "clip",
+            "calls": 240,
+            "total_ms": 161.967,
+            "max_ms": 6.517,
+            "in_polys": 1160,
+            "in_verts": 881498,
+            "out_verts": 337490,
+            "empty_out": 18
+          },
+          {
+            "name": "p1_top_open",
+            "op_kind": "offset2_ex",
+            "calls": 222,
+            "total_ms": 153.515,
+            "max_ms": 4.993,
+            "in_polys": 7512,
+            "in_verts": 337490,
+            "out_verts": 64361,
+            "empty_out": 83
+          },
+          {
+            "name": "ib_comp_pos_offset",
+            "op_kind": "offset",
+            "calls": 55,
+            "total_ms": 140.822,
+            "max_ms": 7.016,
+            "in_polys": 4233,
+            "in_verts": 155985,
+            "out_verts": 65677,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_determine_deg",
+            "op_kind": "cpu",
+            "calls": 25,
+            "total_ms": 119.832,
+            "max_ms": 21.447,
+            "in_polys": 259,
+            "in_verts": 49327,
+            "out_verts": 25,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_erode",
+            "op_kind": "offset",
+            "calls": 46,
+            "total_ms": 106.597,
+            "max_ms": 16.307,
+            "in_polys": 112,
+            "in_verts": 118369,
+            "out_verts": 30809,
+            "empty_out": 2
+          },
+          {
+            "name": "ib_unsup_solids_grow",
+            "op_kind": "offset",
+            "calls": 44,
+            "total_ms": 106.332,
+            "max_ms": 102.718,
+            "in_polys": 76,
+            "in_verts": 11490,
+            "out_verts": 4508,
+            "empty_out": 14
+          },
+          {
+            "name": "p2b_offset",
+            "op_kind": "offset",
+            "calls": 174,
+            "total_ms": 105.382,
+            "max_ms": 26.872,
+            "in_polys": 666,
+            "in_verts": 156600,
+            "out_verts": 11078,
+            "empty_out": 160
+          },
+          {
+            "name": "ext_bridge_clip_polylines",
+            "op_kind": "cpu",
+            "calls": 163,
+            "total_ms": 90.561,
+            "max_ms": 6.578,
+            "in_polys": 946,
+            "in_verts": 349560,
+            "out_verts": 114721,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_score_cpu",
+            "op_kind": "cpu",
+            "calls": 163,
+            "total_ms": 80.015,
+            "max_ms": 5.146,
+            "in_polys": 85207,
+            "in_verts": 105854,
+            "out_verts": 163,
+            "empty_out": 0
+          },
+          {
+            "name": "p2b_intersect",
+            "op_kind": "clip",
+            "calls": 174,
+            "total_ms": 77.799,
+            "max_ms": 6.431,
+            "in_polys": 1129,
+            "in_verts": 523749,
+            "out_verts": 156600,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_anchor_off",
+            "op_kind": "offset",
+            "calls": 163,
+            "total_ms": 69.745,
+            "max_ms": 2.855,
+            "in_polys": 444,
+            "in_verts": 356331,
+            "out_verts": 354692,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_overhang_diff",
+            "op_kind": "clip",
+            "calls": 163,
+            "total_ms": 68.261,
+            "max_ms": 4.773,
+            "in_polys": 1046,
+            "in_verts": 477102,
+            "out_verts": 126672,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_solids_shrink",
+            "op_kind": "offset",
+            "calls": 44,
+            "total_ms": 60.447,
+            "max_ms": 5.028,
+            "in_polys": 565,
+            "in_verts": 97075,
+            "out_verts": 11490,
+            "empty_out": 14
+          },
+          {
+            "name": "p2t_intersect",
+            "op_kind": "clip",
+            "calls": 176,
+            "total_ms": 60.419,
+            "max_ms": 2.013,
+            "in_polys": 1170,
+            "in_verts": 490350,
+            "out_verts": 70615,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_gather_diff",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 53.128,
+            "max_ms": 2.707,
+            "in_polys": 537,
+            "in_verts": 202863,
+            "out_verts": 156332,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_complement_diff",
+            "op_kind": "clip",
+            "calls": 163,
+            "total_ms": 52.439,
+            "max_ms": 2.59,
+            "in_polys": 607,
+            "in_verts": 355344,
+            "out_verts": 222268,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_closing",
+            "op_kind": "closing_ex",
+            "calls": 46,
+            "total_ms": 50.599,
+            "max_ms": 5.824,
+            "in_polys": 112,
+            "in_verts": 118859,
+            "out_verts": 118369,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_closing",
+            "op_kind": "closing_ex",
+            "calls": 55,
+            "total_ms": 45.212,
+            "max_ms": 1.913,
+            "in_polys": 128,
+            "in_verts": 128223,
+            "out_verts": 127697,
+            "empty_out": 0
+          },
+          {
+            "name": "p2t_offset",
+            "op_kind": "offset",
+            "calls": 176,
+            "total_ms": 42.633,
+            "max_ms": 1.537,
+            "in_polys": 635,
+            "in_verts": 70615,
+            "out_verts": 9264,
+            "empty_out": 116
+          },
+          {
+            "name": "ib_gather_solid_closing",
+            "op_kind": "closing_ex",
+            "calls": 55,
+            "total_ms": 25.41,
+            "max_ms": 1.422,
+            "in_polys": 409,
+            "in_verts": 75505,
+            "out_verts": 75166,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_anchor_total_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 24.344,
+            "max_ms": 4.722,
+            "in_polys": 37,
+            "in_verts": 36323,
+            "out_verts": 18176,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_neg_offset",
+            "op_kind": "offset",
+            "calls": 28,
+            "total_ms": 22.654,
+            "max_ms": 2.571,
+            "in_polys": 407,
+            "in_verts": 25336,
+            "out_verts": 1810,
+            "empty_out": 8
+          },
+          {
+            "name": "ib_ang_anchor_lim_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 21.702,
+            "max_ms": 2.854,
+            "in_polys": 835,
+            "in_verts": 39623,
+            "out_verts": 27461,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_union",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 20.341,
+            "max_ms": 1.049,
+            "in_polys": 128,
+            "in_verts": 128223,
+            "out_verts": 128223,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_surf_clip",
+            "op_kind": "clip",
+            "calls": 116,
+            "total_ms": 19.536,
+            "max_ms": 0.833,
+            "in_polys": 804,
+            "in_verts": 156485,
+            "out_verts": 13080,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_solid_union",
+            "op_kind": "clip",
+            "calls": 55,
+            "total_ms": 17.261,
+            "max_ms": 0.993,
+            "in_polys": 665,
+            "in_verts": 114371,
+            "out_verts": 75505,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_closing",
+            "op_kind": "closing_ex",
+            "calls": 20,
+            "total_ms": 13.296,
+            "max_ms": 2.183,
+            "in_polys": 831,
+            "in_verts": 34638,
+            "out_verts": 33946,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_diff",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 9.475,
+            "max_ms": 1.514,
+            "in_polys": 113,
+            "in_verts": 54412,
+            "out_verts": 42878,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_win_inter",
+            "op_kind": "clip",
+            "calls": 28,
+            "total_ms": 8.748,
+            "max_ms": 0.476,
+            "in_polys": 1288,
+            "in_verts": 62253,
+            "out_verts": 25336,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_total_closing",
+            "op_kind": "closing_ex",
+            "calls": 20,
+            "total_ms": 8.604,
+            "max_ms": 1.077,
+            "in_polys": 32,
+            "in_verts": 31337,
+            "out_verts": 31233,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_inter",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 8.238,
+            "max_ms": 1.007,
+            "in_polys": 752,
+            "in_verts": 50393,
+            "out_verts": 33862,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union3",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 8.132,
+            "max_ms": 1.059,
+            "in_polys": 963,
+            "in_verts": 50638,
+            "out_verts": 34638,
+            "empty_out": 0
+          },
+          {
+            "name": "p2e_int_solid_diff",
+            "op_kind": "clip",
+            "calls": 148,
+            "total_ms": 7.904,
+            "max_ms": 0.286,
+            "in_polys": 1242,
+            "in_verts": 137986,
+            "out_verts": 9264,
+            "empty_out": 102
+          },
+          {
+            "name": "ib_qual_unsup_inter",
+            "op_kind": "clip",
+            "calls": 116,
+            "total_ms": 7.448,
+            "max_ms": 0.22,
+            "in_polys": 559,
+            "in_verts": 82756,
+            "out_verts": 7933,
+            "empty_out": 36
+          },
+          {
+            "name": "ib_ang_lim_union",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 7.074,
+            "max_ms": 1.049,
+            "in_polys": 863,
+            "in_verts": 43105,
+            "out_verts": 39623,
+            "empty_out": 0
+          },
+          {
+            "name": "p2b_merge_union",
+            "op_kind": "clip",
+            "calls": 14,
+            "total_ms": 7.003,
+            "max_ms": 3.127,
+            "in_polys": 71,
+            "in_verts": 29077,
+            "out_verts": 29077,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_diff",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 6.085,
+            "max_ms": 0.797,
+            "in_polys": 863,
+            "in_verts": 43105,
+            "out_verts": 43080,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_diff",
+            "op_kind": "clip",
+            "calls": 44,
+            "total_ms": 4.684,
+            "max_ms": 0.37,
+            "in_polys": 251,
+            "in_verts": 35317,
+            "out_verts": 27311,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_rem_lower_diff",
+            "op_kind": "clip",
+            "calls": 12,
+            "total_ms": 4.644,
+            "max_ms": 1.019,
+            "in_polys": 622,
+            "in_verts": 28242,
+            "out_verts": 25808,
+            "empty_out": 0
+          },
+          {
+            "name": "p2t_merge_union",
+            "op_kind": "clip",
+            "calls": 60,
+            "total_ms": 4.038,
+            "max_ms": 0.203,
+            "in_polys": 295,
+            "in_verts": 45774,
+            "out_verts": 45774,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union2",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 3.383,
+            "max_ms": 0.622,
+            "in_polys": 90,
+            "in_verts": 26061,
+            "out_verts": 23075,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_surf_offset",
+            "op_kind": "offset",
+            "calls": 116,
+            "total_ms": 2.984,
+            "max_ms": 0.191,
+            "in_polys": 116,
+            "in_verts": 12554,
+            "out_verts": 12291,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union1",
+            "op_kind": "clip",
+            "calls": 20,
+            "total_ms": 2.968,
+            "max_ms": 0.336,
+            "in_polys": 81,
+            "in_verts": 22767,
+            "out_verts": 22767,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_worth_off",
+            "op_kind": "offset",
+            "calls": 58,
+            "total_ms": 2.548,
+            "max_ms": 0.394,
+            "in_polys": 58,
+            "in_verts": 6888,
+            "out_verts": 5553,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_clip",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 2.245,
+            "max_ms": 0.199,
+            "in_polys": 68,
+            "in_verts": 22534,
+            "out_verts": 3457,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_closing",
+            "op_kind": "closing_ex",
+            "calls": 58,
+            "total_ms": 2.085,
+            "max_ms": 0.121,
+            "in_polys": 58,
+            "in_verts": 9068,
+            "out_verts": 9068,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_exp_worth_off",
+            "op_kind": "offset",
+            "calls": 58,
+            "total_ms": 1.684,
+            "max_ms": 0.091,
+            "in_polys": 58,
+            "in_verts": 9068,
+            "out_verts": 8872,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_coll_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 1.49,
+            "max_ms": 0.549,
+            "in_polys": 25,
+            "in_verts": 3457,
+            "out_verts": 2781,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_worth_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.452,
+            "max_ms": 0.091,
+            "in_polys": 116,
+            "in_verts": 14699,
+            "out_verts": 9068,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_rem_diff",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.323,
+            "max_ms": 0.095,
+            "in_polys": 116,
+            "in_verts": 18018,
+            "out_verts": 86,
+            "empty_out": 57
+          },
+          {
+            "name": "ib_qual_final_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.188,
+            "max_ms": 0.079,
+            "in_polys": 116,
+            "in_verts": 18214,
+            "out_verts": 9072,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_retain_inter",
+            "op_kind": "clip",
+            "calls": 58,
+            "total_ms": 1.012,
+            "max_ms": 0.115,
+            "in_polys": 117,
+            "in_verts": 12862,
+            "out_verts": 2731,
+            "empty_out": 33
+          },
+          {
+            "name": "ib_ang_cand_off",
+            "op_kind": "offset",
+            "calls": 25,
+            "total_ms": 0.756,
+            "max_ms": 0.132,
+            "in_polys": 25,
+            "in_verts": 3523,
+            "out_verts": 3457,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_unsup_inter",
+            "op_kind": "clip",
+            "calls": 25,
+            "total_ms": 0.536,
+            "max_ms": 0.114,
+            "in_polys": 56,
+            "in_verts": 5626,
+            "out_verts": 2725,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_rem_lower_union",
+            "op_kind": "clip",
+            "calls": 12,
+            "total_ms": 0.169,
+            "max_ms": 0.052,
+            "in_polys": 15,
+            "in_verts": 2087,
+            "out_verts": 2087,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_coll_inter",
+            "op_kind": "clip",
+            "calls": 5,
+            "total_ms": 0.026,
+            "max_ms": 0.011,
+            "in_polys": 10,
+            "in_verts": 371,
+            "out_verts": 0,
+            "empty_out": 5
+          }
+        ],
+        "locality": {
+          "pass1": {
+            "top_identical": 0,
+            "bot_identical": 0,
+            "top_empty_clip": 1,
+            "bot_empty_clip": 1,
+            "top_diff_slivers": 6185,
+            "top_diff_polys": 7512,
+            "bot_diff_slivers": 6357,
+            "bot_diff_polys": 7787,
+            "sum_layer_polys": 581,
+            "max_layer_polys": 6
+          },
+          "pass2_top": {
+            "seeds": 139,
+            "steps": 176,
+            "break_inter_empty": 1,
+            "break_off_empty": 116,
+            "nbr_polys_ovl": 388,
+            "nbr_polys_tot": 535,
+            "nbr_verts_in_bbox": 150301,
+            "nbr_verts_tot": 420399,
+            "inter_slivers": 391,
+            "inter_polys_tot": 635,
+            "merge_contribs": 60,
+            "merge_unique_targets": 46,
+            "merge_empty_existing": 9,
+            "merge_max_per_target": 2
+          },
+          "pass2_bot": {
+            "seeds": 164,
+            "steps": 174,
+            "break_inter_empty": 0,
+            "break_off_empty": 160,
+            "nbr_polys_ovl": 363,
+            "nbr_polys_tot": 464,
+            "nbr_verts_in_bbox": 186954,
+            "nbr_verts_tot": 369194,
+            "inter_slivers": 473,
+            "inter_polys_tot": 666,
+            "merge_contribs": 14,
+            "merge_unique_targets": 14,
+            "merge_empty_existing": 3,
+            "merge_max_per_target": 1
+          },
+          "pass2e_int_solid": {
+            "total": 148,
+            "seed_empty": 9,
+            "no_p2_contrib": 102,
+            "both_nonempty": 37,
+            "nonempty_out": 46
+          },
+          "b4_ext_bridge": {
+            "nonempty_layers": 163
+          },
+          "ib_phase_a": {
+            "total": 240,
+            "no_lower": 1,
+            "empty_is": 193,
+            "ran_unsup": 46,
+            "unsup_empty": 3,
+            "survived": 43,
+            "lf_verts_in_box": 26101,
+            "lf_verts_tot": 118859,
+            "ls_verts_in_box": 25656,
+            "ls_verts_tot": 98269
+          },
+          "ib_phase_b_precomp": {
+            "total": 43,
+            "some": 12,
+            "none": 31,
+            "wasted_none_thread_ms": 254.878,
+            "wasted_none_gather_ms": 120.722,
+            "wasted_none_pos_off_ms": 102.529,
+            "kept_some_gather_ms": 23.8,
+            "kept_some_pos_off_ms": 21.095,
+            "gather_layers": {
+              "layers_1": 55,
+              "layers_gt1": 0
+            },
+            "surf_total": 116,
+            "surf_deep_empty": 0,
+            "surf_qual_some": 58,
+            "surf_qual_none": 58,
+            "qual_layers": 20,
+            "qual_cands_total": 25,
+            "qual_cands_max": 2
+          },
+          "ib_phase_b_commit": {
+            "published": 31,
+            "recomputes": 12,
+            "recomp_ovl_is": 12,
+            "recomp_wall_ms": 127.187,
+            "recomp_gather_ms": 19.156,
+            "recomp_remove_ms": 4.822,
+            "recomp_compute_ms": 103.2,
+            "recomp_layers": [
+              {
+                "layer": 31,
+                "ms": 9.726,
+                "ovl_is": true
+              },
+              {
+                "layer": 41,
+                "ms": 5.982,
+                "ovl_is": true
+              },
+              {
+                "layer": 101,
+                "ms": 6.394,
+                "ovl_is": true
+              },
+              {
+                "layer": 190,
+                "ms": 10.543,
+                "ovl_is": true
+              },
+              {
+                "layer": 191,
+                "ms": 7.536,
+                "ovl_is": true
+              },
+              {
+                "layer": 192,
+                "ms": 8.658,
+                "ovl_is": true
+              },
+              {
+                "layer": 193,
+                "ms": 11.384,
+                "ovl_is": true
+              },
+              {
+                "layer": 194,
+                "ms": 13.444,
+                "ovl_is": true
+              },
+              {
+                "layer": 195,
+                "ms": 15.351,
+                "ovl_is": true
+              },
+              {
+                "layer": 196,
+                "ms": 16.308,
+                "ovl_is": true
+              },
+              {
+                "layer": 197,
+                "ms": 16.452,
+                "ovl_is": true
+              },
+              {
+                "layer": 198,
+                "ms": 5.409,
+                "ovl_is": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "base-classic-off": {
+      "cell": "base-classic-off",
+      "pass_stage_walls_ms": [
+        3403.204,
+        3405.911,
+        3435.911
+      ],
+      "median_pass_number": 2,
+      "median_brackets_ms": {
+        "stage_wall_ms": 3405.911,
+        "B0_setup": 12.204,
+        "B1_pass1": 698.715,
+        "B2a_p2t_proj": 234.712,
+        "B2b_p2t_merge": 38.327,
+        "B2c_p2b_proj": 222.351,
+        "B2d_p2b_merge": 47.761,
+        "B2e_int_solid_diff": 170.237,
+        "B3_apply_maps": 5.679,
+        "B4_ext_bridge": 345.931,
+        "B5a_ib_solids_cfg": 13.289,
+        "B5b_ib_phaseA": 347.151,
+        "B5c_ib_phaseB_pre": 711.34,
+        "B5d_ib_phaseB_com": 558.527,
+        "B5e_ib_extra": 0.006,
+        "B6_replace": 0.0
+      },
+      "median_pass": {
+        "stage_wall_ms": 3405.911,
+        "sum_brackets_ms": 3405.082,
+        "bracket_gap_ms": 0.83,
+        "serial_ms": 841.283,
+        "parallel_ms": 2563.799,
+        "serial_pct": 24.7,
+        "parallel_pct": 75.27,
+        "total_thread_ms": 30359.285,
+        "eff_par": 8.91,
+        "params": {
+          "timelines_count": 1,
+          "timeline_len": 496,
+          "k_top": 3,
+          "k_bot": 3,
+          "opening_radius_um": 40,
+          "shell_width_um": 400,
+          "extra_bridge_enabled": 0,
+          "nofilter_enabled": 0
+        },
+        "brackets": [
+          {
+            "name": "B0_setup",
+            "mode": "SER",
+            "wall_ms": 10.921,
+            "share_of_stage_pct": 0.32,
+            "thread_ms": 10.921,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B1_pass1",
+            "mode": "PAR",
+            "wall_ms": 698.715,
+            "share_of_stage_pct": 20.51,
+            "thread_ms": 8256.021,
+            "eff_par": 11.82,
+            "count": 496,
+            "p50_ms": 16.232,
+            "p95_ms": 30.138,
+            "max_ms": 47.249,
+            "max_idx": 178
+          },
+          {
+            "name": "B2a_p2t_proj",
+            "mode": "PAR",
+            "wall_ms": 234.712,
+            "share_of_stage_pct": 6.89,
+            "thread_ms": 2691.206,
+            "eff_par": 11.47,
+            "count": 481,
+            "p50_ms": 4.685,
+            "p95_ms": 13.555,
+            "max_ms": 33.978,
+            "max_idx": 75
+          },
+          {
+            "name": "B2b_p2t_merge",
+            "mode": "SER",
+            "wall_ms": 38.327,
+            "share_of_stage_pct": 1.13,
+            "thread_ms": 38.327,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2c_p2b_proj",
+            "mode": "PAR",
+            "wall_ms": 222.351,
+            "share_of_stage_pct": 6.53,
+            "thread_ms": 2461.618,
+            "eff_par": 11.07,
+            "count": 452,
+            "p50_ms": 4.704,
+            "p95_ms": 12.115,
+            "max_ms": 36.686,
+            "max_idx": 156
+          },
+          {
+            "name": "B2d_p2b_merge",
+            "mode": "SER",
+            "wall_ms": 47.472,
+            "share_of_stage_pct": 1.39,
+            "thread_ms": 47.472,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B2e_int_solid_diff",
+            "mode": "SER",
+            "wall_ms": 169.046,
+            "share_of_stage_pct": 4.96,
+            "thread_ms": 169.046,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B3_apply_maps",
+            "mode": "SER",
+            "wall_ms": 5.679,
+            "share_of_stage_pct": 0.17,
+            "thread_ms": 5.679,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B4_ext_bridge",
+            "mode": "PAR",
+            "wall_ms": 345.931,
+            "share_of_stage_pct": 10.16,
+            "thread_ms": 4063.709,
+            "eff_par": 11.75,
+            "count": 496,
+            "p50_ms": 7.184,
+            "p95_ms": 16.924,
+            "max_ms": 27.671,
+            "max_idx": 41
+          },
+          {
+            "name": "B5a_ib_solids_cfg",
+            "mode": "SER",
+            "wall_ms": 11.303,
+            "share_of_stage_pct": 0.33,
+            "thread_ms": 11.303,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5b_ib_phaseA",
+            "mode": "PAR",
+            "wall_ms": 350.75,
+            "share_of_stage_pct": 10.3,
+            "thread_ms": 3963.069,
+            "eff_par": 11.3,
+            "count": 496,
+            "p50_ms": 0.002,
+            "p95_ms": 45.448,
+            "max_ms": 133.729,
+            "max_idx": 157
+          },
+          {
+            "name": "B5c_ib_phaseB_pre",
+            "mode": "PAR",
+            "wall_ms": 711.34,
+            "share_of_stage_pct": 20.89,
+            "thread_ms": 8082.378,
+            "eff_par": 11.36,
+            "count": 117,
+            "p50_ms": 64.487,
+            "p95_ms": 119.53,
+            "max_ms": 326.26,
+            "max_idx": 48
+          },
+          {
+            "name": "B5d_ib_phaseB_com",
+            "mode": "SER",
+            "wall_ms": 558.527,
+            "share_of_stage_pct": 16.4,
+            "thread_ms": 558.527,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B5e_ib_extra",
+            "mode": "SER",
+            "wall_ms": 0.007,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.007,
+            "eff_par": 1.0
+          },
+          {
+            "name": "B6_replace",
+            "mode": "SER",
+            "wall_ms": 0.0,
+            "share_of_stage_pct": 0.0,
+            "thread_ms": 0.0,
+            "eff_par": 1.0
+          }
+        ],
+        "op_kinds": {
+          "offset": {
+            "calls": 2474,
+            "thread_ms": 11710.441
+          },
+          "clip": {
+            "calls": 5020,
+            "thread_ms": 10114.734
+          },
+          "offset2_ex": {
+            "calls": 974,
+            "thread_ms": 4912.631
+          },
+          "cpu": {
+            "calls": 911,
+            "thread_ms": 2154.644
+          },
+          "closing_ex": {
+            "calls": 444,
+            "thread_ms": 1352.292
+          }
+        },
+        "clipper_total_calls": 8912,
+        "clipper_total_thread_ms": 28090.099,
+        "sites": [
+          {
+            "name": "ib_comp_pos_offset",
+            "op_kind": "offset",
+            "calls": 124,
+            "total_ms": 4016.434,
+            "max_ms": 81.38,
+            "in_polys": 56717,
+            "in_verts": 1014936,
+            "out_verts": 245392,
+            "empty_out": 0
+          },
+          {
+            "name": "p1_top_open",
+            "op_kind": "offset2_ex",
+            "calls": 487,
+            "total_ms": 2688.458,
+            "max_ms": 26.071,
+            "in_polys": 34975,
+            "in_verts": 2754024,
+            "out_verts": 985315,
+            "empty_out": 6
+          },
+          {
+            "name": "ib_unsup_solids_shrink",
+            "op_kind": "offset",
+            "calls": 117,
+            "total_ms": 2339.082,
+            "max_ms": 97.025,
+            "in_polys": 3846,
+            "in_verts": 826276,
+            "out_verts": 13422,
+            "empty_out": 35
+          },
+          {
+            "name": "p1_bot_open",
+            "op_kind": "offset2_ex",
+            "calls": 487,
+            "total_ms": 2224.173,
+            "max_ms": 14.582,
+            "in_polys": 35019,
+            "in_verts": 2370196,
+            "out_verts": 917354,
+            "empty_out": 35
+          },
+          {
+            "name": "p1_top_diff",
+            "op_kind": "clip",
+            "calls": 496,
+            "total_ms": 1687.768,
+            "max_ms": 30.218,
+            "in_polys": 1679,
+            "in_verts": 5028486,
+            "out_verts": 2754024,
+            "empty_out": 9
+          },
+          {
+            "name": "ib_gather_diff",
+            "op_kind": "clip",
+            "calls": 124,
+            "total_ms": 1670.099,
+            "max_ms": 35.676,
+            "in_polys": 2952,
+            "in_verts": 1418473,
+            "out_verts": 1019397,
+            "empty_out": 0
+          },
+          {
+            "name": "p1_bot_diff",
+            "op_kind": "clip",
+            "calls": 496,
+            "total_ms": 1633.226,
+            "max_ms": 27.692,
+            "in_polys": 1679,
+            "in_verts": 5028624,
+            "out_verts": 2370196,
+            "empty_out": 9
+          },
+          {
+            "name": "p2t_offset",
+            "op_kind": "offset",
+            "calls": 594,
+            "total_ms": 1599.951,
+            "max_ms": 29.456,
+            "in_polys": 5075,
+            "in_verts": 988230,
+            "out_verts": 7511,
+            "empty_out": 469
+          },
+          {
+            "name": "p2b_offset",
+            "op_kind": "offset",
+            "calls": 564,
+            "total_ms": 1493.93,
+            "max_ms": 30.655,
+            "in_polys": 4695,
+            "in_verts": 919985,
+            "out_verts": 8321,
+            "empty_out": 442
+          },
+          {
+            "name": "ext_bridge_clip_polylines",
+            "op_kind": "cpu",
+            "calls": 451,
+            "total_ms": 1230.184,
+            "max_ms": 8.437,
+            "in_polys": 5348,
+            "in_verts": 2810645,
+            "out_verts": 714564,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_erode",
+            "op_kind": "offset",
+            "calls": 117,
+            "total_ms": 1210.358,
+            "max_ms": 35.963,
+            "in_polys": 218,
+            "in_verts": 657821,
+            "out_verts": 243973,
+            "empty_out": 0
+          },
+          {
+            "name": "p2t_intersect",
+            "op_kind": "clip",
+            "calls": 594,
+            "total_ms": 1075.403,
+            "max_ms": 31.425,
+            "in_polys": 6109,
+            "in_verts": 4130620,
+            "out_verts": 988230,
+            "empty_out": 0
+          },
+          {
+            "name": "p2b_intersect",
+            "op_kind": "clip",
+            "calls": 564,
+            "total_ms": 953.951,
+            "max_ms": 18.582,
+            "in_polys": 5746,
+            "in_verts": 3986691,
+            "out_verts": 919985,
+            "empty_out": 1
+          },
+          {
+            "name": "ext_bridge_score_cpu",
+            "op_kind": "cpu",
+            "calls": 451,
+            "total_ms": 833.878,
+            "max_ms": 14.145,
+            "in_polys": 473001,
+            "in_verts": 645531,
+            "out_verts": 451,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_overhang_diff",
+            "op_kind": "clip",
+            "calls": 451,
+            "total_ms": 782.004,
+            "max_ms": 7.93,
+            "in_polys": 5333,
+            "in_verts": 3171273,
+            "out_verts": 797656,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_anchor_off",
+            "op_kind": "offset",
+            "calls": 451,
+            "total_ms": 655.853,
+            "max_ms": 4.109,
+            "in_polys": 789,
+            "in_verts": 2447947,
+            "out_verts": 2441235,
+            "empty_out": 0
+          },
+          {
+            "name": "ext_bridge_complement_diff",
+            "op_kind": "clip",
+            "calls": 451,
+            "total_ms": 551.218,
+            "max_ms": 2.788,
+            "in_polys": 1240,
+            "in_verts": 2443039,
+            "out_verts": 2008400,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_solid_closing",
+            "op_kind": "closing_ex",
+            "calls": 124,
+            "total_ms": 381.982,
+            "max_ms": 9.614,
+            "in_polys": 2715,
+            "in_verts": 715731,
+            "out_verts": 710198,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_closing",
+            "op_kind": "closing_ex",
+            "calls": 117,
+            "total_ms": 337.142,
+            "max_ms": 6.258,
+            "in_polys": 218,
+            "in_verts": 659678,
+            "out_verts": 657821,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_closing",
+            "op_kind": "closing_ex",
+            "calls": 124,
+            "total_ms": 332.497,
+            "max_ms": 5.531,
+            "in_polys": 238,
+            "in_verts": 710334,
+            "out_verts": 708275,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_closing",
+            "op_kind": "closing_ex",
+            "calls": 9,
+            "total_ms": 273.593,
+            "max_ms": 46.547,
+            "in_polys": 5895,
+            "in_verts": 96571,
+            "out_verts": 89214,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_solid_union",
+            "op_kind": "clip",
+            "calls": 124,
+            "total_ms": 263.12,
+            "max_ms": 7.01,
+            "in_polys": 4141,
+            "in_verts": 916142,
+            "out_verts": 715731,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_neg_offset",
+            "op_kind": "offset",
+            "calls": 51,
+            "total_ms": 204.86,
+            "max_ms": 21.245,
+            "in_polys": 4659,
+            "in_verts": 81040,
+            "out_verts": 7738,
+            "empty_out": 5
+          },
+          {
+            "name": "ib_comp_exp_diff",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 184.399,
+            "max_ms": 29.814,
+            "in_polys": 263,
+            "in_verts": 154218,
+            "out_verts": 103779,
+            "empty_out": 0
+          },
+          {
+            "name": "p2e_int_solid_diff",
+            "op_kind": "clip",
+            "calls": 481,
+            "total_ms": 168.876,
+            "max_ms": 1.359,
+            "in_polys": 10045,
+            "in_verts": 1978141,
+            "out_verts": 7511,
+            "empty_out": 364
+          },
+          {
+            "name": "ib_comp_exp_union3",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 145.887,
+            "max_ms": 25.002,
+            "in_polys": 6844,
+            "in_verts": 105032,
+            "out_verts": 96571,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_gather_sparse_union",
+            "op_kind": "clip",
+            "calls": 124,
+            "total_ms": 145.271,
+            "max_ms": 2.474,
+            "in_polys": 238,
+            "in_verts": 710334,
+            "out_verts": 710334,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_win_inter",
+            "op_kind": "clip",
+            "calls": 51,
+            "total_ms": 118.845,
+            "max_ms": 4.434,
+            "in_polys": 26085,
+            "in_verts": 456461,
+            "out_verts": 81040,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_inter",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 117.368,
+            "max_ms": 18.387,
+            "in_polys": 4580,
+            "in_verts": 110902,
+            "out_verts": 85877,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_lim_union",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 108.416,
+            "max_ms": 19.973,
+            "in_polys": 3982,
+            "in_verts": 86356,
+            "out_verts": 85464,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_anchor_lim_off",
+            "op_kind": "offset",
+            "calls": 9,
+            "total_ms": 102.593,
+            "max_ms": 18.36,
+            "in_polys": 3928,
+            "in_verts": 85464,
+            "out_verts": 48787,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_exp_diff",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 102.556,
+            "max_ms": 16.923,
+            "in_polys": 3982,
+            "in_verts": 86356,
+            "out_verts": 85891,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_rem_lower_diff",
+            "op_kind": "clip",
+            "calls": 7,
+            "total_ms": 92.39,
+            "max_ms": 18.641,
+            "in_polys": 5335,
+            "in_verts": 78928,
+            "out_verts": 74055,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_determine_deg",
+            "op_kind": "cpu",
+            "calls": 9,
+            "total_ms": 90.582,
+            "max_ms": 25.401,
+            "in_polys": 363,
+            "in_verts": 80755,
+            "out_verts": 9,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_surf_clip",
+            "op_kind": "clip",
+            "calls": 181,
+            "total_ms": 65.357,
+            "max_ms": 1.29,
+            "in_polys": 528,
+            "in_verts": 386705,
+            "out_verts": 8455,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_anchor_total_off",
+            "op_kind": "offset",
+            "calls": 9,
+            "total_ms": 62.213,
+            "max_ms": 10.977,
+            "in_polys": 25,
+            "in_verts": 66458,
+            "out_verts": 31135,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_diff",
+            "op_kind": "clip",
+            "calls": 117,
+            "total_ms": 56.139,
+            "max_ms": 1.739,
+            "in_polys": 392,
+            "in_verts": 250977,
+            "out_verts": 239498,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_unsup_inter",
+            "op_kind": "clip",
+            "calls": 181,
+            "total_ms": 53.879,
+            "max_ms": 0.574,
+            "in_polys": 557,
+            "in_verts": 406823,
+            "out_verts": 5624,
+            "empty_out": 49
+          },
+          {
+            "name": "p2b_merge_union",
+            "op_kind": "clip",
+            "calls": 122,
+            "total_ms": 46.809,
+            "max_ms": 1.081,
+            "in_polys": 1462,
+            "in_verts": 403048,
+            "out_verts": 403048,
+            "empty_out": 0
+          },
+          {
+            "name": "p2t_merge_union",
+            "op_kind": "clip",
+            "calls": 125,
+            "total_ms": 37.751,
+            "max_ms": 0.922,
+            "in_polys": 1467,
+            "in_verts": 327678,
+            "out_verts": 327678,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union2",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 29.783,
+            "max_ms": 5.847,
+            "in_polys": 343,
+            "in_verts": 115653,
+            "out_verts": 87491,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_total_closing",
+            "op_kind": "closing_ex",
+            "calls": 9,
+            "total_ms": 25.868,
+            "max_ms": 4.002,
+            "in_polys": 25,
+            "in_verts": 66727,
+            "out_verts": 66458,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_exp_union1",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 16.893,
+            "max_ms": 3.461,
+            "in_polys": 239,
+            "in_verts": 79247,
+            "out_verts": 79220,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_unsup_solids_grow",
+            "op_kind": "offset",
+            "calls": 117,
+            "total_ms": 15.971,
+            "max_ms": 1.794,
+            "in_polys": 207,
+            "in_verts": 13422,
+            "out_verts": 7004,
+            "empty_out": 37
+          },
+          {
+            "name": "ib_comp_surf_offset",
+            "op_kind": "offset",
+            "calls": 181,
+            "total_ms": 3.799,
+            "max_ms": 0.148,
+            "in_polys": 181,
+            "in_verts": 8350,
+            "out_verts": 8455,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_qual_worth_off",
+            "op_kind": "offset",
+            "calls": 61,
+            "total_ms": 3.402,
+            "max_ms": 0.375,
+            "in_polys": 61,
+            "in_verts": 3273,
+            "out_verts": 2214,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_ang_cand_clip",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 3.354,
+            "max_ms": 0.593,
+            "in_polys": 32,
+            "in_verts": 22167,
+            "out_verts": 479,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_comp_retain_inter",
+            "op_kind": "clip",
+            "calls": 60,
+            "total_ms": 1.462,
+            "max_ms": 0.12,
+            "in_polys": 148,
+            "in_verts": 12477,
+            "out_verts": 420,
+            "empty_out": 51
+          },
+          {
+            "name": "ib_qual_exp_worth_off",
+            "op_kind": "offset",
+            "calls": 61,
+            "total_ms": 1.385,
+            "max_ms": 0.139,
+            "in_polys": 60,
+            "in_verts": 3429,
+            "out_verts": 3443,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_qual_closing",
+            "op_kind": "closing_ex",
+            "calls": 61,
+            "total_ms": 1.21,
+            "max_ms": 0.058,
+            "in_polys": 60,
+            "in_verts": 3429,
+            "out_verts": 3427,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_qual_worth_inter",
+            "op_kind": "clip",
+            "calls": 61,
+            "total_ms": 0.768,
+            "max_ms": 0.04,
+            "in_polys": 121,
+            "in_verts": 5646,
+            "out_verts": 3429,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_qual_final_inter",
+            "op_kind": "clip",
+            "calls": 61,
+            "total_ms": 0.714,
+            "max_ms": 0.037,
+            "in_polys": 121,
+            "in_verts": 6859,
+            "out_verts": 3430,
+            "empty_out": 1
+          },
+          {
+            "name": "ib_qual_rem_diff",
+            "op_kind": "clip",
+            "calls": 61,
+            "total_ms": 0.667,
+            "max_ms": 0.038,
+            "in_polys": 121,
+            "in_verts": 6875,
+            "out_verts": 3,
+            "empty_out": 60
+          },
+          {
+            "name": "ib_ang_coll_off",
+            "op_kind": "offset",
+            "calls": 9,
+            "total_ms": 0.368,
+            "max_ms": 0.105,
+            "in_polys": 9,
+            "in_verts": 479,
+            "out_verts": 366,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_unsup_inter",
+            "op_kind": "clip",
+            "calls": 9,
+            "total_ms": 0.319,
+            "max_ms": 0.1,
+            "in_polys": 26,
+            "in_verts": 2491,
+            "out_verts": 509,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_ang_cand_off",
+            "op_kind": "offset",
+            "calls": 9,
+            "total_ms": 0.242,
+            "max_ms": 0.056,
+            "in_polys": 9,
+            "in_verts": 485,
+            "out_verts": 479,
+            "empty_out": 0
+          },
+          {
+            "name": "ib_rem_lower_union",
+            "op_kind": "clip",
+            "calls": 7,
+            "total_ms": 0.044,
+            "max_ms": 0.009,
+            "in_polys": 7,
+            "in_verts": 412,
+            "out_verts": 412,
+            "empty_out": 0
+          }
+        ],
+        "locality": {
+          "pass1": {
+            "top_identical": 0,
+            "bot_identical": 0,
+            "top_empty_clip": 1,
+            "bot_empty_clip": 1,
+            "top_diff_slivers": 27702,
+            "top_diff_polys": 34975,
+            "bot_diff_slivers": 27967,
+            "bot_diff_polys": 35019,
+            "sum_layer_polys": 840,
+            "max_layer_polys": 6
+          },
+          "pass2_top": {
+            "seeds": 481,
+            "steps": 594,
+            "break_inter_empty": 0,
+            "break_off_empty": 469,
+            "nbr_polys_ovl": 888,
+            "nbr_polys_tot": 1031,
+            "nbr_verts_in_bbox": 1953133,
+            "nbr_verts_tot": 3140612,
+            "inter_slivers": 2830,
+            "inter_polys_tot": 5075,
+            "merge_contribs": 125,
+            "merge_unique_targets": 117,
+            "merge_empty_existing": 0,
+            "merge_max_per_target": 2
+          },
+          "pass2_bot": {
+            "seeds": 452,
+            "steps": 564,
+            "break_inter_empty": 1,
+            "break_off_empty": 442,
+            "nbr_polys_ovl": 881,
+            "nbr_polys_tot": 1037,
+            "nbr_verts_in_bbox": 1885539,
+            "nbr_verts_tot": 3063697,
+            "inter_slivers": 2493,
+            "inter_polys_tot": 4695,
+            "merge_contribs": 122,
+            "merge_unique_targets": 118,
+            "merge_empty_existing": 0,
+            "merge_max_per_target": 2
+          },
+          "pass2e_int_solid": {
+            "total": 481,
+            "seed_empty": 0,
+            "no_p2_contrib": 364,
+            "both_nonempty": 117,
+            "nonempty_out": 117
+          },
+          "b4_ext_bridge": {
+            "nonempty_layers": 451
+          },
+          "ib_phase_a": {
+            "total": 496,
+            "no_lower": 1,
+            "empty_is": 378,
+            "ran_unsup": 117,
+            "unsup_empty": 0,
+            "survived": 117,
+            "lf_verts_in_box": 79972,
+            "lf_verts_tot": 659678,
+            "ls_verts_in_box": 116038,
+            "ls_verts_tot": 826276
+          },
+          "ib_phase_b_precomp": {
+            "total": 117,
+            "some": 8,
+            "none": 109,
+            "wasted_none_thread_ms": 6445.934,
+            "wasted_none_gather_ms": 2396.101,
+            "wasted_none_pos_off_ms": 3717.216,
+            "kept_some_gather_ms": 239.959,
+            "kept_some_pos_off_ms": 199.969,
+            "gather_layers": {
+              "layers_1": 124,
+              "layers_gt1": 0
+            },
+            "surf_total": 181,
+            "surf_deep_empty": 0,
+            "surf_qual_some": 61,
+            "surf_qual_none": 120,
+            "qual_layers": 9,
+            "qual_cands_total": 9,
+            "qual_cands_max": 1
+          },
+          "ib_phase_b_commit": {
+            "published": 110,
+            "recomputes": 7,
+            "recomp_ovl_is": 5,
+            "recomp_wall_ms": 558.323,
+            "recomp_gather_ms": 171.731,
+            "recomp_remove_ms": 92.45,
+            "recomp_compute_ms": 294.131,
+            "recomp_layers": [
+              {
+                "layer": 38,
+                "ms": 32.521,
+                "ovl_is": false
+              },
+              {
+                "layer": 41,
+                "ms": 214.42,
+                "ovl_is": true
+              },
+              {
+                "layer": 42,
+                "ms": 85.513,
+                "ovl_is": false
+              },
+              {
+                "layer": 49,
+                "ms": 85.324,
+                "ovl_is": true
+              },
+              {
+                "layer": 60,
+                "ms": 52.904,
+                "ovl_is": true
+              },
+              {
+                "layer": 100,
+                "ms": 55.991,
+                "ovl_is": true
+              },
+              {
+                "layer": 379,
+                "ms": 31.65,
+                "ovl_is": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

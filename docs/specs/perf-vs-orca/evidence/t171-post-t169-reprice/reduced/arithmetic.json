@@ -1,0 +1,1739 @@
+{
+ "note": "ESTIMATE chain, never a ratio of record. Shares are this take's instrumented median over three passes per cell; walls of record are t169's paired candidate medians; the route table is t163's board composed with t169's measured saving; every pre-t169 price is rescaled by t169's measured polygon_ops self-wall ratio. No instrumented or --profile wall is a wall claim.",
+ "split": {
+  "benchy-classic-off": {
+   "slice_complete_ms": 2339,
+   "phase_shares": {
+    "outside": 0.0329,
+    "per_layer": 0.3236,
+    "postpass": 0.0603,
+    "prepass": 0.5819,
+    "validation": 0.0013
+   },
+   "prepass_ms": 1361.0,
+   "per_layer_ms": 757.0,
+   "postpass_ms": 141.0,
+   "prepass_stage_ms": {
+    "PrePass::ShellClassification": 797,
+    "PrePass::Slice": 216,
+    "PrePass::SeamPlanning": 147,
+    "PrePass::MeshAnalysis": 90,
+    "PrePass::SupportGeometry": 38,
+    "PrePass::OverhangAnnotation": 20,
+    "PrePass::PaintSegmentation": 5,
+    "PrePass::RegionMapping": 4,
+    "PrePass::LayerPlanning": 0,
+    "PrePass::SupportAnalysis": 0
+   },
+   "prepass_stage_sum_ms": 1317,
+   "repeat_max_share_delta_pp": 0.96,
+   "gcode_sha256": "f505910c4ca40d51ab2362fcdeb6b93e2b50937a5132be0a43d2e124603a7f9b"
+  },
+  "benchy-classic-on": {
+   "slice_complete_ms": 5348,
+   "phase_shares": {
+    "outside": 0.014,
+    "per_layer": 0.1853,
+    "postpass": 0.0834,
+    "prepass": 0.7167,
+    "validation": 0.0006
+   },
+   "prepass_ms": 3833.0,
+   "per_layer_ms": 991.0,
+   "postpass_ms": 446.0,
+   "prepass_stage_ms": {
+    "PrePass::SupportGeometry": 2165,
+    "PrePass::ShellClassification": 802,
+    "PrePass::SupportAnalysis": 352,
+    "PrePass::Slice": 217,
+    "PrePass::SeamPlanning": 141,
+    "PrePass::MeshAnalysis": 88,
+    "PrePass::OverhangAnnotation": 20,
+    "PrePass::RegionMapping": 4,
+    "PrePass::PaintSegmentation": 4,
+    "PrePass::LayerPlanning": 0
+   },
+   "prepass_stage_sum_ms": 3793,
+   "repeat_max_share_delta_pp": 2.16,
+   "gcode_sha256": "9b40bf51cb4ec899dd30d5d97238e9eff5f5f52467a12d86b89e8b1b67fe6f25"
+  },
+  "benchy-arachne-off": {
+   "slice_complete_ms": 2437,
+   "phase_shares": {
+    "outside": 0.0308,
+    "per_layer": 0.3471,
+    "postpass": 0.062,
+    "prepass": 0.5589,
+    "validation": 0.0012
+   },
+   "prepass_ms": 1362.0,
+   "per_layer_ms": 846.0,
+   "postpass_ms": 151.0,
+   "prepass_stage_ms": {
+    "PrePass::ShellClassification": 785,
+    "PrePass::Slice": 219,
+    "PrePass::SeamPlanning": 139,
+    "PrePass::MeshAnalysis": 87,
+    "PrePass::SupportGeometry": 40,
+    "PrePass::OverhangAnnotation": 19,
+    "PrePass::RegionMapping": 5,
+    "PrePass::PaintSegmentation": 5,
+    "PrePass::LayerPlanning": 0,
+    "PrePass::SupportAnalysis": 0
+   },
+   "prepass_stage_sum_ms": 1299,
+   "repeat_max_share_delta_pp": 2.96,
+   "gcode_sha256": "224fb6f06e9086b04d33e0fa107690395319afd4a45ceb112315be9b1ee7a5e7"
+  },
+  "benchy-arachne-on": {
+   "slice_complete_ms": 5534,
+   "phase_shares": {
+    "outside": 0.0134,
+    "per_layer": 0.2036,
+    "postpass": 0.0808,
+    "prepass": 0.7003,
+    "validation": 0.0005
+   },
+   "prepass_ms": 3875.7,
+   "per_layer_ms": 1127.0,
+   "postpass_ms": 447.3,
+   "prepass_stage_ms": {
+    "PrePass::SupportGeometry": 2155,
+    "PrePass::ShellClassification": 817,
+    "PrePass::SupportAnalysis": 355,
+    "PrePass::Slice": 228,
+    "PrePass::SeamPlanning": 138,
+    "PrePass::MeshAnalysis": 91,
+    "PrePass::OverhangAnnotation": 20,
+    "PrePass::RegionMapping": 5,
+    "PrePass::PaintSegmentation": 5,
+    "PrePass::LayerPlanning": 0
+   },
+   "prepass_stage_sum_ms": 3814,
+   "repeat_max_share_delta_pp": 1.61,
+   "gcode_sha256": "f32047c37441f59f5cc39511584b10cc03ac3c933d9d8b4e91cb332aaef39819"
+  },
+  "base-classic-off": {
+   "slice_complete_ms": 14089,
+   "phase_shares": {
+    "outside": 0.0055,
+    "per_layer": 0.1857,
+    "postpass": 0.0496,
+    "prepass": 0.7598,
+    "validation": 0.0002
+   },
+   "prepass_ms": 10704.6,
+   "per_layer_ms": 2616.6,
+   "postpass_ms": 699.1,
+   "prepass_stage_ms": {
+    "PrePass::ShellClassification": 6201,
+    "PrePass::Slice": 2045,
+    "PrePass::SeamPlanning": 1208,
+    "PrePass::MeshAnalysis": 734,
+    "PrePass::SupportGeometry": 221,
+    "PrePass::OverhangAnnotation": 159,
+    "PrePass::PaintSegmentation": 33,
+    "PrePass::RegionMapping": 9,
+    "PrePass::LayerPlanning": 1,
+    "PrePass::SupportAnalysis": 0
+   },
+   "prepass_stage_sum_ms": 10611,
+   "repeat_max_share_delta_pp": 1.61,
+   "gcode_sha256": "33468ea96bb6cd93e5cad33fbd8c6041268b8a3ac4f13106e5fd133fcacba27c"
+  },
+  "base-classic-on": {
+   "slice_complete_ms": 51032,
+   "phase_shares": {
+    "outside": 0.0016,
+    "per_layer": 0.1204,
+    "postpass": 0.0419,
+    "prepass": 0.8369,
+    "validation": 0.0001
+   },
+   "prepass_ms": 42707.3,
+   "per_layer_ms": 6145.9,
+   "postpass_ms": 2136.1,
+   "prepass_stage_ms": {
+    "PrePass::SupportGeometry": 28042,
+    "PrePass::ShellClassification": 6092,
+    "PrePass::SupportAnalysis": 4289,
+    "PrePass::Slice": 2009,
+    "PrePass::SeamPlanning": 1168,
+    "PrePass::MeshAnalysis": 714,
+    "PrePass::OverhangAnnotation": 158,
+    "PrePass::PaintSegmentation": 29,
+    "PrePass::RegionMapping": 9,
+    "PrePass::LayerPlanning": 1
+   },
+   "prepass_stage_sum_ms": 42511,
+   "repeat_max_share_delta_pp": 0.43,
+   "gcode_sha256": "661b9a510669c18f1b342435785c408310bf93ea34ebf878f6dcd736391ab885"
+  },
+  "base-arachne-off": {
+   "slice_complete_ms": 13767,
+   "phase_shares": {
+    "outside": 0.0057,
+    "per_layer": 0.2026,
+    "postpass": 0.0483,
+    "prepass": 0.7436,
+    "validation": 0.0002
+   },
+   "prepass_ms": 10237.0,
+   "per_layer_ms": 2789.0,
+   "postpass_ms": 664.7,
+   "prepass_stage_ms": {
+    "PrePass::ShellClassification": 5879,
+    "PrePass::Slice": 1986,
+    "PrePass::SeamPlanning": 1117,
+    "PrePass::MeshAnalysis": 650,
+    "PrePass::SupportGeometry": 214,
+    "PrePass::OverhangAnnotation": 157,
+    "PrePass::PaintSegmentation": 29,
+    "PrePass::RegionMapping": 10,
+    "PrePass::LayerPlanning": 1,
+    "PrePass::SupportAnalysis": 0
+   },
+   "prepass_stage_sum_ms": 10043,
+   "repeat_max_share_delta_pp": 1.61,
+   "gcode_sha256": "e861766a95fdb1b15827af49feaeeea1a5c54f0b390d34b6256ba0360c39598d"
+  },
+  "base-arachne-on": {
+   "slice_complete_ms": 50295,
+   "phase_shares": {
+    "outside": 0.0016,
+    "per_layer": 0.126,
+    "postpass": 0.0402,
+    "prepass": 0.8311,
+    "validation": 0.0001
+   },
+   "prepass_ms": 41800.0,
+   "per_layer_ms": 6339.0,
+   "postpass_ms": 2021.4,
+   "prepass_stage_ms": {
+    "PrePass::SupportGeometry": 27637,
+    "PrePass::ShellClassification": 5844,
+    "PrePass::SupportAnalysis": 4214,
+    "PrePass::Slice": 1995,
+    "PrePass::SeamPlanning": 1148,
+    "PrePass::MeshAnalysis": 655,
+    "PrePass::OverhangAnnotation": 153,
+    "PrePass::PaintSegmentation": 30,
+    "PrePass::RegionMapping": 9,
+    "PrePass::LayerPlanning": 1
+   },
+   "prepass_stage_sum_ms": 41686,
+   "repeat_max_share_delta_pp": 0.84,
+   "gcode_sha256": "2124b5f5e82b3cf2f7bf542ded0341c48c674a35267420a2815bcf65fcc9f58e"
+  }
+ },
+ "route": {
+  "benchy-classic-off": {
+   "t163_ratio": 1.7819,
+   "t163_pnp_s": 3.9002,
+   "t163_orca_s": 2.1888,
+   "t169_saving_pct": 7.978,
+   "estimated_ratio": 1.6397,
+   "required_cut": 0.3901,
+   "pnp_wall_of_record_s": 2.2449,
+   "orca_s": 2.1888
+  },
+  "benchy-classic-on": {
+   "t163_ratio": 2.8018,
+   "t163_pnp_s": 8.2413,
+   "t163_orca_s": 2.9414,
+   "t169_saving_pct": 15.208,
+   "estimated_ratio": 2.3757,
+   "required_cut": 0.5791,
+   "pnp_wall_of_record_s": 5.0237,
+   "orca_s": 2.9414
+  },
+  "benchy-arachne-off": {
+   "t163_ratio": 1.9398,
+   "t163_pnp_s": 4.8489,
+   "t163_orca_s": 2.4997,
+   "t169_saving_pct": 5.735,
+   "estimated_ratio": 1.8285,
+   "required_cut": 0.4531,
+   "pnp_wall_of_record_s": 2.3091,
+   "orca_s": 2.4997
+  },
+  "benchy-arachne-on": {
+   "t163_ratio": 2.8287,
+   "t163_pnp_s": 8.2694,
+   "t163_orca_s": 2.9234,
+   "t169_saving_pct": 14.756,
+   "estimated_ratio": 2.4113,
+   "required_cut": 0.5853,
+   "pnp_wall_of_record_s": 5.1367,
+   "orca_s": 2.9234
+  },
+  "base-classic-off": {
+   "t163_ratio": 1.3892,
+   "t163_pnp_s": 25.283,
+   "t163_orca_s": 18.2003,
+   "t169_saving_pct": 25.082,
+   "estimated_ratio": 1.0407,
+   "required_cut": 0.0391,
+   "pnp_wall_of_record_s": 13.73,
+   "orca_s": 18.2003
+  },
+  "base-classic-on": {
+   "t163_ratio": 2.7104,
+   "t163_pnp_s": 77.5366,
+   "t163_orca_s": 28.607,
+   "t169_saving_pct": 21.914,
+   "estimated_ratio": 2.1165,
+   "required_cut": 0.5275,
+   "pnp_wall_of_record_s": 49.3356,
+   "orca_s": 28.607
+  },
+  "base-arachne-off": {
+   "t163_ratio": 1.4565,
+   "t163_pnp_s": 25.8608,
+   "t163_orca_s": 17.7549,
+   "t169_saving_pct": 23.43,
+   "estimated_ratio": 1.1153,
+   "required_cut": 0.1034,
+   "pnp_wall_of_record_s": 14.3965,
+   "orca_s": 17.7549
+  },
+  "base-arachne-on": {
+   "t163_ratio": 2.6179,
+   "t163_pnp_s": 76.7322,
+   "t163_orca_s": 29.3102,
+   "t169_saving_pct": 22.407,
+   "estimated_ratio": 2.0313,
+   "required_cut": 0.5077,
+   "pnp_wall_of_record_s": 49.8321,
+   "orca_s": 29.3102
+  }
+ },
+ "offset_ratios": {
+  "benchy-classic-off": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 2365000000,
+    "candidate_ns": 2425500000,
+    "ratio": 1.0256
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 312400000,
+    "candidate_ns": 310900000,
+    "ratio": 0.9952
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 5392600000,
+    "candidate_ns": 3182100000,
+    "ratio": 0.5901
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 1458600000,
+    "candidate_ns": 1207200000,
+    "ratio": 0.8276
+   }
+  },
+  "benchy-classic-on": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 11279100000,
+    "candidate_ns": 10824400000,
+    "ratio": 0.9597
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 325900000,
+    "candidate_ns": 330800000,
+    "ratio": 1.015
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 13861000000,
+    "candidate_ns": 7604600000,
+    "ratio": 0.5486
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 1551700000,
+    "candidate_ns": 1162100000,
+    "ratio": 0.7489
+   }
+  },
+  "benchy-arachne-off": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 2379600000,
+    "candidate_ns": 2369000000,
+    "ratio": 0.9955
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 311100000,
+    "candidate_ns": 310300000,
+    "ratio": 0.9974
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 5221600000,
+    "candidate_ns": 2903700000,
+    "ratio": 0.5561
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 1492600000,
+    "candidate_ns": 1210600000,
+    "ratio": 0.8111
+   }
+  },
+  "benchy-arachne-on": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 11349700000,
+    "candidate_ns": 10863800000,
+    "ratio": 0.9572
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 313000000,
+    "candidate_ns": 347900000,
+    "ratio": 1.1115
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 13693300000,
+    "candidate_ns": 7511800000,
+    "ratio": 0.5486
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 1492600000,
+    "candidate_ns": 1208400000,
+    "ratio": 0.8096
+   }
+  },
+  "base-classic-off": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 23684000000,
+    "candidate_ns": 22960000000,
+    "ratio": 0.9694
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 2534000000,
+    "candidate_ns": 2510000000,
+    "ratio": 0.9905
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 82061000000,
+    "candidate_ns": 40251000000,
+    "ratio": 0.4905
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 15640000000,
+    "candidate_ns": 13003000000,
+    "ratio": 0.8314
+   }
+  },
+  "base-classic-on": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 201784000000,
+    "candidate_ns": 198098000000,
+    "ratio": 0.9817
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 2543000000,
+    "candidate_ns": 2555000000,
+    "ratio": 1.0047
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 247894000000,
+    "candidate_ns": 110348000000,
+    "ratio": 0.4451
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 15948000000,
+    "candidate_ns": 12739000000,
+    "ratio": 0.7988
+   }
+  },
+  "base-arachne-off": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 23620000000,
+    "candidate_ns": 24101000000,
+    "ratio": 1.0204
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 2505000000,
+    "candidate_ns": 2525000000,
+    "ratio": 1.008
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 80454000000,
+    "candidate_ns": 39337000000,
+    "ratio": 0.4889
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 15919900000,
+    "candidate_ns": 13302700000,
+    "ratio": 0.8356
+   }
+  },
+  "base-arachne-on": {
+   "polygon_ops::clip_polygons": {
+    "baseline_ns": 201224000000,
+    "candidate_ns": 200357000000,
+    "ratio": 0.9957
+   },
+   "polygon_ops::closing_ex": {
+    "baseline_ns": 2476000000,
+    "candidate_ns": 2475000000,
+    "ratio": 0.9996
+   },
+   "polygon_ops::offset": {
+    "baseline_ns": 245847000000,
+    "candidate_ns": 115228000000,
+    "ratio": 0.4687
+   },
+   "polygon_ops::offset2_ex": {
+    "baseline_ns": 15416000000,
+    "candidate_ns": 13471800000,
+    "ratio": 0.8739
+   }
+  }
+ },
+ "stage_budget": {
+  "benchy-classic-off": {
+   "estimated_ratio": 1.6397,
+   "required_cut": 0.3901,
+   "prepass_share": 0.5819,
+   "per_layer_share": 0.3236,
+   "postpass_share": 0.0603,
+   "stages": {
+    "PrePass::ShellClassification": {
+     "ms": 797,
+     "share_of_cell": 0.3407,
+     "share_of_prepass": 0.5856,
+     "ratio_if_zero": 1.081,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 216,
+     "share_of_cell": 0.0923,
+     "share_of_prepass": 0.1587,
+     "ratio_if_zero": 1.4883,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 147,
+     "share_of_cell": 0.0628,
+     "share_of_prepass": 0.108,
+     "ratio_if_zero": 1.5366,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 90,
+     "share_of_cell": 0.0385,
+     "share_of_prepass": 0.0661,
+     "ratio_if_zero": 1.5766,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportGeometry": {
+     "ms": 38,
+     "share_of_cell": 0.0162,
+     "share_of_prepass": 0.0279,
+     "ratio_if_zero": 1.6131,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 20,
+     "share_of_cell": 0.0086,
+     "share_of_prepass": 0.0147,
+     "ratio_if_zero": 1.6257,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 5,
+     "share_of_cell": 0.0021,
+     "share_of_prepass": 0.0037,
+     "ratio_if_zero": 1.6362,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 4,
+     "share_of_cell": 0.0017,
+     "share_of_prepass": 0.0029,
+     "ratio_if_zero": 1.6369,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.6397,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.6397,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "benchy-classic-on": {
+   "estimated_ratio": 2.3757,
+   "required_cut": 0.5791,
+   "prepass_share": 0.7167,
+   "per_layer_share": 0.1853,
+   "postpass_share": 0.0834,
+   "stages": {
+    "PrePass::SupportGeometry": {
+     "ms": 2165,
+     "share_of_cell": 0.4048,
+     "share_of_prepass": 0.5648,
+     "ratio_if_zero": 1.414,
+     "wins_if_zero": false
+    },
+    "PrePass::ShellClassification": {
+     "ms": 802,
+     "share_of_cell": 0.15,
+     "share_of_prepass": 0.2092,
+     "ratio_if_zero": 2.0194,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 352,
+     "share_of_cell": 0.0658,
+     "share_of_prepass": 0.0918,
+     "ratio_if_zero": 2.2193,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 217,
+     "share_of_cell": 0.0406,
+     "share_of_prepass": 0.0566,
+     "ratio_if_zero": 2.2793,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 141,
+     "share_of_cell": 0.0264,
+     "share_of_prepass": 0.0368,
+     "ratio_if_zero": 2.3131,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 88,
+     "share_of_cell": 0.0165,
+     "share_of_prepass": 0.023,
+     "ratio_if_zero": 2.3366,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 20,
+     "share_of_cell": 0.0037,
+     "share_of_prepass": 0.0052,
+     "ratio_if_zero": 2.3668,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 4,
+     "share_of_cell": 0.0007,
+     "share_of_prepass": 0.001,
+     "ratio_if_zero": 2.3739,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 4,
+     "share_of_cell": 0.0007,
+     "share_of_prepass": 0.001,
+     "ratio_if_zero": 2.3739,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 2.3757,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "benchy-arachne-off": {
+   "estimated_ratio": 1.8285,
+   "required_cut": 0.4531,
+   "prepass_share": 0.5589,
+   "per_layer_share": 0.3471,
+   "postpass_share": 0.062,
+   "stages": {
+    "PrePass::ShellClassification": {
+     "ms": 785,
+     "share_of_cell": 0.3221,
+     "share_of_prepass": 0.5764,
+     "ratio_if_zero": 1.2395,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 219,
+     "share_of_cell": 0.0899,
+     "share_of_prepass": 0.1608,
+     "ratio_if_zero": 1.6642,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 139,
+     "share_of_cell": 0.057,
+     "share_of_prepass": 0.1021,
+     "ratio_if_zero": 1.7242,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 87,
+     "share_of_cell": 0.0357,
+     "share_of_prepass": 0.0639,
+     "ratio_if_zero": 1.7632,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportGeometry": {
+     "ms": 40,
+     "share_of_cell": 0.0164,
+     "share_of_prepass": 0.0294,
+     "ratio_if_zero": 1.7985,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 19,
+     "share_of_cell": 0.0078,
+     "share_of_prepass": 0.014,
+     "ratio_if_zero": 1.8142,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 5,
+     "share_of_cell": 0.0021,
+     "share_of_prepass": 0.0037,
+     "ratio_if_zero": 1.8247,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 5,
+     "share_of_cell": 0.0021,
+     "share_of_prepass": 0.0037,
+     "ratio_if_zero": 1.8247,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.8285,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.8285,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "benchy-arachne-on": {
+   "estimated_ratio": 2.4113,
+   "required_cut": 0.5853,
+   "prepass_share": 0.7003,
+   "per_layer_share": 0.2036,
+   "postpass_share": 0.0808,
+   "stages": {
+    "PrePass::SupportGeometry": {
+     "ms": 2155,
+     "share_of_cell": 0.3894,
+     "share_of_prepass": 0.556,
+     "ratio_if_zero": 1.4723,
+     "wins_if_zero": false
+    },
+    "PrePass::ShellClassification": {
+     "ms": 817,
+     "share_of_cell": 0.1476,
+     "share_of_prepass": 0.2108,
+     "ratio_if_zero": 2.0553,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 355,
+     "share_of_cell": 0.0641,
+     "share_of_prepass": 0.0916,
+     "ratio_if_zero": 2.2566,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 228,
+     "share_of_cell": 0.0412,
+     "share_of_prepass": 0.0588,
+     "ratio_if_zero": 2.312,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 138,
+     "share_of_cell": 0.0249,
+     "share_of_prepass": 0.0356,
+     "ratio_if_zero": 2.3512,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 91,
+     "share_of_cell": 0.0164,
+     "share_of_prepass": 0.0235,
+     "ratio_if_zero": 2.3716,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 20,
+     "share_of_cell": 0.0036,
+     "share_of_prepass": 0.0052,
+     "ratio_if_zero": 2.4026,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 5,
+     "share_of_cell": 0.0009,
+     "share_of_prepass": 0.0013,
+     "ratio_if_zero": 2.4091,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 5,
+     "share_of_cell": 0.0009,
+     "share_of_prepass": 0.0013,
+     "ratio_if_zero": 2.4091,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 2.4113,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "base-classic-off": {
+   "estimated_ratio": 1.0407,
+   "required_cut": 0.0391,
+   "prepass_share": 0.7598,
+   "per_layer_share": 0.1857,
+   "postpass_share": 0.0496,
+   "stages": {
+    "PrePass::ShellClassification": {
+     "ms": 6201,
+     "share_of_cell": 0.4401,
+     "share_of_prepass": 0.5793,
+     "ratio_if_zero": 0.5827,
+     "wins_if_zero": true
+    },
+    "PrePass::Slice": {
+     "ms": 2045,
+     "share_of_cell": 0.1451,
+     "share_of_prepass": 0.191,
+     "ratio_if_zero": 0.8896,
+     "wins_if_zero": true
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 1208,
+     "share_of_cell": 0.0857,
+     "share_of_prepass": 0.1128,
+     "ratio_if_zero": 0.9515,
+     "wins_if_zero": true
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 734,
+     "share_of_cell": 0.0521,
+     "share_of_prepass": 0.0686,
+     "ratio_if_zero": 0.9865,
+     "wins_if_zero": true
+    },
+    "PrePass::SupportGeometry": {
+     "ms": 221,
+     "share_of_cell": 0.0157,
+     "share_of_prepass": 0.0206,
+     "ratio_if_zero": 1.0244,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 159,
+     "share_of_cell": 0.0113,
+     "share_of_prepass": 0.0149,
+     "ratio_if_zero": 1.029,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 33,
+     "share_of_cell": 0.0023,
+     "share_of_prepass": 0.0031,
+     "ratio_if_zero": 1.0383,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 9,
+     "share_of_cell": 0.0006,
+     "share_of_prepass": 0.0008,
+     "ratio_if_zero": 1.04,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 1,
+     "share_of_cell": 0.0001,
+     "share_of_prepass": 0.0001,
+     "ratio_if_zero": 1.0406,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.0407,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "base-classic-on": {
+   "estimated_ratio": 2.1165,
+   "required_cut": 0.5275,
+   "prepass_share": 0.8369,
+   "per_layer_share": 0.1204,
+   "postpass_share": 0.0419,
+   "stages": {
+    "PrePass::SupportGeometry": {
+     "ms": 28042,
+     "share_of_cell": 0.5495,
+     "share_of_prepass": 0.6566,
+     "ratio_if_zero": 0.9535,
+     "wins_if_zero": true
+    },
+    "PrePass::ShellClassification": {
+     "ms": 6092,
+     "share_of_cell": 0.1194,
+     "share_of_prepass": 0.1426,
+     "ratio_if_zero": 1.8638,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 4289,
+     "share_of_cell": 0.084,
+     "share_of_prepass": 0.1004,
+     "ratio_if_zero": 1.9386,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 2009,
+     "share_of_cell": 0.0394,
+     "share_of_prepass": 0.047,
+     "ratio_if_zero": 2.0332,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 1168,
+     "share_of_cell": 0.0229,
+     "share_of_prepass": 0.0273,
+     "ratio_if_zero": 2.0681,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 714,
+     "share_of_cell": 0.014,
+     "share_of_prepass": 0.0167,
+     "ratio_if_zero": 2.0869,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 158,
+     "share_of_cell": 0.0031,
+     "share_of_prepass": 0.0037,
+     "ratio_if_zero": 2.1099,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 29,
+     "share_of_cell": 0.0006,
+     "share_of_prepass": 0.0007,
+     "ratio_if_zero": 2.1153,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 9,
+     "share_of_cell": 0.0002,
+     "share_of_prepass": 0.0002,
+     "ratio_if_zero": 2.1161,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 1,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 2.1165,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "base-arachne-off": {
+   "estimated_ratio": 1.1153,
+   "required_cut": 0.1034,
+   "prepass_share": 0.7436,
+   "per_layer_share": 0.2026,
+   "postpass_share": 0.0483,
+   "stages": {
+    "PrePass::ShellClassification": {
+     "ms": 5879,
+     "share_of_cell": 0.427,
+     "share_of_prepass": 0.5743,
+     "ratio_if_zero": 0.639,
+     "wins_if_zero": true
+    },
+    "PrePass::Slice": {
+     "ms": 1986,
+     "share_of_cell": 0.1443,
+     "share_of_prepass": 0.194,
+     "ratio_if_zero": 0.9544,
+     "wins_if_zero": true
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 1117,
+     "share_of_cell": 0.0811,
+     "share_of_prepass": 0.1091,
+     "ratio_if_zero": 1.0248,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 650,
+     "share_of_cell": 0.0472,
+     "share_of_prepass": 0.0635,
+     "ratio_if_zero": 1.0626,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportGeometry": {
+     "ms": 214,
+     "share_of_cell": 0.0155,
+     "share_of_prepass": 0.0209,
+     "ratio_if_zero": 1.098,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 157,
+     "share_of_cell": 0.0114,
+     "share_of_prepass": 0.0153,
+     "ratio_if_zero": 1.1026,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 29,
+     "share_of_cell": 0.0021,
+     "share_of_prepass": 0.0028,
+     "ratio_if_zero": 1.113,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 10,
+     "share_of_cell": 0.0007,
+     "share_of_prepass": 0.001,
+     "ratio_if_zero": 1.1145,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 1,
+     "share_of_cell": 0.0001,
+     "share_of_prepass": 0.0001,
+     "ratio_if_zero": 1.1152,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 0,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 1.1153,
+     "wins_if_zero": false
+    }
+   }
+  },
+  "base-arachne-on": {
+   "estimated_ratio": 2.0313,
+   "required_cut": 0.5077,
+   "prepass_share": 0.8311,
+   "per_layer_share": 0.126,
+   "postpass_share": 0.0402,
+   "stages": {
+    "PrePass::SupportGeometry": {
+     "ms": 27637,
+     "share_of_cell": 0.5495,
+     "share_of_prepass": 0.6612,
+     "ratio_if_zero": 0.9151,
+     "wins_if_zero": true
+    },
+    "PrePass::ShellClassification": {
+     "ms": 5844,
+     "share_of_cell": 0.1162,
+     "share_of_prepass": 0.1398,
+     "ratio_if_zero": 1.7953,
+     "wins_if_zero": false
+    },
+    "PrePass::SupportAnalysis": {
+     "ms": 4214,
+     "share_of_cell": 0.0838,
+     "share_of_prepass": 0.1008,
+     "ratio_if_zero": 1.8611,
+     "wins_if_zero": false
+    },
+    "PrePass::Slice": {
+     "ms": 1995,
+     "share_of_cell": 0.0397,
+     "share_of_prepass": 0.0477,
+     "ratio_if_zero": 1.9507,
+     "wins_if_zero": false
+    },
+    "PrePass::SeamPlanning": {
+     "ms": 1148,
+     "share_of_cell": 0.0228,
+     "share_of_prepass": 0.0275,
+     "ratio_if_zero": 1.9849,
+     "wins_if_zero": false
+    },
+    "PrePass::MeshAnalysis": {
+     "ms": 655,
+     "share_of_cell": 0.013,
+     "share_of_prepass": 0.0157,
+     "ratio_if_zero": 2.0048,
+     "wins_if_zero": false
+    },
+    "PrePass::OverhangAnnotation": {
+     "ms": 153,
+     "share_of_cell": 0.003,
+     "share_of_prepass": 0.0037,
+     "ratio_if_zero": 2.0251,
+     "wins_if_zero": false
+    },
+    "PrePass::PaintSegmentation": {
+     "ms": 30,
+     "share_of_cell": 0.0006,
+     "share_of_prepass": 0.0007,
+     "ratio_if_zero": 2.0301,
+     "wins_if_zero": false
+    },
+    "PrePass::RegionMapping": {
+     "ms": 9,
+     "share_of_cell": 0.0002,
+     "share_of_prepass": 0.0002,
+     "ratio_if_zero": 2.0309,
+     "wins_if_zero": false
+    },
+    "PrePass::LayerPlanning": {
+     "ms": 1,
+     "share_of_cell": 0.0,
+     "share_of_prepass": 0.0,
+     "ratio_if_zero": 2.0313,
+     "wins_if_zero": false
+    }
+   }
+  }
+ },
+ "s5": {
+  "benchy-classic-off": {
+   "census_layers": 56,
+   "whole_layer_thread_ms": 1198.5,
+   "windowed_thread_ms": 130.9,
+   "landed_saving_thread_ms": 1067.6,
+   "offset_ratio": 0.5901,
+   "landed_saving_rescaled_thread_ms": 630.0,
+   "residual_windowed_thread_ms": 77.2,
+   "stage_parallelism": 8.34,
+   "landed_pct_of_cell": 3.36,
+   "residual_pct_of_cell": 0.41
+  },
+  "base-classic-off": {
+   "census_layers": 130,
+   "whole_layer_thread_ms": 22963.7,
+   "windowed_thread_ms": 1937.4,
+   "landed_saving_thread_ms": 21026.3,
+   "offset_ratio": 0.4905,
+   "landed_saving_rescaled_thread_ms": 10313.4,
+   "residual_windowed_thread_ms": 950.3,
+   "stage_parallelism": 8.34,
+   "landed_pct_of_cell": 9.01,
+   "residual_pct_of_cell": 0.83
+  },
+  "base-classic-on": {
+   "census_layers": 130,
+   "whole_layer_thread_ms": 23086.4,
+   "windowed_thread_ms": 1991.6,
+   "landed_saving_thread_ms": 21094.8,
+   "offset_ratio": 0.4451,
+   "landed_saving_rescaled_thread_ms": 9389.3,
+   "residual_windowed_thread_ms": 886.5,
+   "stage_parallelism": 8.34,
+   "landed_pct_of_cell": 2.28,
+   "residual_pct_of_cell": 0.22
+  }
+ },
+ "s6": {
+  "benchy-classic-on": {
+   "family": "0.350000|none|0.000000",
+   "calls": 365,
+   "distinct_payloads": 186,
+   "repeat_calls": 179,
+   "family_total_thread_ms": 1243.0,
+   "landed_saving_thread_ms": 609.6,
+   "residual_distinct_thread_ms": 633.4,
+   "offset_ratio": 0.5486,
+   "landed_saving_rescaled_thread_ms": 334.4,
+   "residual_rescaled_thread_ms": 347.5,
+   "stage_parallelism": 2.19,
+   "landed_pct_of_cell": 3.04,
+   "residual_pct_of_cell": 3.16
+  },
+  "base-classic-on": {
+   "family": "0.350000|none|0.000000",
+   "calls": 864,
+   "distinct_payloads": 433,
+   "repeat_calls": 431,
+   "family_total_thread_ms": 28521.4,
+   "landed_saving_thread_ms": 14227.7,
+   "residual_distinct_thread_ms": 14293.7,
+   "offset_ratio": 0.4451,
+   "landed_saving_rescaled_thread_ms": 6332.8,
+   "residual_rescaled_thread_ms": 6362.1,
+   "stage_parallelism": 2.19,
+   "landed_pct_of_cell": 5.86,
+   "residual_pct_of_cell": 5.89
+  }
+ },
+ "census": {
+  "benchy-classic-off": {
+   "host_thread_ns": {
+    "polygon_ops::offset": 3383100000,
+    "polygon_ops::clip_polygons": 2513300000,
+    "polygon_ops::offset2_ex": 1307500000,
+    "polygon_ops::closing_ex": 353700000
+   },
+   "host_thread_total_ns": 7557600000,
+   "host_scope_shares": {
+    "polygon_ops::offset": 0.4476,
+    "polygon_ops::clip_polygons": 0.3326,
+    "polygon_ops::offset2_ex": 0.173,
+    "polygon_ops::closing_ex": 0.0468
+   },
+   "guest_fuel_total": 24226172485,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset2_ex": 2544220136,
+    "polygon_ops::clip_polygons": 4062158
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0002,
+    "polygon_ops::offset2_ex": 0.105
+   },
+   "top_modules": [
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 12723533464,
+     "calls": 240
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "fuel": 9256359935,
+     "calls": 240
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "fuel": 709042130,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.5252
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "share": 0.3821
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "share": 0.0293
+    }
+   ]
+  },
+  "benchy-classic-on": {
+   "host_thread_ns": {
+    "polygon_ops::clip_polygons": 11019800000,
+    "polygon_ops::offset": 7968900000,
+    "polygon_ops::offset2_ex": 1243000000,
+    "polygon_ops::closing_ex": 335300000
+   },
+   "host_thread_total_ns": 20567000000,
+   "host_scope_shares": {
+    "polygon_ops::clip_polygons": 0.5358,
+    "polygon_ops::offset": 0.3875,
+    "polygon_ops::offset2_ex": 0.0604,
+    "polygon_ops::closing_ex": 0.0163
+   },
+   "guest_fuel_total": 75604424858,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset2_ex": 2543985837,
+    "polygon_ops::clip_polygons": 1334501423,
+    "polygon_ops::offset": 76100245
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0177,
+    "polygon_ops::offset": 0.001,
+    "polygon_ops::offset2_ex": 0.0336
+   },
+   "top_modules": [
+    {
+     "module": "com.core.tree-support",
+     "fuel": 43622214673,
+     "calls": 240
+    },
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 12723405195,
+     "calls": 240
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "fuel": 9256073820,
+     "calls": 240
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.tree-support",
+     "share": 0.577
+    },
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.1683
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "share": 0.1224
+    }
+   ]
+  },
+  "benchy-arachne-off": {
+   "host_thread_ns": {
+    "polygon_ops::offset": 3076900000,
+    "polygon_ops::clip_polygons": 2467400000,
+    "polygon_ops::offset2_ex": 1314400000,
+    "polygon_ops::closing_ex": 321800000
+   },
+   "host_thread_total_ns": 7180500000,
+   "host_scope_shares": {
+    "polygon_ops::offset": 0.4285,
+    "polygon_ops::clip_polygons": 0.3436,
+    "polygon_ops::offset2_ex": 0.1831,
+    "polygon_ops::closing_ex": 0.0448
+   },
+   "guest_fuel_total": 23939781492,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset": 331104045,
+    "polygon_ops::clip_polygons": 4694259
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0002,
+    "polygon_ops::offset": 0.0138
+   },
+   "top_modules": [
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 13794844113,
+     "calls": 240
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "fuel": 7835296459,
+     "calls": 240
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "fuel": 709042130,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.5762
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "share": 0.3273
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "share": 0.0296
+    }
+   ]
+  },
+  "benchy-arachne-on": {
+   "host_thread_ns": {
+    "polygon_ops::clip_polygons": 11338100000,
+    "polygon_ops::offset": 8402000000,
+    "polygon_ops::offset2_ex": 1262000000,
+    "polygon_ops::closing_ex": 331300000
+   },
+   "host_thread_total_ns": 21333400000,
+   "host_scope_shares": {
+    "polygon_ops::clip_polygons": 0.5315,
+    "polygon_ops::offset": 0.3938,
+    "polygon_ops::offset2_ex": 0.0592,
+    "polygon_ops::closing_ex": 0.0155
+   },
+   "guest_fuel_total": 75319823616,
+   "guest_fuel_scopes": {
+    "polygon_ops::clip_polygons": 1334895617,
+    "polygon_ops::offset": 407205576
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0177,
+    "polygon_ops::offset": 0.0054
+   },
+   "top_modules": [
+    {
+     "module": "com.core.tree-support",
+     "fuel": 43622155496,
+     "calls": 240
+    },
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 13795050822,
+     "calls": 240
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "fuel": 7835375768,
+     "calls": 240
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.tree-support",
+     "share": 0.5792
+    },
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.1832
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "share": 0.104
+    }
+   ]
+  },
+  "base-classic-off": {
+   "host_thread_ns": {
+    "polygon_ops::offset": 45502000000,
+    "polygon_ops::clip_polygons": 26197000000,
+    "polygon_ops::offset2_ex": 14300000000,
+    "polygon_ops::closing_ex": 2847000000
+   },
+   "host_thread_total_ns": 88846000000,
+   "host_scope_shares": {
+    "polygon_ops::offset": 0.5121,
+    "polygon_ops::clip_polygons": 0.2949,
+    "polygon_ops::offset2_ex": 0.161,
+    "polygon_ops::closing_ex": 0.032
+   },
+   "guest_fuel_total": 138825758589,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset2_ex": 25539530947,
+    "polygon_ops::clip_polygons": 787839
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::offset2_ex": 0.184,
+    "polygon_ops::clip_polygons": 0.0
+   },
+   "top_modules": [
+    {
+     "module": "com.core.classic-perimeters",
+     "fuel": 90217095086,
+     "calls": 496
+    },
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 38630109677,
+     "calls": 496
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "fuel": 3887801325,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.classic-perimeters",
+     "share": 0.6499
+    },
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.2783
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "share": 0.028
+    }
+   ]
+  },
+  "base-classic-on": {
+   "host_thread_ns": {
+    "polygon_ops::clip_polygons": 208785000000,
+    "polygon_ops::offset": 117304000000,
+    "polygon_ops::offset2_ex": 14545000000,
+    "polygon_ops::closing_ex": 2749000000
+   },
+   "host_thread_total_ns": 343383000000,
+   "host_scope_shares": {
+    "polygon_ops::clip_polygons": 0.608,
+    "polygon_ops::offset": 0.3416,
+    "polygon_ops::offset2_ex": 0.0424,
+    "polygon_ops::closing_ex": 0.008
+   },
+   "guest_fuel_total": 592834762240,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset2_ex": 25539902927,
+    "polygon_ops::clip_polygons": 11730668382,
+    "polygon_ops::offset": 988850273
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0198,
+    "polygon_ops::offset": 0.0017,
+    "polygon_ops::offset2_ex": 0.0431
+   },
+   "top_modules": [
+    {
+     "module": "com.core.tree-support",
+     "fuel": 389255744213,
+     "calls": 496
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "fuel": 90217844354,
+     "calls": 496
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "fuel": 61425310860,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.tree-support",
+     "share": 0.6566
+    },
+    {
+     "module": "com.core.classic-perimeters",
+     "share": 0.1522
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "share": 0.1036
+    }
+   ]
+  },
+  "base-arachne-off": {
+   "host_thread_ns": {
+    "polygon_ops::offset": 40630000000,
+    "polygon_ops::clip_polygons": 24930000000,
+    "polygon_ops::offset2_ex": 14328300000,
+    "polygon_ops::closing_ex": 2614000000
+   },
+   "host_thread_total_ns": 82502300000,
+   "host_scope_shares": {
+    "polygon_ops::offset": 0.4925,
+    "polygon_ops::clip_polygons": 0.3022,
+    "polygon_ops::offset2_ex": 0.1737,
+    "polygon_ops::closing_ex": 0.0317
+   },
+   "guest_fuel_total": 118075127852,
+   "guest_fuel_scopes": {
+    "polygon_ops::offset": 2484170591,
+    "polygon_ops::clip_polygons": 821871
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::offset": 0.021,
+    "polygon_ops::clip_polygons": 0.0
+   },
+   "top_modules": [
+    {
+     "module": "com.core.arachne-perimeters",
+     "fuel": 66124765864,
+     "calls": 496
+    },
+    {
+     "module": "com.core.infill-linker",
+     "fuel": 41972356211,
+     "calls": 496
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "fuel": 3887801325,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.arachne-perimeters",
+     "share": 0.56
+    },
+    {
+     "module": "com.core.infill-linker",
+     "share": 0.3555
+    },
+    {
+     "module": "com.core.seam-planner-default",
+     "share": 0.0329
+    }
+   ]
+  },
+  "base-arachne-on": {
+   "host_thread_ns": {
+    "polygon_ops::clip_polygons": 209131000000,
+    "polygon_ops::offset": 117255000000,
+    "polygon_ops::offset2_ex": 14294600000,
+    "polygon_ops::closing_ex": 2736000000
+   },
+   "host_thread_total_ns": 343416600000,
+   "host_scope_shares": {
+    "polygon_ops::clip_polygons": 0.609,
+    "polygon_ops::offset": 0.3414,
+    "polygon_ops::offset2_ex": 0.0416,
+    "polygon_ops::closing_ex": 0.008
+   },
+   "guest_fuel_total": 572083886307,
+   "guest_fuel_scopes": {
+    "polygon_ops::clip_polygons": 11731167023,
+    "polygon_ops::offset": 3473611263
+   },
+   "guest_fuel_scope_shares": {
+    "polygon_ops::clip_polygons": 0.0205,
+    "polygon_ops::offset": 0.0061
+   },
+   "top_modules": [
+    {
+     "module": "com.core.tree-support",
+     "fuel": 389257193887,
+     "calls": 496
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "fuel": 66125727555,
+     "calls": 496
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "fuel": 61425311328,
+     "calls": 1
+    }
+   ],
+   "top_module_shares": [
+    {
+     "module": "com.core.tree-support",
+     "share": 0.6804
+    },
+    {
+     "module": "com.core.arachne-perimeters",
+     "share": 0.1156
+    },
+    {
+     "module": "com.core.tree-support-planner",
+     "share": 0.1074
+    }
+   ]
+  }
+ },
+ "profile_scopes": {
+  "benchy-classic-off": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 4062158,
+    "polygon_ops::offset2_ex": 2544220136
+   },
+   "wall": {
+    "polygon_ops::offset": 3383100000,
+    "polygon_ops::clip_polygons": 2513300000,
+    "polygon_ops::offset2_ex": 1307500000,
+    "polygon_ops::closing_ex": 353700000
+   }
+  },
+  "benchy-classic-on": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 1334501423,
+    "polygon_ops::offset": 76100245,
+    "polygon_ops::offset2_ex": 2543985837
+   },
+   "wall": {
+    "polygon_ops::clip_polygons": 11019800000,
+    "polygon_ops::offset": 7968900000,
+    "polygon_ops::offset2_ex": 1243000000,
+    "polygon_ops::closing_ex": 335300000
+   }
+  },
+  "benchy-arachne-off": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 4694259,
+    "polygon_ops::offset": 331104045
+   },
+   "wall": {
+    "polygon_ops::offset": 3076900000,
+    "polygon_ops::clip_polygons": 2467400000,
+    "polygon_ops::offset2_ex": 1314400000,
+    "polygon_ops::closing_ex": 321800000
+   }
+  },
+  "benchy-arachne-on": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 1334895617,
+    "polygon_ops::offset": 407205576
+   },
+   "wall": {
+    "polygon_ops::clip_polygons": 11338100000,
+    "polygon_ops::offset": 8402000000,
+    "polygon_ops::offset2_ex": 1262000000,
+    "polygon_ops::closing_ex": 331300000
+   }
+  },
+  "base-classic-off": {
+   "fuel": {
+    "polygon_ops::offset2_ex": 25539530947,
+    "polygon_ops::clip_polygons": 787839
+   },
+   "wall": {
+    "polygon_ops::offset": 45502000000,
+    "polygon_ops::clip_polygons": 26197000000,
+    "polygon_ops::offset2_ex": 14300000000,
+    "polygon_ops::closing_ex": 2847000000
+   }
+  },
+  "base-classic-on": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 11730668382,
+    "polygon_ops::offset": 988850273,
+    "polygon_ops::offset2_ex": 25539902927
+   },
+   "wall": {
+    "polygon_ops::clip_polygons": 208785000000,
+    "polygon_ops::offset": 117304000000,
+    "polygon_ops::offset2_ex": 14545000000,
+    "polygon_ops::closing_ex": 2749000000
+   }
+  },
+  "base-arachne-off": {
+   "fuel": {
+    "polygon_ops::offset": 2484170591,
+    "polygon_ops::clip_polygons": 821871
+   },
+   "wall": {
+    "polygon_ops::offset": 40630000000,
+    "polygon_ops::clip_polygons": 24930000000,
+    "polygon_ops::offset2_ex": 14328300000,
+    "polygon_ops::closing_ex": 2614000000
+   }
+  },
+  "base-arachne-on": {
+   "fuel": {
+    "polygon_ops::clip_polygons": 11731167023,
+    "polygon_ops::offset": 3473611263
+   },
+   "wall": {
+    "polygon_ops::clip_polygons": 209131000000,
+    "polygon_ops::offset": 117255000000,
+    "polygon_ops::offset2_ex": 14294600000,
+    "polygon_ops::closing_ex": 2736000000
+   }
+  }
+ }
+}

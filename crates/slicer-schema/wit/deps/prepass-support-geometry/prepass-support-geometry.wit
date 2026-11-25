@@ -1,4 +1,4 @@
-package slicer:prepass-support-geometry@2.0.0;
+package slicer:prepass-support-geometry@2.1.0;
 
 interface support-geometry-types {
     use slicer:types/geometry.{ex-polygon, point3};
@@ -99,9 +99,19 @@ interface support-geometry-types {
         variant-chain: list<tuple<string, paint-value>>,
         family-id: string,
     }
+    record support-analysis-plane-entry {
+        global-support-layer-index: u32,
+        object-id: object-id,
+        polygons: list<ex-polygon>,
+    }
     record support-analysis-view {
         candidates: list<support-analysis-candidate>,
         model-occupancy: list<support-analysis-geometry-entry>,
+        /// Object-wide model cross-sections at each layer's print plane
+        /// (`layer.z`), the plane the host's exact-Z occupancy gate validates.
+        /// `model-occupancy` is midpoint-sampled (canonical `compute_slice_z`);
+        /// planners carve against both. Additive in the 2.1.0 package.
+        print-plane-occupancy: list<support-analysis-plane-entry>,
         termination-surfaces: list<support-analysis-geometry-entry>,
         shared-settings: list<tuple<string, string>>,
         baseline-feasible-envelope: list<ex-polygon>,

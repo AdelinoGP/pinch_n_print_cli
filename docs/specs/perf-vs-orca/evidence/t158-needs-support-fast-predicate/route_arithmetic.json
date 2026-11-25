@@ -1,0 +1,101 @@
+{
+ "note": "ESTIMATE, not a new scoreboard of record. Ratios compose t154's cross-window ledger with t158's measured separate-arm median wall deltas. Canonical-prepass results subtract the whole measured wall saving from t154's projected PnP wall; no t157 estimate is added.",
+ "cells": {
+  "base-arachne-off": {
+   "estimate": true,
+   "orca_s": 14.92,
+   "pre_t158_ratio": 1.798099,
+   "t158_wall_saving_pct": 14.6369,
+   "t158_wall_saving_s": 4.232994,
+   "post_t158_ratio": 1.534913,
+   "pre_t158_required_cut_pct": 44.39,
+   "post_t158_required_cut_pct": 34.85,
+   "pre_t158_canonical_prepass_result": 0.6975,
+   "post_t158_canonical_prepass_result": 0.413787
+  },
+  "base-arachne-on": {
+   "estimate": true,
+   "orca_s": 25.822,
+   "pre_t158_ratio": 3.060266,
+   "t158_wall_saving_pct": 7.5176,
+   "t158_wall_saving_s": 6.368922,
+   "post_t158_ratio": 2.830207,
+   "pre_t158_required_cut_pct": 67.32,
+   "post_t158_required_cut_pct": 64.67,
+   "pre_t158_canonical_prepass_result": 0.9667,
+   "post_t158_canonical_prepass_result": 0.720053
+  },
+  "base-classic-off": {
+   "estimate": true,
+   "orca_s": 13.414,
+   "pre_t158_ratio": 1.826978,
+   "t158_wall_saving_pct": 14.8652,
+   "t158_wall_saving_s": 4.248864,
+   "post_t158_ratio": 1.555394,
+   "pre_t158_required_cut_pct": 45.26,
+   "post_t158_required_cut_pct": 35.71,
+   "pre_t158_canonical_prepass_result": 0.7433,
+   "post_t158_canonical_prepass_result": 0.426552
+  },
+  "base-classic-on": {
+   "estimate": true,
+   "orca_s": 21.598,
+   "pre_t158_ratio": 3.219746,
+   "t158_wall_saving_pct": 5.4202,
+   "t158_wall_saving_s": 4.676451,
+   "post_t158_ratio": 3.045229,
+   "pre_t158_required_cut_pct": 68.94,
+   "post_t158_required_cut_pct": 67.16,
+   "pre_t158_canonical_prepass_result": 1.0508,
+   "post_t158_canonical_prepass_result": 0.834278
+  },
+  "benchy-arachne-off": {
+   "estimate": true,
+   "orca_s": 1.983,
+   "pre_t158_ratio": 1.762759,
+   "t158_wall_saving_pct": -0.0762,
+   "t158_wall_saving_s": -0.002739,
+   "post_t158_ratio": 1.764102,
+   "pre_t158_required_cut_pct": 43.27,
+   "post_t158_required_cut_pct": 43.31,
+   "pre_t158_canonical_prepass_result": 0.6685,
+   "post_t158_canonical_prepass_result": 0.669881
+  },
+  "benchy-arachne-on": {
+   "estimate": true,
+   "orca_s": 2.591,
+   "pre_t158_ratio": 2.691228,
+   "t158_wall_saving_pct": 1.5993,
+   "t158_wall_saving_s": 0.126766,
+   "post_t158_ratio": 2.648187,
+   "pre_t158_required_cut_pct": 62.84,
+   "post_t158_required_cut_pct": 62.24,
+   "pre_t158_canonical_prepass_result": 0.9008,
+   "post_t158_canonical_prepass_result": 0.851874
+  },
+  "benchy-classic-off": {
+   "estimate": true,
+   "orca_s": 1.915,
+   "pre_t158_ratio": 2.006839,
+   "t158_wall_saving_pct": 4.7146,
+   "t158_wall_saving_s": 0.172501,
+   "post_t158_ratio": 1.912225,
+   "pre_t158_required_cut_pct": 50.17,
+   "post_t158_required_cut_pct": 47.7,
+   "pre_t158_canonical_prepass_result": 0.7395,
+   "post_t158_canonical_prepass_result": 0.649421
+  },
+  "benchy-classic-on": {
+   "estimate": true,
+   "orca_s": 2.442,
+   "pre_t158_ratio": 2.571103,
+   "t158_wall_saving_pct": 0.7657,
+   "t158_wall_saving_s": 0.058408,
+   "post_t158_ratio": 2.551416,
+   "pre_t158_required_cut_pct": 61.11,
+   "post_t158_required_cut_pct": 60.81,
+   "pre_t158_canonical_prepass_result": 0.8573,
+   "post_t158_canonical_prepass_result": 0.833382
+  }
+ }
+}

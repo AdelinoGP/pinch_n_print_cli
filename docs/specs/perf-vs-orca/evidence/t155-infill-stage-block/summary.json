@@ -1,0 +1,56 @@
+{
+ "ticket": "155-infill-stage-block-base-on-residual",
+ "headline": "The first Layer::Infill dispatch block is the prepared-region derivation (prepare_slice_regions -> derive_needs_support), paid twice per layer because the fill-polygon sync clears the arena memo; the second derivation is redundant and its ceiling exceeds base classic-on's 1.096 s requirement.",
+ "ledger_constants": {
+  "base-classic-off": {
+   "effective_parallelism": 10.91,
+   "pnp_wall_of_record_s": 24.51,
+   "orca_wall_s": 13.41
+  },
+  "base-classic-on": {
+   "effective_parallelism": 11.18,
+   "pnp_wall_of_record_s": 69.54,
+   "orca_wall_s": 21.598
+  }
+ },
+ "cells": {
+  "base-classic-off": {
+   "provenance": "thread sums: this take's probe-v3 pass (probe.json); effective parallelism and walls: t154's carrier table / destination arithmetic (carried)",
+   "first_perimeters_derivation_thread_s": 26.045,
+   "redundant_infill_derivation_thread_s": 25.986,
+   "infill_first_dispatch_bracket_thread_s": 26.652,
+   "prep_views_share_of_bracket": 0.975,
+   "other_infill_modules_prep_views_thread_s": 0.018,
+   "per_layer_thread_s": 71.264,
+   "redundant_share_of_per_layer_thread": 0.3646,
+   "ceiling_wall_s": 2.382,
+   "floor_s": 0.1961,
+   "floor_multiple": 12.15,
+   "cell_share_of_pnp_wall": 0.0972,
+   "required_wall_cut_s": 11.1,
+   "share_of_required_cut": 0.2146,
+   "needs_support_share_of_prepare_regions": 0.9425
+  },
+  "base-classic-on": {
+   "provenance": "thread sums: this take's probe-v3 pass (probe.json); effective parallelism and walls: t154's carrier table / destination arithmetic (carried)",
+   "first_perimeters_derivation_thread_s": 26.341,
+   "redundant_infill_derivation_thread_s": 26.101,
+   "infill_first_dispatch_bracket_thread_s": 26.815,
+   "prep_views_share_of_bracket": 0.9734,
+   "other_infill_modules_prep_views_thread_s": 0.015,
+   "per_layer_thread_s": 113.052,
+   "redundant_share_of_per_layer_thread": 0.2309,
+   "ceiling_wall_s": 2.335,
+   "floor_s": 0.5563,
+   "floor_multiple": 4.2,
+   "cell_share_of_pnp_wall": 0.0336,
+   "required_wall_cut_s": 47.942,
+   "share_of_required_cut": 0.0487,
+   "needs_support_share_of_prepare_regions": 0.9436,
+   "base_on_requirement_s": 1.096,
+   "ceiling_over_requirement": 2.13,
+   "indicative_canonical_prepass_ratio": 1.051,
+   "indicative_ratio_after_ceiling": 0.943
+  }
+ }
+}

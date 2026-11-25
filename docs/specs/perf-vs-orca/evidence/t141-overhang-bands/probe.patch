@@ -1,0 +1,122 @@
+diff --git a/crates/slicer-core/src/algos/overhang_annotation.rs b/crates/slicer-core/src/algos/overhang_annotation.rs
+index b29cae69..24055aba 100644
+--- a/crates/slicer-core/src/algos/overhang_annotation.rs
++++ b/crates/slicer-core/src/algos/overhang_annotation.rs
+@@ -99,6 +99,47 @@ const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
+ /// partition and to the previous layer's slice boundary contours. **Layers
+ /// with no overhang have their key absent** in both maps — see the module
+ /// doc-comment's "Empty-layer semantics" section.
++/// TEMPORARY t141 probe (revert before commit): accumulates the band
++/// construction's thread-time and the stage's call wall so the deletion's
++/// ceiling can be priced on the current tree.
++pub mod probe {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    pub static STAGE_NS: AtomicU64 = AtomicU64::new(0);
++    pub static BAND_NS: AtomicU64 = AtomicU64::new(0);
++    pub static BAND_LAYERS: AtomicU64 = AtomicU64::new(0);
++    pub static OFFHANG_LAYERS: AtomicU64 = AtomicU64::new(0);
++    pub static OFFSET_CALLS: AtomicU64 = AtomicU64::new(0);
++    pub static CLIP_CALLS: AtomicU64 = AtomicU64::new(0);
++
++    #[inline]
++    pub fn enabled() -> bool {
++        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++        *ON.get_or_init(|| std::env::var_os("PNP_PROBE_OVERHANG_BANDS").is_some())
++    }
++
++    #[inline]
++    pub fn add(counter: &AtomicU64, ns: u128) {
++        counter.fetch_add(ns as u64, Ordering::Relaxed);
++    }
++
++    pub fn report() {
++        if !enabled() {
++            return;
++        }
++        let ms = |ns: u64| ns as f64 / 1_000_000.0;
++        eprintln!(
++            "[t141] stage_wall_ms={:.1} band_thread_ms={:.1} band_layers={} overhang_layers={} offsets={} clips={}",
++            ms(STAGE_NS.load(Ordering::Relaxed)),
++            ms(BAND_NS.load(Ordering::Relaxed)),
++            BAND_LAYERS.load(Ordering::Relaxed),
++            OFFHANG_LAYERS.load(Ordering::Relaxed),
++            OFFSET_CALLS.load(Ordering::Relaxed),
++            CLIP_CALLS.load(Ordering::Relaxed),
++        );
++    }
++}
++
+ pub fn annotate_overhangs(
+     layer_footprints: &[(u32, Vec<ExPolygon>)],
+     line_width_mm: f32,
+@@ -109,6 +150,11 @@ pub fn annotate_overhangs(
+     if layer_footprints.len() < 2 {
+         return (HashMap::new(), HashMap::new());
+     }
++    let probe_start = if probe::enabled() {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+ 
+     // One O(layers) sweep over already-computed cross-sections — the object's
+     // slice footprints, supplied by the caller. Overhang is derived from the
+@@ -139,6 +185,9 @@ pub fn annotate_overhangs(
+             if overhang_area.is_empty() {
+                 return None;
+             }
++            if probe::enabled() {
++                probe::OFFHANG_LAYERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
+ 
+             let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
+             if bands.is_empty() {
+@@ -156,6 +205,9 @@ pub fn annotate_overhangs(
+         bands_map.insert(layer_index, bands);
+         prev_map.insert(layer_index, prev);
+     }
++    if let Some(start) = probe_start {
++        probe::add(&probe::STAGE_NS, start.elapsed().as_nanos());
++    }
+     (bands_map, prev_map)
+ }
+ 
+@@ -503,6 +555,11 @@ fn partition_into_bands(
+     overhang_area: &[ExPolygon],
+     line_width_mm: f32,
+ ) -> Vec<QuartileBand> {
++    let probe_start = if probe::enabled() {
++        Some(std::time::Instant::now())
++    } else {
++        None
++    };
+     // Cumulative overhang region within each interior threshold distance of
+     // `previous`'s boundary.
+     let cumulative: Vec<Vec<ExPolygon>> = BAND_BOUNDARY_MULTIPLIERS
+@@ -534,6 +591,12 @@ fn partition_into_bands(
+     // by a fixed distance cutoff (see module doc-comment).
+     push_band(&mut bands, 4, difference_ex(overhang_area, &cumulative[2]));
+ 
++    if let Some(start) = probe_start {
++        probe::add(&probe::BAND_NS, start.elapsed().as_nanos());
++        probe::BAND_LAYERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        probe::OFFSET_CALLS.fetch_add(3, std::sync::atomic::Ordering::Relaxed);
++        probe::CLIP_CALLS.fetch_add(6, std::sync::atomic::Ordering::Relaxed);
++    }
+     bands
+ }
+ 
+diff --git a/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs b/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
+index d038b2d4..738e2512 100644
+--- a/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
++++ b/crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs
+@@ -191,6 +191,8 @@ pub fn commit_overhang_annotation_builtin(
+         ..surface_classification.as_ref().clone()
+     };
+ 
++    slicer_core::algos::overhang_annotation::probe::report();
++
+     blackboard
+         .replace_surface_classification(Arc::new(updated))
+         .map_err(|source| OverhangAnnotationBuiltinError::Blackboard { source })

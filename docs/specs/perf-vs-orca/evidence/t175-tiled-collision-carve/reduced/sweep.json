@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "cell": "base-classic-on",
+  "selection_rule": "lowest measured median wall across {1, 2, 5, 10} mm",
+  "chosen_arm": "tile-2mm",
+  "meta": {
+    "batch_id": "sweep1",
+    "cell": "base-classic-on",
+    "arms": [
+      "baseline",
+      "tile-1mm",
+      "tile-2mm",
+      "tile-5mm",
+      "tile-10mm"
+    ],
+    "runs_per_arm": 3,
+    "cpu_load_before": 1.43,
+    "cpu_load_after": 5.2,
+    "completed_utc": "2026-11-21T07:09:31.0885649Z"
+  },
+  "arms": {
+    "baseline": {
+      "runs": 3,
+      "wall_s": [
+        40.882606,
+        41.024257,
+        41.35768
+      ],
+      "cpu_s": [
+        293.25,
+        291.453125,
+        292.28125
+      ],
+      "wall_median_s": 41.024257,
+      "cpu_median_s": 292.28125,
+      "wall_min_s": 40.882606,
+      "wall_max_s": 41.35768,
+      "cpu_min_s": 291.453125,
+      "cpu_max_s": 293.25,
+      "gcode_sha256": "0e13ff7be58c67700fa51501a423c5e0166228815f3696a7c44bb1a65b99ca08",
+      "gcode_bytes": 39605535,
+      "planner_wasm_sha256": "d6a56af5116681dba117389c050295dd5774c64ad3fb3e09022dde4150d59b78",
+      "exit_codes": [
+        0
+      ],
+      "matches_t172": true,
+      "wall_saving_pct": 0.0,
+      "cpu_saving_pct": 0.0
+    },
+    "tile-1mm": {
+      "runs": 3,
+      "wall_s": [
+        28.46713,
+        28.012247,
+        28.335518
+      ],
+      "cpu_s": [
+        172.265625,
+        173.296875,
+        172.8125
+      ],
+      "wall_median_s": 28.335518,
+      "cpu_median_s": 172.8125,
+      "wall_min_s": 28.012247,
+      "wall_max_s": 28.46713,
+      "cpu_min_s": 172.265625,
+      "cpu_max_s": 173.296875,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "planner_wasm_sha256": "8c71edd9f0bab4ed2070de3aea21cad04325b9f5a382a0e9d756cf97ebfae70d",
+      "exit_codes": [
+        0
+      ],
+      "matches_t172": false,
+      "wall_saving_pct": 30.929844750143797,
+      "cpu_saving_pct": 40.87458569442959
+    },
+    "tile-2mm": {
+      "runs": 3,
+      "wall_s": [
+        28.718364,
+        28.310731,
+        28.084485
+      ],
+      "cpu_s": [
+        174.59375,
+        172.171875,
+        174.6875
+      ],
+      "wall_median_s": 28.310731,
+      "cpu_median_s": 174.59375,
+      "wall_min_s": 28.084485,
+      "wall_max_s": 28.718364,
+      "cpu_min_s": 172.171875,
+      "cpu_max_s": 174.6875,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "planner_wasm_sha256": "c56f07b33594573b86cea64d932e427d417a4bd044bfa0116eeaa2a1f951eaef",
+      "exit_codes": [
+        0
+      ],
+      "matches_t172": false,
+      "wall_saving_pct": 30.990265100962095,
+      "cpu_saving_pct": 40.26515556505934
+    },
+    "tile-5mm": {
+      "runs": 3,
+      "wall_s": [
+        28.647136,
+        28.411249,
+        28.586525
+      ],
+      "cpu_s": [
+        174.296875,
+        175.234375,
+        175.78125
+      ],
+      "wall_median_s": 28.586525,
+      "cpu_median_s": 175.234375,
+      "wall_min_s": 28.411249,
+      "wall_max_s": 28.647136,
+      "cpu_min_s": 174.296875,
+      "cpu_max_s": 175.78125,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "planner_wasm_sha256": "591bd5a774be6b1e05b3172eafa649084045a152647f218e5ec1b797d460a094",
+      "exit_codes": [
+        0
+      ],
+      "matches_t172": false,
+      "wall_saving_pct": 30.317994546494763,
+      "cpu_saving_pct": 40.04597455361916
+    },
+    "tile-10mm": {
+      "runs": 3,
+      "wall_s": [
+        29.123547,
+        29.085355,
+        29.376561
+      ],
+      "cpu_s": [
+        177.171875,
+        180.28125,
+        178.640625
+      ],
+      "wall_median_s": 29.123547,
+      "cpu_median_s": 178.640625,
+      "wall_min_s": 29.085355,
+      "wall_max_s": 29.376561,
+      "cpu_min_s": 177.171875,
+      "cpu_max_s": 180.28125,
+      "gcode_sha256": "7b90e7499bfad0e73a746307d05b657732f322e41fdccfb8b166a6e0a7d8e799",
+      "gcode_bytes": 39605534,
+      "planner_wasm_sha256": "4d300f13a810d67a6de3746897266194139b31a9211a3be72d8900ceda6af40b",
+      "exit_codes": [
+        0
+      ],
+      "matches_t172": false,
+      "wall_saving_pct": 29.00895926037125,
+      "cpu_saving_pct": 38.88057307815674
+    }
+  }
+}

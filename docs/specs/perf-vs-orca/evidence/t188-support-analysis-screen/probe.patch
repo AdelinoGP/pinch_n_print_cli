@@ -1,0 +1,794 @@
+diff --git a/crates/slicer-core/src/algos/overhang_annotation.rs b/crates/slicer-core/src/algos/overhang_annotation.rs
+index b79cebff..3df60857 100644
+--- a/crates/slicer-core/src/algos/overhang_annotation.rs
++++ b/crates/slicer-core/src/algos/overhang_annotation.rs
+@@ -452,34 +452,253 @@ pub fn detect_support_contacts_with_annotations(
+     blockers: &[ExPolygon],
+     params: &SupportContactParams,
+ ) -> SupportContactAnnotations {
+-    let contacts = detect_support_contacts(region_polygons, lower_layer_polygons, blockers, params);
+-    if contacts.is_empty() {
++    #[cfg(feature = "host-algos")]
++    let probe = crate::t188_probe::IN_SA.load(std::sync::atomic::Ordering::Relaxed);
++    #[cfg(not(feature = "host-algos"))]
++    let probe = false;
++
++    if !probe {
++        let contacts = detect_support_contacts(region_polygons, lower_layer_polygons, blockers, params);
++        if contacts.is_empty() {
++            return SupportContactAnnotations {
++                contacts,
++                cantilever_surfaces: Vec::new(),
++            };
++        }
++
++        let threshold_mm = slicer_ir::units_to_mm(slicer_ir::mm_to_units(3.0));
++        let supported_extent = offset(
++            lower_layer_polygons,
++            threshold_mm,
++            SUPPORT_SURFACES_JOIN,
++            OFFSET_ARC_TOLERANCE_MM,
++        );
++        let beyond_threshold = difference_ex(&contacts, &supported_extent);
++        let cantilever_surfaces = if beyond_threshold.is_empty() {
++            Vec::new()
++        } else {
++            contacts.clone()
++        };
++
+         return SupportContactAnnotations {
+             contacts,
+-            cantilever_surfaces: Vec::new(),
++            cantilever_surfaces,
+         };
+     }
+ 
+-    // Keep the threshold in the canonical scaled-unit domain before passing it
+-    // to the millimetre-based polygon helpers.
+-    let threshold_mm = slicer_ir::units_to_mm(slicer_ir::mm_to_units(3.0));
+-    let supported_extent = offset(
+-        lower_layer_polygons,
+-        threshold_mm,
+-        SUPPORT_SURFACES_JOIN,
+-        OFFSET_ARC_TOLERANCE_MM,
+-    );
+-    let beyond_threshold = difference_ex(&contacts, &supported_extent);
+-    let cantilever_surfaces = if beyond_threshold.is_empty() {
+-        Vec::new()
+-    } else {
+-        contacts.clone()
+-    };
++    #[cfg(feature = "host-algos")]
++    {
++        use crate::t188_probe as p;
++        let t_total = std::time::Instant::now();
++        let lower_v = p::verts(lower_layer_polygons);
++        let region_v = p::verts(region_polygons);
++        let region_eq_lower = region_polygons == lower_layer_polygons;
++        let mut grown_ns = 0_u64;
++        let mut trimmed_diff_ns = 0_u64;
++        let mut expand_back_ns = 0_u64;
++        let mut erosion_ns = 0_u64;
++        let mut final_union_ns = 0_u64;
++        let mut cantilever_off_ns = 0_u64;
++        let mut cantilever_diff_ns = 0_u64;
++        let mut trimmed_v = 0_u64;
++
++        let contacts = if region_polygons.is_empty() {
++            Vec::new()
++        } else {
++            let force_support = params.layer_id >= params.raft_layers
++                && params.layer_id
++                    < params
++                        .raft_layers
++                        .saturating_add(params.enforce_support_layers);
++            let lower_layer_offset = if force_support {
++                0.0
++            } else {
++                lower_layer_offset_mm(params)
++            };
++
++            let mut diff_polygons = if lower_layer_offset == 0.0 {
++                let t0 = std::time::Instant::now();
++                let r = difference_ex(region_polygons, lower_layer_polygons);
++                p::add(23, t0, region_v + lower_v, p::verts(&r));
++                r
++            } else {
++                let t0 = std::time::Instant::now();
++                let grown = offset(
++                    lower_layer_polygons,
++                    lower_layer_offset,
++                    SUPPORT_SURFACES_JOIN,
++                    OFFSET_ARC_TOLERANCE_MM,
++                );
++                grown_ns = t0.elapsed().as_nanos() as u64;
++                let gv = p::verts(&grown);
++                p::add(0, t0, lower_v, gv);
++
++                let t1 = std::time::Instant::now();
++                let trimmed = difference_ex(region_polygons, &grown);
++                trimmed_diff_ns = t1.elapsed().as_nanos() as u64;
++                trimmed_v = p::verts(&trimmed);
++                p::add(1, t1, region_v + gv, trimmed_v);
++
++                if trimmed.is_empty() {
++                    trimmed
++                } else {
++                    p::inc(19, 1);
++                    let t2 = std::time::Instant::now();
++                    let expanded_back = offset(
++                        &trimmed,
++                        lower_layer_offset,
++                        SUPPORT_SURFACES_JOIN,
++                        OFFSET_ARC_TOLERANCE_MM,
++                    );
++                    let eb_off_ns = t2.elapsed().as_nanos() as u64;
++                    let ebv = p::verts(&expanded_back);
++                    p::add(2, t2, trimmed_v, ebv);
++
++                    let t3 = std::time::Instant::now();
++                    let out = difference_ex(
++                        &intersection_ex(&expanded_back, region_polygons),
++                        lower_layer_polygons,
++                    );
++                    let eb_id_ns = t3.elapsed().as_nanos() as u64;
++                    p::add(3, t3, ebv + region_v + lower_v, p::verts(&out));
++                    expand_back_ns = eb_off_ns + eb_id_ns;
++                    out
++                }
++            };
++
++            let sharp_tail_enabled =
++                params.support_sharp_tails && params.layer_id == params.raft_layers;
++            if sharp_tail_enabled {
++                let has_sharp_tail = region_polygons
++                    .iter()
++                    .any(|polygon| polygon.contour.points.len() == 3);
++                if has_sharp_tail {
++                    diff_polygons = region_polygons.to_vec();
++                }
++            }
++
++            if !blockers.is_empty() {
++                let t0 = std::time::Instant::now();
++                let vin = p::verts(&diff_polygons) + p::verts(blockers);
++                diff_polygons = difference_ex(&diff_polygons, blockers);
++                p::add(4, t0, vin, p::verts(&diff_polygons));
++            }
+ 
+-    SupportContactAnnotations {
+-        contacts,
+-        cantilever_surfaces,
++            if params.bridge_no_support && !params.bridge_polygons.is_empty() {
++                const SUPPORT_MATERIAL_MARGIN_MM: f32 = 1.2;
++                let t0 = std::time::Instant::now();
++                let bridge_margin = offset(
++                    &params.bridge_polygons,
++                    SUPPORT_MATERIAL_MARGIN_MM,
++                    SUPPORT_SURFACES_JOIN,
++                    OFFSET_ARC_TOLERANCE_MM,
++                );
++                diff_polygons = difference_ex(&diff_polygons, &bridge_margin);
++                p::add(5, t0, p::verts(&params.bridge_polygons), p::verts(&diff_polygons));
++            }
++
++            if diff_polygons.is_empty() {
++                Vec::new()
++            } else {
++                let erosion = -0.1 * params.external_perimeter_width_mm;
++                let mut dropped = false;
++                if !sharp_tail_enabled && erosion != 0.0 {
++                    let t0 = std::time::Instant::now();
++                    let dv = p::verts(&diff_polygons);
++                    let er = offset(
++                        &diff_polygons,
++                        erosion,
++                        SUPPORT_SURFACES_JOIN,
++                        OFFSET_ARC_TOLERANCE_MM,
++                    );
++                    erosion_ns = t0.elapsed().as_nanos() as u64;
++                    p::add(6, t0, dv, p::verts(&er));
++                    if er.is_empty() {
++                        p::inc(20, 1);
++                        dropped = true;
++                    }
++                }
++                if dropped {
++                    Vec::new()
++                } else {
++                    if params.xy_expansion_mm != 0.0 {
++                        let t0 = std::time::Instant::now();
++                        let dv = p::verts(&diff_polygons);
++                        diff_polygons = offset(
++                            &diff_polygons,
++                            params.xy_expansion_mm,
++                            SUPPORT_SURFACES_JOIN,
++                            OFFSET_ARC_TOLERANCE_MM,
++                        );
++                        p::add(7, t0, dv, p::verts(&diff_polygons));
++                    }
++                    let t0 = std::time::Instant::now();
++                    let dv = p::verts(&diff_polygons);
++                    let u = union_ex(&diff_polygons);
++                    final_union_ns = t0.elapsed().as_nanos() as u64;
++                    p::add(8, t0, dv, p::verts(&u));
++                    u
++                }
++            }
++        };
++
++        let contact_v = p::verts(&contacts);
++        let cantilever_surfaces = if contacts.is_empty() {
++            Vec::new()
++        } else {
++            p::inc(21, 1);
++            let threshold_mm = slicer_ir::units_to_mm(slicer_ir::mm_to_units(3.0));
++            let t0 = std::time::Instant::now();
++            let supported_extent = offset(
++                lower_layer_polygons,
++                threshold_mm,
++                SUPPORT_SURFACES_JOIN,
++                OFFSET_ARC_TOLERANCE_MM,
++            );
++            cantilever_off_ns = t0.elapsed().as_nanos() as u64;
++            let sev = p::verts(&supported_extent);
++            p::add(9, t0, lower_v, sev);
++
++            let t1 = std::time::Instant::now();
++            let beyond_threshold = difference_ex(&contacts, &supported_extent);
++            cantilever_diff_ns = t1.elapsed().as_nanos() as u64;
++            p::add(10, t1, contact_v + sev, p::verts(&beyond_threshold));
++
++            if beyond_threshold.is_empty() {
++                Vec::new()
++            } else {
++                p::inc(22, 1);
++                contacts.clone()
++            }
++        };
++
++        let total_ns = t_total.elapsed().as_nanos() as u64;
++        p::add(12, t_total, region_v + lower_v, contact_v);
++        p::push_layer_sample(p::LayerContactSample {
++            layer_index: params.layer_id,
++            total_ns,
++            grown_ns,
++            trimmed_diff_ns,
++            expand_back_ns,
++            erosion_ns,
++            final_union_ns,
++            cantilever_off_ns,
++            cantilever_diff_ns,
++            lower_verts: lower_v,
++            region_verts: region_v,
++            trimmed_verts: trimmed_v,
++            contact_verts: contact_v,
++            cantilever_hit: !cantilever_surfaces.is_empty(),
++            region_eq_lower,
++        });
++
++        SupportContactAnnotations {
++            contacts,
++            cantilever_surfaces,
++        }
+     }
++    #[cfg(not(feature = "host-algos"))]
++    unreachable!()
+ }
+ 
+ /// Reconstructs the 4 quartile band polygons from `overhang_area` (already
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 4553b968..f0a1c27d 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -45,6 +45,8 @@ pub mod skeletal_trapezoidation;
+ pub mod smooth_outward;
+ pub mod stage_io;
+ pub mod support_regularize;
++#[cfg(feature = "host-algos")]
++pub mod t188_probe;
+ pub mod top_surface_split;
+ pub mod triangle_mesh_slicer;
+ #[cfg(feature = "host-algos")]
+diff --git a/crates/slicer-core/src/triangle_mesh_slicer.rs b/crates/slicer-core/src/triangle_mesh_slicer.rs
+index 234fe5e6..ce524e67 100644
+--- a/crates/slicer-core/src/triangle_mesh_slicer.rs
++++ b/crates/slicer-core/src/triangle_mesh_slicer.rs
+@@ -74,14 +74,47 @@ pub fn slice_mesh_ex(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<ExPolygon
+         return vec![vec![]; zs.len()];
+     }
+ 
++    #[cfg(feature = "host-algos")]
++    let probe_ppo = crate::t188_probe::IN_PPO.load(std::sync::atomic::Ordering::Relaxed);
++    #[cfg(feature = "host-algos")]
++    let t_make = std::time::Instant::now();
++
+     // Phase 1: Generate intersection lines for each layer
+     let layers_lines = slice_make_lines(mesh, zs);
+ 
++    #[cfg(feature = "host-algos")]
++    if probe_ppo {
++        let total_lines: u64 = layers_lines.iter().map(|v| v.len() as u64).sum();
++        crate::t188_probe::add(15, t_make, (mesh.indices.len() / 3) as u64, total_lines);
++    }
++
++    #[cfg(feature = "host-algos")]
++    let t_chain = std::time::Instant::now();
++
+     // Phase 2: Chain lines into polygons and convert to ExPolygons
+-    layers_lines
++    let out: Vec<Vec<ExPolygon>> = layers_lines
+         .into_iter()
+-        .map(chain_lines_to_expolygons)
+-        .collect()
++        .map(|lines| {
++            #[cfg(feature = "host-algos")]
++            let t_one = std::time::Instant::now();
++            #[cfg(feature = "host-algos")]
++            let lcnt = lines.len() as u64;
++            let eps = chain_lines_to_expolygons(lines);
++            #[cfg(feature = "host-algos")]
++            if probe_ppo {
++                crate::t188_probe::add(18, t_one, lcnt, crate::t188_probe::verts(&eps));
++            }
++            eps
++        })
++        .collect();
++
++    #[cfg(feature = "host-algos")]
++    if probe_ppo {
++        let vout: u64 = out.iter().map(|v| crate::t188_probe::verts(v)).sum();
++        crate::t188_probe::add(16, t_chain, zs.len() as u64, vout);
++    }
++
++    out
+ }
+ 
+ /// Phase 1: Generate intersection lines for each layer
+diff --git a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+index b64638d1..6d9e3f7f 100644
+--- a/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
++++ b/crates/slicer-runtime/src/builtins/support_analysis_producer.rs
+@@ -42,6 +42,31 @@ pub fn commit_support_analysis_builtin(
+     blackboard: &mut Blackboard,
+     config: &ResolvedConfig,
+ ) -> Result<(), crate::BlackboardError> {
++    let probe_path = std::env::var_os("T188_PROBE_OUT");
++    let probe = probe_path.is_some();
++    if probe {
++        slicer_core::t188_probe::reset();
++        slicer_core::t188_probe::IN_SA.store(true, std::sync::atomic::Ordering::Relaxed);
++    }
++    let t_stage_start = std::time::Instant::now();
++    let mut t_eligibility_ns = 0_u64;
++    let mut t_gather_ns = 0_u64;
++    let mut t_ppo_ns = 0_u64;
++    let mut t_layer_union_ns = 0_u64;
++    let mut t_modifiers_ns = 0_u64;
++    let mut t_sort_ns = 0_u64;
++    let mut t_contacts_par_ns = 0_u64;
++    let mut t_post_contacts_ns = 0_u64;
++    let mut t_commit_ns = 0_u64;
++    let mut regions_total = 0_usize;
++    let mut needs_support_true = 0_usize;
++    let mut layers_in_union = 0_usize;
++    let mut multi_region_layers = 0_usize;
++    let mut single_region_union_changed = 0_usize;
++    let mut candidates_count = 0_usize;
++    let mut cantilever_count = 0_usize;
++    let mut ppo_entries = 0_usize;
++
+     let enable_support = config.support_enabled;
+     // Read the typed field directly. `support_threshold_angle` is CLI-bound, so
+     // `resolve_*` routes it into this field and never into `extensions` — an
+@@ -73,7 +98,9 @@ pub fn commit_support_analysis_builtin(
+             // and (b) one work item per (layer, object, region).
+             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
+                 BTreeMap::new();
++            let mut object_layer_region_count: BTreeMap<(String, u32), usize> = BTreeMap::new();
+             let surface_classification = blackboard.surface_classification().cloned();
++            let t0 = std::time::Instant::now();
+             // Parallel eligibility pre-pass. `derive_needs_support` is a pure
+             // per-region predicate over immutable inputs, but it costs ~49 ms
+             // per region on supports-on base (the object-global overhang
+@@ -92,10 +119,25 @@ pub fn commit_support_analysis_builtin(
+             let needs_support_by_region: Vec<bool> = eligibility_work
+                 .par_iter()
+                 .map(|region| {
+-                    slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
+-                        .derive_needs_support(surface_classification.as_deref())
++                    let ts = std::time::Instant::now();
++                    let res = slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
++                        .derive_needs_support(surface_classification.as_deref());
++                    if probe {
++                        slicer_core::t188_probe::add(
++                            11,
++                            ts,
++                            slicer_core::t188_probe::verts(&region.polygons),
++                            u64::from(res),
++                        );
++                    }
++                    res
+                 })
+                 .collect();
++            t_eligibility_ns = t0.elapsed().as_nanos() as u64;
++            regions_total = eligibility_work.len();
++            needs_support_true = needs_support_by_region.iter().filter(|&&b| b).count();
++
++            let t0 = std::time::Instant::now();
+             let mut needs_support_index = 0_usize;
+             let mut contact_work: Vec<ContactWork> = Vec::new();
+             for slice in slices.iter() {
+@@ -133,6 +175,9 @@ pub fn commit_support_analysis_builtin(
+                     // Feed the layer-major detection state: this region's
+                     // polygons join its object's layer union, and the region
+                     // itself becomes one unit of contact-detection work.
++                    *object_layer_region_count
++                        .entry((region.object_id.clone(), slice.global_layer_index))
++                        .or_insert(0) += 1;
+                     object_layer_polygons
+                         .entry((region.object_id.clone(), slice.global_layer_index))
+                         .or_default()
+@@ -157,10 +202,21 @@ pub fn commit_support_analysis_builtin(
+                     });
+                 }
+             }
++            t_gather_ns = t0.elapsed().as_nanos() as u64;
++
+             // Ticket 148: publish the print-plane cross-sections the host's
+             // exact-Z occupancy gate validates against. Batched per object, so
+             // this is one mesh walk per object rather than one per layer.
++            let t0 = std::time::Instant::now();
++            if probe {
++                slicer_core::t188_probe::IN_PPO.store(true, std::sync::atomic::Ordering::Relaxed);
++            }
+             ir.print_plane_occupancy = collect_print_plane_occupancy(blackboard.mesh(), slices);
++            if probe {
++                slicer_core::t188_probe::IN_PPO.store(false, std::sync::atomic::Ordering::Relaxed);
++            }
++            t_ppo_ns = t0.elapsed().as_nanos() as u64;
++            ppo_entries = ir.print_plane_occupancy.len();
+ 
+             // Angle-thresholded contact detection, layer-major then
+             // region-major, mirroring canonical `detect_overhangs`
+@@ -171,23 +227,46 @@ pub fn commit_support_analysis_builtin(
+             // first appears at layer `k` while sitting squarely on a *different*
+             // region below emit its entire cross-section as a contact --
+             // spurious full-area support on every multi-region object.
++            let t0 = std::time::Instant::now();
++            layers_in_union = object_layer_polygons.len();
++            multi_region_layers = object_layer_region_count.values().filter(|&&c| c > 1).count();
+             let object_layer_union: BTreeMap<(String, u32), Vec<ExPolygon>> = object_layer_polygons
+                 .into_iter()
+-                .map(|(key, polygons)| (key, union_ex(&polygons)))
++                .map(|(key, polygons)| {
++                    let ts = std::time::Instant::now();
++                    let vin = if probe { slicer_core::t188_probe::verts(&polygons) } else { 0 };
++                    let u = union_ex(&polygons);
++                    if probe {
++                        let vout = slicer_core::t188_probe::verts(&u);
++                        slicer_core::t188_probe::add(17, ts, vin, vout);
++                        if object_layer_region_count.get(&key).copied().unwrap_or(0) == 1
++                            && u != polygons
++                        {
++                            single_region_union_changed += 1;
++                        }
++                    }
++                    (key, u)
++                })
+                 .collect();
++            t_layer_union_ns = t0.elapsed().as_nanos() as u64;
++
+             let base_params = resolve_contact_params(config, threshold_angle_deg);
+             // F-19: sliced support-enforcer / support-blocker modifier volumes.
+             // `crates/slicer-core/src/algos/region_mapping.rs` deliberately
+             // excludes these two paint subtypes from region splitting, so they
+             // never appear as a `variant_chain` entry -- slicing the modifier
+             // volumes here is the only way this stage can see them.
++            let t0 = std::time::Instant::now();
+             let modifiers = ModifierGeometry::slice(blackboard.mesh(), &plan.global_layers);
++            t_modifiers_ns = t0.elapsed().as_nanos() as u64;
++
+             // Deterministic order regardless of `SliceIR` ordering; the
+             // parallel pass below reads only shared immutable state and
+             // `rayon`'s `collect` into a `Vec` preserves this order, so the
+             // committed candidate stream is byte-stable (the same
+             // order-independence property the previous per-series `par_iter`
+             // had).
++            let t0 = std::time::Instant::now();
+             contact_work.sort_by(|a, b| {
+                 (a.layer_index, &a.object_id, a.region_id).cmp(&(
+                     b.layer_index,
+@@ -195,6 +274,9 @@ pub fn commit_support_analysis_builtin(
+                     b.region_id,
+                 ))
+             });
++            t_sort_ns = t0.elapsed().as_nanos() as u64;
++
++            let t0 = std::time::Instant::now();
+             let contacts: Vec<Contact> = contact_work
+                 .par_iter()
+                 .filter_map(|work| {
+@@ -273,8 +355,12 @@ pub fn commit_support_analysis_builtin(
+                     // the region's own cross-section, not the surviving
+                     // geometry, so it stays true for a candidate whose blocked
+                     // part has already been subtracted away.
++                    let t_eb = std::time::Instant::now();
+                     let enforced = !intersection_ex(&geometry, enforcers).is_empty();
+                     let blocked = !intersection_ex(polygons, blockers).is_empty();
++                    if probe {
++                        slicer_core::t188_probe::add(13, t_eb, 0, 0);
++                    }
+                     Some(Contact {
+                         layer_index: *layer_index,
+                         object_id: object_id.clone(),
+@@ -288,7 +374,9 @@ pub fn commit_support_analysis_builtin(
+                     })
+                 })
+                 .collect();
++            t_contacts_par_ns = t0.elapsed().as_nanos() as u64;
+ 
++            let t0 = std::time::Instant::now();
+             let mut candidate_addresses: BTreeMap<SupportSourceKey, RegionKey> = BTreeMap::new();
+             for Contact {
+                 layer_index,
+@@ -350,6 +438,8 @@ pub fn commit_support_analysis_builtin(
+                     candidate.id,
+                 )
+             });
++            candidates_count = ir.candidates.len();
++            cantilever_count = ir.cantilever_surfaces.len();
+             if let Some(map) = region_map.as_deref() {
+                 // Publish exactly one family assignment per committed SOURCE
+                 // origin — including eligible origins with no support contact —
+@@ -421,9 +511,43 @@ pub fn commit_support_analysis_builtin(
+                 }
+                 ir.baseline_feasible_envelope.push(plate);
+             }
++            t_post_contacts_ns = t0.elapsed().as_nanos() as u64;
+         }
+     }
+-    blackboard.commit_support_analysis(Arc::new(ir))
++    let t0 = std::time::Instant::now();
++    let res = blackboard.commit_support_analysis(Arc::new(ir));
++    t_commit_ns = t0.elapsed().as_nanos() as u64;
++    let total_wall_ns = t_stage_start.elapsed().as_nanos() as u64;
++
++    if let Some(out_path) = probe_path {
++        slicer_core::t188_probe::IN_SA.store(false, std::sync::atomic::Ordering::Relaxed);
++        let json = format!(
++            "{{\"total_wall_ns\":{},\"phases\":{{\"eligibility_ns\":{},\"gather_ns\":{},\"ppo_ns\":{},\"layer_union_ns\":{},\"modifiers_ns\":{},\"sort_ns\":{},\"contacts_par_ns\":{},\"post_contacts_ns\":{},\"commit_ns\":{}}},\"counts\":{{\"regions_total\":{},\"needs_support_true\":{},\"layers_in_union\":{},\"multi_region_layers\":{},\"single_region_union_changed\":{},\"ppo_entries\":{},\"candidates_count\":{},\"cantilever_count\":{}}},\"ops\":{},\"layer_summary\":{},\"top_layers\":{}}}",
++            total_wall_ns,
++            t_eligibility_ns,
++            t_gather_ns,
++            t_ppo_ns,
++            t_layer_union_ns,
++            t_modifiers_ns,
++            t_sort_ns,
++            t_contacts_par_ns,
++            t_post_contacts_ns,
++            t_commit_ns,
++            regions_total,
++            needs_support_true,
++            layers_in_union,
++            multi_region_layers,
++            single_region_union_changed,
++            ppo_entries,
++            candidates_count,
++            cantilever_count,
++            slicer_core::t188_probe::ops_json(),
++            slicer_core::t188_probe::layer_summary_json(),
++            slicer_core::t188_probe::top_layers_json(20),
++        );
++        let _ = std::fs::write(out_path, json);
++    }
++    res
+ }
+ 
+ /// Fill `SupportAnalysisIR::print_plane_occupancy` with each object's model
+@@ -468,7 +592,16 @@ fn collect_print_plane_occupancy(
+         let Some(object) = mesh.objects.iter().find(|object| object.id == object_id) else {
+             continue;
+         };
++        let t_wm = std::time::Instant::now();
+         let world_mesh = slicer_core::algos::prepass_slice::object_world_mesh(object);
++        if slicer_core::t188_probe::IN_PPO.load(std::sync::atomic::Ordering::Relaxed) {
++            slicer_core::t188_probe::add(
++                14,
++                t_wm,
++                (object.mesh.indices.len() / 3) as u64,
++                world_mesh.vertices.len() as u64,
++            );
++        }
+         let planes: Vec<f32> = layers.values().copied().collect();
+         let sections = slicer_core::slice_mesh_ex(&world_mesh, &planes);
+         for ((layer_index, _), polygons) in layers.into_iter().zip(sections) {
+diff --git a/crates/slicer-core/src/t188_probe.rs b/crates/slicer-core/src/t188_probe.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/slicer-core/src/t188_probe.rs
+@@ -0,0 +1,184 @@
++#![allow(missing_docs)]
++//! t188 TEMPORARY observation-only probe (never landed; reverted before resolution).
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++use std::sync::Mutex;
++use std::time::Instant;
++
++use slicer_ir::ExPolygon;
++
++pub const N: usize = 24;
++pub const NAMES: [&str; N] = [
++    "grown_offset",
++    "trimmed_diff",
++    "expand_back_offset",
++    "expand_back_intersect_diff",
++    "blockers_diff",
++    "bridge_margin",
++    "erosion_offset",
++    "xy_expansion_offset",
++    "final_union",
++    "cantilever_offset",
++    "cantilever_diff",
++    "derive_needs_support",
++    "contact_item_total",
++    "enforced_blocked_intersections",
++    "ppo_world_mesh",
++    "ppo_make_lines",
++    "ppo_chain",
++    "object_layer_union",
++    "ppo_chain_per_layer",
++    "trimmed_nonempty",
++    "erosion_dropped",
++    "contacts_nonempty",
++    "cantilever_nonempty",
++    "grown_zero_offset_diff",
++];
++
++#[allow(clippy::declare_interior_mutable_const)]
++const Z: AtomicU64 = AtomicU64::new(0);
++pub static NS: [AtomicU64; N] = [Z; N];
++pub static CNT: [AtomicU64; N] = [Z; N];
++pub static VIN: [AtomicU64; N] = [Z; N];
++pub static VOUT: [AtomicU64; N] = [Z; N];
++pub static MAXNS: [AtomicU64; N] = [Z; N];
++pub static IN_PPO: AtomicBool = AtomicBool::new(false);
++pub static IN_SA: AtomicBool = AtomicBool::new(false);
++
++#[derive(Clone, Debug)]
++pub struct LayerContactSample {
++    pub layer_index: u32,
++    pub total_ns: u64,
++    pub grown_ns: u64,
++    pub trimmed_diff_ns: u64,
++    pub expand_back_ns: u64,
++    pub erosion_ns: u64,
++    pub final_union_ns: u64,
++    pub cantilever_off_ns: u64,
++    pub cantilever_diff_ns: u64,
++    pub lower_verts: u64,
++    pub region_verts: u64,
++    pub trimmed_verts: u64,
++    pub contact_verts: u64,
++    pub cantilever_hit: bool,
++    pub region_eq_lower: bool,
++}
++
++pub static LAYER_SAMPLES: Mutex<Vec<LayerContactSample>> = Mutex::new(Vec::new());
++
++pub fn enabled() -> bool {
++    std::env::var_os("T188_PROBE_OUT").is_some()
++}
++
++pub fn verts(p: &[ExPolygon]) -> u64 {
++    p.iter()
++        .map(|e| {
++            e.contour.points.len() as u64
++                + e.holes.iter().map(|h| h.points.len() as u64).sum::<u64>()
++        })
++        .sum()
++}
++
++pub fn add(i: usize, start: Instant, vin: u64, vout: u64) {
++    let ns = start.elapsed().as_nanos() as u64;
++    NS[i].fetch_add(ns, Ordering::Relaxed);
++    CNT[i].fetch_add(1, Ordering::Relaxed);
++    VIN[i].fetch_add(vin, Ordering::Relaxed);
++    VOUT[i].fetch_add(vout, Ordering::Relaxed);
++    MAXNS[i].fetch_max(ns, Ordering::Relaxed);
++}
++
++pub fn inc(i: usize, v: u64) {
++    CNT[i].fetch_add(v, Ordering::Relaxed);
++}
++
++pub fn push_layer_sample(s: LayerContactSample) {
++    if let Ok(mut guard) = LAYER_SAMPLES.lock() {
++        guard.push(s);
++    }
++}
++
++pub fn reset() {
++    for i in 0..N {
++        NS[i].store(0, Ordering::Relaxed);
++        CNT[i].store(0, Ordering::Relaxed);
++        VIN[i].store(0, Ordering::Relaxed);
++        VOUT[i].store(0, Ordering::Relaxed);
++        MAXNS[i].store(0, Ordering::Relaxed);
++    }
++    if let Ok(mut guard) = LAYER_SAMPLES.lock() {
++        guard.clear();
++    }
++}
++
++pub fn ops_json() -> String {
++    let mut parts = Vec::new();
++    for i in 0..N {
++        let c = CNT[i].load(Ordering::Relaxed);
++        if c == 0 {
++            continue;
++        }
++        parts.push(format!(
++            "\"{}\":{{\"ns\":{},\"count\":{},\"vin\":{},\"vout\":{},\"max_ns\":{}}}",
++            NAMES[i],
++            NS[i].load(Ordering::Relaxed),
++            c,
++            VIN[i].load(Ordering::Relaxed),
++            VOUT[i].load(Ordering::Relaxed),
++            MAXNS[i].load(Ordering::Relaxed)
++        ));
++    }
++    format!("{{{}}}", parts.join(","))
++}
++
++pub fn top_layers_json(limit: usize) -> String {
++    let mut samples = LAYER_SAMPLES.lock().map(|g| g.clone()).unwrap_or_default();
++    samples.sort_by(|a, b| b.total_ns.cmp(&a.total_ns));
++    let mut parts = Vec::new();
++    for s in samples.into_iter().take(limit) {
++        parts.push(format!(
++            "{{\"layer\":{},\"total_ns\":{},\"grown_ns\":{},\"trimmed_diff_ns\":{},\"expand_back_ns\":{},\"erosion_ns\":{},\"final_union_ns\":{},\"cantilever_off_ns\":{},\"cantilever_diff_ns\":{},\"lower_verts\":{},\"region_verts\":{},\"trimmed_verts\":{},\"contact_verts\":{},\"cantilever_hit\":{},\"region_eq_lower\":{}}}",
++            s.layer_index,
++            s.total_ns,
++            s.grown_ns,
++            s.trimmed_diff_ns,
++            s.expand_back_ns,
++            s.erosion_ns,
++            s.final_union_ns,
++            s.cantilever_off_ns,
++            s.cantilever_diff_ns,
++            s.lower_verts,
++            s.region_verts,
++            s.trimmed_verts,
++            s.contact_verts,
++            s.cantilever_hit,
++            s.region_eq_lower
++        ));
++    }
++    format!("[{}]", parts.join(","))
++}
++
++pub fn layer_summary_json() -> String {
++    let samples = LAYER_SAMPLES.lock().map(|g| g.clone()).unwrap_or_default();
++    let total = samples.len();
++    let eq_lower = samples.iter().filter(|s| s.region_eq_lower).count();
++    let cantilever_hits = samples.iter().filter(|s| s.cantilever_hit).count();
++    let trimmed_pos = samples.iter().filter(|s| s.trimmed_verts > 0).count();
++    let contacts_pos = samples.iter().filter(|s| s.contact_verts > 0).count();
++    let sum_total_ns: u64 = samples.iter().map(|s| s.total_ns).sum();
++    let max_total_ns: u64 = samples.iter().map(|s| s.total_ns).max().unwrap_or(0);
++    let mut sorted_ns: Vec<u64> = samples.iter().map(|s| s.total_ns).collect();
++    sorted_ns.sort_unstable();
++    let p50 = sorted_ns.get(sorted_ns.len() / 2).copied().unwrap_or(0);
++    let p90 = sorted_ns
++        .get((sorted_ns.len() * 9) / 10)
++        .copied()
++        .unwrap_or(0);
++    let p99 = sorted_ns
++        .get((sorted_ns.len() * 99) / 100)
++        .copied()
++        .unwrap_or(0);
++    format!(
++        "{{\"layers\":{},\"region_eq_lower\":{},\"trimmed_nonempty\":{},\"contacts_nonempty\":{},\"cantilever_hits\":{},\"sum_total_ns\":{},\"max_total_ns\":{},\"p50_ns\":{},\"p90_ns\":{},\"p99_ns\":{}}}",
++        total, eq_lower, trimmed_pos, contacts_pos, cantilever_hits, sum_total_ns, max_total_ns, p50, p90, p99
++    )
++}
