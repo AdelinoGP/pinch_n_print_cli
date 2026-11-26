@@ -130,6 +130,12 @@ interface ir-handles {
         raft-fill: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
         overhang-areas: func() -> list<ex-polygon>;
+        // Producer-resolved band width (mm) behind the overhang-quartile
+        // thresholds (ticket 142). The quartile is derived per vertex from the
+        // signed distance to prev-layer-boundary, bucketed at
+        // band-width-mm x {0.5, 1.0, 1.5}; the consumer must use THIS width,
+        // not its own per-point extrusion width. 0.0 = no width resolved.
+        overhang-band-width-mm: func() -> f32;
         overhang-quartile-polygons: func() -> list<quartile-band>;
         prev-layer-boundary: func() -> list<ex-polygon>;
         surface-group: func() -> option<surface-group>;
