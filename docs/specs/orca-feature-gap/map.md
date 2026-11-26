@@ -1529,6 +1529,12 @@ per-key tier table in
 
 ## Not yet specified
 
+- **Canonical part-cooling model ([161](issues/161-canonical-part-cooling-model.md)).**
+  The port models only `fan_max_speed` plus the overhang multiplier;
+  `fan_min_speed`, the layer-time interpolation band, the `full_fan_speed_layer`
+  ramp and `part_cooling_fan_min_pwm` are not ported. The dead `fan_min_speed`
+  declaration was removed rather than shipped unread.
+
 - **Phase 2 SOTA re-alignment batches for the 52 draft packets (`orca-feature-gaps_01`..`_52`).**
   Every existing draft packet must be re-aligned to the modern two-file layout
   (`packet.spec.md` + `implementation-plan.md`), `docs/22_test_quality.md`,
