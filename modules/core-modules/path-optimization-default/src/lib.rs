@@ -562,6 +562,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn retraction_speed_read_from_config() {
+        // Ticket 101 renamed `retract_speed` -> `retraction_speed`; this pin
+        // fails if the read site reverts, which the module suite otherwise
+        // could not see (the read has a silent in-code fallback).
+        let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+        fields.insert("retraction_speed".into(), ConfigValue::Float(40.0));
+        fields.insert(
+            "path_optimization_emit_layer_markers".into(),
+            ConfigValue::Bool(true),
+        );
+        let config = ConfigView::from_map(fields);
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
+        assert!(
+            (module.retraction_speed - 40.0_f32).abs() < 1e-4,
+            "retraction_speed must be read from config"
+        );
+    }
+
     fn make_entity(original_index: u32, role: ExtrusionRole, x: f32, y: f32) -> OrderedEntityView {
         OrderedEntityView {
             original_index,
