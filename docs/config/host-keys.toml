@@ -94,3 +94,4 @@ top_surface_filament_id   = { default = 0, owner = "resolved_config.rs::HOST_RUN
 bottom_surface_filament_id = { default = 0, owner = "resolved_config.rs::HOST_RUNTIME_KEYS", note = "canonical coInt, 1-based tool for bottom-surface roles; 0 = inherit (wayfinder ticket 46 / P39)" }
 inner_wall_filament_id    = { default = 0, owner = "resolved_config.rs::HOST_RUNTIME_KEYS", note = "canonical coInt, 1-based tool for inner-wall roles; 0 = inherit (wayfinder ticket 46 / P39)" }
 outer_wall_filament_id    = { default = 0, owner = "resolved_config.rs::HOST_RUNTIME_KEYS", note = "canonical coInt, 1-based tool for outer-wall roles; 0 = inherit (wayfinder ticket 46 / P39)" }
+nozzle_temperature_range_high = { default = 240, owner = "resolved_config.rs::HOST_RUNTIME_KEYS", note = "canonical coInts, first entry scalar-subset; fallback for a zero filament_flush_temp" }

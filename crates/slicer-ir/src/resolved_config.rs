@@ -1677,6 +1677,24 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         selector: false,
         denied_scopes: &[],
     },
+    // Canonical `nozzle_temperature_range_high` (coInts, default 240): the
+    // fallback for a zero `filament_flush_temp` (`PrintConfig.cpp` tooltip:
+    // "0 indicates the upper bound of the recommended nozzle temperature
+    // range"). Scalar-subset: the first entry, like the flush keys (ticket 125
+    // owns the vector ingest).
+    HostRuntimeKey {
+        key: "nozzle_temperature_range_high",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: Some("240"),
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            max: Some(1500.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
     // Export-seam keys with no `ResolvedConfig` field (wayfinder tickets
     // 91/92). Both act on the finished G-code, so a narrower-than-print
     // statement has no consumer to honour it.

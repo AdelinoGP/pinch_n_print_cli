@@ -241,6 +241,38 @@ impl PostpassModule for MachineGcodeEmit {
             };
             base_lookup.insert(key, val_str);
         }
+        // Canonical fallbacks (`PrintConfig.cpp` tooltips; the `GCode.cpp`
+        // toolchange/placeholder builders): a zero flush temperature means the
+        // upper bound of the recommended nozzle temperature range, and a zero
+        // flush volumetric speed means the filament's maximum volumetric speed.
+        // Only the substitution lookup uses the effective value; CONFIG_BLOCK
+        // still publishes the raw zero, matching canonical.
+        let flush_temp_zero = config
+            .get("filament_flush_temp")
+            .and_then(format_placeholder_value)
+            .is_some_and(|value| placeholder_is_zero(&value));
+        if flush_temp_zero {
+            if let Some(high) = config
+                .get("nozzle_temperature_range_high")
+                .and_then(format_placeholder_value)
+                .filter(|value| !placeholder_is_zero(value))
+            {
+                base_lookup.insert("filament_flush_temp".to_string(), high);
+            }
+        }
+        let flush_speed_zero = config
+            .get("filament_flush_volumetric_speed")
+            .and_then(format_placeholder_value)
+            .is_some_and(|value| placeholder_is_zero(&value));
+        if flush_speed_zero {
+            if let Some(max) = config
+                .get("filament_max_volumetric_speed")
+                .and_then(format_placeholder_value)
+                .filter(|value| !placeholder_is_zero(value))
+            {
+                base_lookup.insert("filament_flush_volumetric_speed".to_string(), max);
+            }
+        }
         // Legacy aliases resolve only where the sweep above left a gap.
         for (alias, target) in PLACEHOLDER_ALIASES {
             if base_lookup.contains_key(*alias) {
@@ -833,6 +865,14 @@ fn format_placeholder_value(value: &ConfigValue) -> Option<String> {
         ConfigValue::List(items) => items.first().and_then(format_placeholder_value),
         _ => None,
     }
+}
+
+/// Whether a rendered placeholder value is numerically zero.
+fn placeholder_is_zero(value: &str) -> bool {
+    value
+        .trim()
+        .parse::<f64>()
+        .is_ok_and(|number| number == 0.0)
 }
 
 /// Single-pass left-to-right placeholder substitution.

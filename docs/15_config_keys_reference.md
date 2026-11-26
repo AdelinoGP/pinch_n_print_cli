@@ -184,6 +184,7 @@ is the authoritative catalog of their defaults and ranges.
 | `filament_end_gcode` | string | `""` | — | — | `machine-gcode-emit` |
 | `filament_flush_temp` | int | `0` | [0.0, 1500.0] | — | `machine-gcode-emit` |
 | `filament_flush_volumetric_speed` | float | `0.0` | [0.0, 200.0] | — | `machine-gcode-emit` |
+| `filament_max_volumetric_speed` | float | `0.0` | >= 0.0 | — | `machine-gcode-emit` |
 | `filament_start_gcode` | string | `""` | — | — | `machine-gcode-emit` |
 | `layer_change_gcode` | string | `""` | — | — | `machine-gcode-emit` |
 | `machine_end_gcode` | string | `"PRINT_END"` | — | — | `machine-gcode-emit` |
@@ -191,6 +192,7 @@ is the authoritative catalog of their defaults and ranges.
 | `manual_filament_change` | bool | `false` | — | — | `machine-gcode-emit` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | — | `machine-gcode-emit` |
+| `nozzle_temperature_range_high` | int | `240` | [0.0, 1500.0] | — | `machine-gcode-emit` |
 | `pressure_advance` | float | `0.02` | [0.0, 2.0] | — | `machine-gcode-emit` |
 | `printer_structure` | enum | `"undefine"` | — (values: undefine|corexy|i3|hbot|delta) | — | `machine-gcode-emit` |
 | `process_change_extrusion_role_gcode` | string | `""` | — | — | `machine-gcode-emit` |
@@ -485,6 +487,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `gcode_add_line_number` | bool | `false` | — (prefix every exported G-code line with N<line> (canonical PostProcessor.cpp::gcode_add_line_number); false = byte-identical output (wayfinder ticket 91 / P84)) | — | `run.rs::DEFAULT_GCODE_ADD_LINE_NUMBER` |
 | `inner_wall_filament_id` | int | `0` | — (canonical coInt, 1-based tool for inner-wall roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `internal_solid_filament_id` | int | `0` | — (canonical coInt, 1-based tool for internal-solid roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
+| `nozzle_temperature_range_high` | int | `240` | — (canonical coInts, first entry scalar-subset; fallback for a zero filament_flush_temp) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `outer_wall_filament_id` | int | `0` | — (canonical coInt, 1-based tool for outer-wall roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `post_process` | list | `[]` | — (commands run against the exported G-code in order (canonical PostProcessor.cpp::run_post_process_scripts); each gets the <output>.pp working-copy path as its final argument; empty = byte-identical output. Slice config only — a value carried by model metadata is refused (DEV-206) (wayfinder ticket 92 / P85)) | — | `run.rs::DEFAULT_POST_PROCESS` |
 | `sparse_infill_filament_id` | int | `0` | — (canonical coInt, 1-based tool for sparse-infill roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
@@ -558,6 +561,7 @@ upstream or has no upstream equivalent.
 | `brim_object_gap` | `skirt-brim` | `0.1` | `0.0` |
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `fan_max_speed` | `part-cooling` | `255` | `100.0` |
+| `filament_max_volumetric_speed` | `machine-gcode-emit` | `0.0` | `2.0` |
 | `filament_max_volumetric_speed` | `resolved_config.rs::ResolvedConfig` | `0.0` | `2.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `infill_shift_step` | `rectilinear-infill` | `0.0` | `0.4` |

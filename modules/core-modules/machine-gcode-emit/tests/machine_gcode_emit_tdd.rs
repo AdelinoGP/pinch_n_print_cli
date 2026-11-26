@@ -1528,6 +1528,9 @@ fn flush_temp_and_speed_substitute_into_change_filament_template() {
             ),
             ("filament_flush_temp", ConfigValue::Int(270)),
             ("filament_flush_volumetric_speed", ConfigValue::Float(12.5)),
+            // Distinct fallback values prove the explicit entries win.
+            ("nozzle_temperature_range_high", ConfigValue::Int(240)),
+            ("filament_max_volumetric_speed", ConfigValue::Float(8.0)),
         ],
         &[GCodeCommand::ToolChange {
             after_entity_index: 0,
@@ -1547,7 +1550,7 @@ fn flush_temp_and_speed_substitute_into_change_filament_template() {
 }
 
 #[test]
-fn flush_temp_and_speed_default_to_inert_zero() {
+fn flush_temp_and_speed_default_to_canonical_fallbacks() {
     let output = run(
         &[
             (
@@ -1558,6 +1561,8 @@ fn flush_temp_and_speed_default_to_inert_zero() {
             ),
             ("filament_flush_temp", ConfigValue::Int(0)),
             ("filament_flush_volumetric_speed", ConfigValue::Float(0.0)),
+            ("nozzle_temperature_range_high", ConfigValue::Int(240)),
+            ("filament_max_volumetric_speed", ConfigValue::Float(8.0)),
         ],
         &[GCodeCommand::ToolChange {
             after_entity_index: 0,
@@ -1567,12 +1572,12 @@ fn flush_temp_and_speed_default_to_inert_zero() {
     );
     let texts = raw_texts(&output);
     assert!(
-        texts.iter().any(|t| t.contains("T=0")),
-        "default flush temp 0 must render as-is (inert, no Tier D fallback); got {texts:?}"
+        texts.iter().any(|t| t.contains("T=240")),
+        "zero flush temp must fall back to nozzle_temperature_range_high; got {texts:?}"
     );
     assert!(
-        texts.iter().any(|t| t.contains("V=0")),
-        "default flush speed 0.0 must render as-is (inert, no Tier D fallback); got {texts:?}"
+        texts.iter().any(|t| t.contains("V=8")),
+        "zero flush speed must fall back to filament_max_volumetric_speed; got {texts:?}"
     );
 }
 

@@ -159,13 +159,12 @@ description = "OrcaSlicer coFloats key pressure_advance (PA value for Klipper pr
 # `set_extruder`, toolchange config builder) and published as the
 # `flush_temperatures` / `flush_volumetric_speeds` placeholders for custom
 # G-code; a 0 entry falls back to `nozzle_temperature_range_high` /
-# `filament_max_volumetric_speed` (both Tier D deferred). The port holds the
-# scalar-global subset here (per-tool via the `tool_config:<idx>:` axis,
-# vector ingest rides ticket 125); `0`/`0.0` publish as-is with no fallback
-# (ticket-47 DEV row). The generic placeholder sweep substitutes both keys
-# into every template (`change_filament_gcode`, machine start/end); no
-# key-specific `lib.rs` arm is needed (int/float render canonically, unlike
-# word-form bools). Bounds mirror canonical; the port enforces them where
+# `filament_max_volumetric_speed`. The port holds the scalar-global subset here
+# (per-tool via the `tool_config:<idx>:` axis, vector ingest rides ticket 125)
+# and applies both fallbacks in the substitution lookup; `0`/`0.0` still
+# publish as-is in CONFIG_BLOCK, matching canonical. The generic placeholder
+# sweep substitutes both keys into every template (`change_filament_gcode`,
+# machine start/end). Bounds mirror canonical; the port enforces them where
 # canonical treats them as GUI hints (ticket 113 rule).
 [config.schema.filament_flush_temp]
 type    = "int"
@@ -174,7 +173,7 @@ min     = 0
 max     = 1500
 display = "Flush temperature"
 group   = "Machine G-code"
-description = "OrcaSlicer coInts key filament_flush_temp (flush temperature in degC; 0 is inert, no fallback). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+description = "OrcaSlicer coInts key filament_flush_temp (flush temperature in degC; 0 falls back to nozzle_temperature_range_high). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
 
 [config.schema.filament_flush_volumetric_speed]
 type    = "float"
@@ -183,7 +182,27 @@ min     = 0.0
 max     = 200.0
 display = "Flush volumetric speed"
 group   = "Machine G-code"
-description = "OrcaSlicer coFloats key filament_flush_volumetric_speed (flush volumetric speed in mm3/s; 0.0 is inert, no fallback). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+description = "OrcaSlicer coFloats key filament_flush_volumetric_speed (flush volumetric speed in mm3/s; 0.0 falls back to filament_max_volumetric_speed). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+# Canonical fallbacks for the flush placeholders. `nozzle_temperature_range_high`
+# is `coInts` (default 240, max 1500); `filament_max_volumetric_speed` is
+# `coFloats` (default 0.0). Both are scalar-subsets here (first entry).
+[config.schema.nozzle_temperature_range_high]
+type    = "int"
+default = 240
+min     = 0
+max     = 1500
+display = "Nozzle temperature range high"
+group   = "Machine G-code"
+description = "OrcaSlicer coInts key nozzle_temperature_range_high; fallback for a zero filament_flush_temp. Scalar-subset: first entry (ticket 125 owns the vector)."
+
+[config.schema.filament_max_volumetric_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+display = "Filament max volumetric speed"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key filament_max_volumetric_speed; fallback for a zero filament_flush_volumetric_speed. Scalar-subset: first entry (ticket 125 owns the vector)."
 
 # P43 (ticket 50): manual filament change. Canonical `manual_filament_change`
 # (`coBool`, default false) omits the custom `change_filament_gcode` on the
