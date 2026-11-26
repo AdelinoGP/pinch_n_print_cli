@@ -388,9 +388,10 @@ fn plain_point(x_quanta: i64, y_quanta: i64, z: f32) -> Point3WithWidth {
 /// other and from the neighbouring vertices.
 fn rich_point(x_quanta: i64, y_quanta: i64, z: f32, slot: usize) -> Point3WithWidth {
     let step = slot as f32;
-    // exhaustive: the fixture is exactly this per-point metadata; every field
-    // is set from `slot`, so a `..Default::default()` rest would be unreachable
-    // (and `clippy::needless_update` rejects it).
+    // The fixture is exactly this per-point metadata; every field is set from
+    // `slot`, so a `..Default::default()` rest would be unreachable (and
+    // `clippy::needless_update` rejects it).
+    // exhaustive: every field is derived from `slot`.
     Point3WithWidth {
         x: quanta_mm(x_quanta),
         y: quanta_mm(y_quanta),
@@ -949,10 +950,11 @@ fn observe_project(case: &ProjectCase) -> ProjectObservation {
 /// The documented interpolation contract, restated here field by field.
 fn model_interpolate(start: &Point3WithWidth, end: &Point3WithWidth, t: f32) -> Point3WithWidth {
     let lerp = |a: f32, b: f32| a + (b - a) * t;
-    // exhaustive: the oracle restates the documented interpolation rule for each
-    // of the eight fields; a `..Default::default()` rest would let a newly added
-    // field silently default instead of being given an explicit rule (and
+    // The oracle restates the documented interpolation rule for each of the
+    // eight fields; a `..Default::default()` rest would let a newly added field
+    // silently default instead of being given an explicit rule (and
     // `clippy::needless_update` rejects a rest over a full literal).
+    // exhaustive: eight-field interpolation oracle.
     Point3WithWidth {
         x: lerp(start.x, end.x),
         y: lerp(start.y, end.y),

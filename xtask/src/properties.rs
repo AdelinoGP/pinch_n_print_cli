@@ -128,6 +128,8 @@ struct Target {
     kind: Vec<String>,
     #[serde(default, rename = "required-features")]
     required_features: Vec<String>,
+    /// Root source file; the registry census scans it for property tests.
+    src_path: String,
 }
 
 #[derive(Debug, Deserialize)]

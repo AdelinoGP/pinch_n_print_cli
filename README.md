@@ -87,6 +87,21 @@ input is refused with `SCAD_SUPPORT_DISABLED` rather than parsed as a mesh. See
 [docs/scad/ingestion.md](docs/scad/ingestion.md) for the exact flags, exit codes
 and the self-contained-script restriction.
 
+### Property tests
+
+Property-based tests (Proptest) are opt-in through default-off `property_testing`
+features and run from a registry:
+
+```bash
+cargo xtask test --summary --properties --tier routine              # core lane
+cargo xtask test --summary --properties --tier routine --with-scad  # adds SCAD records (CMake + MSVC)
+```
+
+See [docs/testing/properties.md](docs/testing/properties.md) for charters,
+profiles, seed replay and failure artifacts, and
+[docs/testing/proptest-rollout-evidence.md](docs/testing/proptest-rollout-evidence.md)
+for the rollout status.
+
 ## Lineage and Acknowledgments
 
 This project would not be possible without the profound legacy of the open-source 3D printing community. We are grateful to the pioneers and developers whose years of dedication have paved the way for modern slicing algorithms. 

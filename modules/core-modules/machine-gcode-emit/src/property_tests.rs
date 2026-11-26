@@ -528,6 +528,9 @@ fn lookup_from(case: &TemplateCase, empty_list_is_empty_string: bool) -> HashMap
 /// that line; found → insert the lookup value verbatim (never rescanned);
 /// absent → the rest of the line is literal. Unresolved keys are reported
 /// sorted and deduplicated.
+// test-quality: independent contract model — this tokenizer derives the
+// documented template grammar from the contract prose; it does not call
+// `substitute_placeholders` or mirror its byte scan.
 fn scan_template(
     template: &str,
     lookup: &HashMap<String, String>,

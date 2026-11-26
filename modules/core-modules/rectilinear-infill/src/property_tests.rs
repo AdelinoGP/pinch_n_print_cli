@@ -154,9 +154,10 @@ impl ScanLimits {
     }
 
     fn geometry_bounds(&self) -> GeometryBounds {
-        // exhaustive: every field is derived from independently checked profile
-        // limits; a newly added field must be reviewed here because
-        // `check-literals` does not scan module sources.
+        // Every field is derived from independently checked profile limits; a
+        // newly added field must be reviewed here because `check-literals` does
+        // not scan module sources.
+        // exhaustive: every bound is a live profile limit.
         GeometryBounds {
             max_abs_units: self.max_abs_units,
             max_vertices: self.max_vertices,
@@ -687,9 +688,10 @@ fn geometry_domain(class: TopologyClass, limits: &ScanLimits) -> GeometryDomain 
         TopologyClass::Holed => (1, 1),
         _ => (0, 1),
     };
-    // exhaustive: class, minima and bounds are selected per fixture class; a
-    // newly added field must be reviewed here because `check-literals` does not
-    // scan module sources.
+    // Class, minima and bounds are selected per fixture class; a newly added
+    // field must be reviewed here because `check-literals` does not scan module
+    // sources.
+    // exhaustive: every domain axis is selected per fixture class.
     GeometryDomain {
         class,
         min_holes,

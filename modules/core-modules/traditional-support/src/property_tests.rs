@@ -372,9 +372,9 @@ impl TsCase {
             ShapeKind::Hole => (TopologyClass::Holed, 1),
             _ => (TopologyClass::Convex, 0),
         };
-        // exhaustive: every bound is the live profile limit and every class
-        // field is derived from the fixture's topology, so there is nothing to
-        // default.
+        // Every bound is the live profile limit and every class field is derived
+        // from the fixture's topology, so there is nothing to default.
+        // exhaustive: every class axis and bound is derived from the fixture.
         GeometryDomain {
             class,
             min_holes: holes,

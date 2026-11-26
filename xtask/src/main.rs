@@ -17,6 +17,8 @@ mod test;
 mod wit_verify;
 
 #[cfg(test)]
+mod property_closure_tests;
+#[cfg(test)]
 mod rustc_driver_tests;
 
 use std::env;

@@ -260,9 +260,10 @@ impl ClassTag {
             Self::Holed => (TopologyClass::Holed, 1, 1),
             Self::Disconnected => (TopologyClass::Disconnected, 0, 2),
         };
-        // exhaustive: class, both topology minima, the boundary rule and the
-        // bounds are all derived immediately above; defaulting any of them
-        // would silently weaken the declared topology.
+        // Class, both topology minima, the boundary rule and the bounds are all
+        // derived immediately above; defaulting any of them would silently
+        // weaken the declared topology.
+        // exhaustive: complete topology domain; every axis is derived above.
         GeometryDomain {
             class,
             min_holes,
@@ -537,8 +538,8 @@ fn checked_limits(bounds: &BTreeMap<String, u64>) -> Result<ClassicLimits, Domai
         )));
     }
 
-    // exhaustive: live profiles must supply every measured bound, never the
-    // helper default.
+    // Live profiles must supply every measured bound, never the helper default.
+    // exhaustive: every measured bound is supplied explicitly.
     let geometry_bounds = GeometryBounds {
         max_abs_units,
         max_vertices,
@@ -1111,8 +1112,9 @@ fn proptest_classic_wall_structure() {
 
 /// Coordinate bound for a fixed square witness of `side_mm`.
 fn square_bounds(side_mm: f32) -> GeometryBounds {
-    // exhaustive: the witness bound is explicit; defaulting a bound here would
-    // hide the fixed square's extent from the fixture review.
+    // The witness bound is explicit; defaulting a bound here would hide the
+    // fixed square's extent from the fixture review.
+    // exhaustive: every witness bound is explicit.
     GeometryBounds {
         max_abs_units: mm_to_units(side_mm),
         max_vertices: 4,

@@ -375,6 +375,21 @@ is parsed and reserved: with no eligible SCAD record registered it returns usage
 `no_eligible_scad_properties`. Source-adjacent seed persistence is disabled
 (`failure_persistence: None`); no `proptest-regressions*` file is ever written beside sources.
 
+## Contributor handoff
+
+A new property needs: a `## <ID>` charter here with an **independent oracle** (never the
+production function under test) and non-vacuous witnesses plus mutation controls; a private
+`proptest_*` test (module kernels in `src/property_tests.rs` behind stacked `#[cfg(test)]` /
+`#[cfg(feature = "property_testing")]`, host tests in a `tests/` target); one `[[property]]`
+record in `test-properties.toml` with exact package/target/full test name/features and measured
+Windows profiles; and per-case isolation through `PropertyRun`/`CaseGuard`. The registry census
+fails a discovered `proptest_*` test with no record (`unregistered_property_test`) and a record
+with no matching executed test (`missing_property_execution`). Windows CI runs the routine lanes
+on pull requests and the extended lane by manual dispatch. A confirmed failure becomes a named
+**concrete regression** over the retained concrete input, not a committed seed. Files outside the
+literal/test-quality scanner scope need the manual FRU/waiver review. The step-by-step workflow and
+current rollout gates are in `docs/testing/proptest-rollout-evidence.md` § 11 and § 2.
+
 ## H-IR-ANCHORS
 
 Registry record: `id = "H-IR-ANCHORS"`, `package = "slicer-ir"`, `target_kind = "test"`,

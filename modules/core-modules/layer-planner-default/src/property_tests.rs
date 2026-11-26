@@ -466,10 +466,11 @@ fn raw_spec(
 fn planning_objects(specs: &[ObjectSpec]) -> Vec<LayerPlanningObject> {
     specs
         .iter()
+        // All six fields are this object's planning input, and `layer_zs` is
+        // empty exactly when the fixture selected the uniform fallback (so the
+        // field set is the fixture, not a default).
+        // exhaustive: complete planning-object input.
         .map(|spec| LayerPlanningObject {
-            // exhaustive: all six fields are this object's planning input, and
-            // `layer_zs` is empty exactly when the fixture selected the uniform
-            // fallback (so the field set is the fixture, not a default).
             object_id: spec.object_id.clone(),
             object_height: spec.height_mm,
             layer_height: spec.layer_height_mm,
@@ -487,9 +488,10 @@ fn expected_region(
     is_catchup: bool,
     catchup_z_bottom: f32,
 ) -> RegionLayerProposal {
-    // exhaustive: every field is this expected region's identity and credit;
-    // `region_id` is the planner's single region "0" by contract, so a FRU over
-    // `Default` would silently produce the wrong id.
+    // Every field is this expected region's identity and credit; `region_id` is
+    // the planner's single region "0" by contract, so a FRU over `Default`
+    // would silently produce the wrong id.
+    // exhaustive: complete region identity and credit.
     RegionLayerProposal {
         object_id: object_id.to_owned(),
         region_id: "0".to_owned(),
