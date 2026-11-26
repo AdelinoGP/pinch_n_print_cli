@@ -8,10 +8,6 @@
 
 use crate::common::seed::seed_slice_ir as seed_mesh_slice_ir;
 
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
@@ -26,6 +22,10 @@ use slicer_runtime::{
     WasmArtifactMetadata,
 };
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 // ============================================================================
 // Test 1: Layers processed in parallel with deterministic stage ordering
@@ -552,11 +552,7 @@ impl LayerStageRunner for ScriptedRunner {
         // commits real IR, proving the executor did not abandon the layer.
         if self.commit_infill_after_non_fatal
             && stage_id == "Layer::Infill"
-            && self
-                .non_fatal_layers
-                .lock()
-                .unwrap()
-                .contains(&layer.index)
+            && self.non_fatal_layers.lock().unwrap().contains(&layer.index)
         {
             self.ran_after_non_fatal.lock().unwrap().push(key);
             let mut infill = infill_ir_two_regions();

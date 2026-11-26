@@ -4880,10 +4880,7 @@ mod fatal_policy_tests {
     }
 
     fn config_with_int(key: &str, value: i64) -> ConfigView {
-        ConfigView::from_map(HashMap::from([(
-            key.to_string(),
-            ConfigValue::Int(value),
-        )]))
+        ConfigView::from_map(HashMap::from([(key.to_string(), ConfigValue::Int(value))]))
     }
 
     fn dispatch_finalization(
