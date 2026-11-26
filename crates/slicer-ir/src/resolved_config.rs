@@ -1600,6 +1600,83 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         selector: false,
         denied_scopes: &[],
     },
+    // Six canonical feature-filament selectors (`*_filament_id`, coInt by
+    // `PrintConfig.cpp::PrintConfigDef::init_fff_params`, default 0 =
+    // Default/inherit). They route by extrusion role at the layer executor;
+    // without these declarations the ingestor warn-drops every authored value
+    // and the feature cannot fire in production (ticket 152, A-2d8d71c1).
+    HostRuntimeKey {
+        key: "sparse_infill_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "internal_solid_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "top_surface_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "bottom_surface_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "inner_wall_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "outer_wall_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
     // Export-seam keys with no `ResolvedConfig` field (wayfinder tickets
     // 91/92). Both act on the finished G-code, so a narrower-than-print
     // statement has no consumer to honour it.

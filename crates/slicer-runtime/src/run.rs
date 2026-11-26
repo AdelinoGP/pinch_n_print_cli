@@ -3296,6 +3296,65 @@ mod tests {
     }
 
     #[test]
+    fn feature_filament_selectors_are_declared_host_keys() {
+        // Ticket 152 (A-2d8d71c1): the six `*_filament_id` keys were read by
+        // `parse_feature_filament_selection` but declared nowhere, so the
+        // ingestor warn-dropped every authored value and the feature could
+        // never fire in production. This goes through the live registry and
+        // the real resolution path, not a hand-built map.
+        let registry =
+            slicer_config::assemble_registry(&[], &slicer_config::HostChannels::from_live())
+                .unwrap()
+                .registry;
+        let mut ingestor = slicer_config::ConfigIngestor::new(&registry);
+        let mut source: HashMap<String, ConfigValue> = HashMap::new();
+        for (index, key) in [
+            "sparse_infill_filament_id",
+            "internal_solid_filament_id",
+            "top_surface_filament_id",
+            "bottom_surface_filament_id",
+            "inner_wall_filament_id",
+            "outer_wall_filament_id",
+        ]
+        .iter()
+        .enumerate()
+        {
+            source.insert((*key).to_string(), ConfigValue::Int(index as i64 + 1));
+        }
+        // Six tools so every 1-based selector is in range.
+        source.insert(
+            "filament_density".into(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24); 6]),
+        );
+        ingestor
+            .ingest_delta(slicer_config::ConfigScope::Global, &source)
+            .unwrap();
+        let outcome = ingestor.finish();
+        assert!(
+            outcome.warnings.is_empty(),
+            "the six *_filament_id selectors must be recognized host keys: {:?}",
+            outcome.warnings
+        );
+        let config = slicer_config::resolve_scope_stack(
+            &registry,
+            &outcome.scoped,
+            &slicer_config::ResolutionTarget::default(),
+            &slicer_config::ExpansionContext {
+                nozzle_diameter_mm: 0.4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (_, tools) = super::resolved_host_options(&config);
+        assert_eq!(tools.feature_filaments.sparse, Some(0));
+        assert_eq!(tools.feature_filaments.internal_solid, Some(1));
+        assert_eq!(tools.feature_filaments.top_surface, Some(2));
+        assert_eq!(tools.feature_filaments.bottom_surface, Some(3));
+        assert_eq!(tools.feature_filaments.inner_wall, Some(4));
+        assert_eq!(tools.feature_filaments.outer_wall, Some(5));
+    }
+
+    #[test]
     fn expanded_global_overlay_feeds_feedrate_config() {
         use super::overlay_expanded_global;
         // The raw source still carries the unexpanded overhang percent
