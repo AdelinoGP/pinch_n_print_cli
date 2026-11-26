@@ -38,3 +38,28 @@ User scoping note (2026-11-23): while most unique commits on `orca-feature-gaps`
 - Resolved when the asset is written, linked from `## Answer`, and summarises counts per bucket plus the top ruling items for [153](./153-rule-on-questionable-canonicity-and-superseded-branch-commits.md).
 
 ## Answer
+
+Audited at `b23fd6d3` against `origin/master` `d4f83e07`. Asset:
+[152-asset-branch-behaviour-audit.md](./152-asset-branch-behaviour-audit.md).
+
+32 commits audited (30 behavioural + the two rename riders `1be6a5af` and
+`4cdf5692`; the eight pure `pnp(wayfinder-10x)` commits and two docs-only
+commits excluded).
+
+| bucket | count |
+|---|---|
+| keep | 23 |
+| questionable-for-ruling | 4 (`71a4c832`, `ac035ed8`, `a21e70ee`, `f16c9ca5`) |
+| superseded-by-master | 2 (`202f812d`, `e7404ff1`) |
+| defective | 3 (`2d8d71c1`, `4cdf5692`, `b33f25f6`) |
+
+The three defects are code-fix items under the branch's "fix the code first"
+rule. The six remaining items are the ruling queue for
+[153](./153-rule-on-questionable-canonicity-and-superseded-branch-commits.md):
+
+1. fifth canonical fill role (`71a4c832`);
+2. claim-holder validation scope (`ac035ed8`);
+3. flush placeholders before their fallback (`a21e70ee`);
+4. speed floor vs ADR-0072's AUTO sentinel (`f16c9ca5`);
+5. production-dead overlay engine (`202f812d`);
+6. `support_base_pattern` split state (`e7404ff1`).
