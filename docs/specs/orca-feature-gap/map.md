@@ -34,7 +34,8 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   (`orca-feature-gaps`) paused on 2026-09-11 (`fb58aaf6`) while `origin/master`
   landed `config-scope-resolution` (ADRs 0067–0070), `layer-module-preparation`
   (ADRs 0066, 0071, 0073, 0074), `test-quality-remediation` (ADRs 0064–0065,
-  `docs/22_test_quality.md`), `perf-vs-orca` (ADR-0072), `proptest-openrscad`,
+  `docs/22_test_quality.md`), `perf-vs-orca` (ADR-0072), `proptest-openrscad`
+  (packets 01–14 on `master`; 15–17 still unlanded),
   and the 2026-11-05 two-file `<prefix>_<NN>_<name>/` packet standard
   (`docs/spec_packets/README.md`). User rulings (2026-11-23) govern the
   recovery wave (`151`–`160` plus `149` and `123`):
@@ -53,21 +54,48 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
      and 52-packet drift/SOTA triage ([158](issues/158-triage-draft-packets-for-drift-and-phase2-batching.md)).
      **Phase 2** (eager SOTA 2-file re-authoring of the 52 draft packets,
      graduated by [160](issues/160-graduate-phase2-sota-packet-reauthoring-batches.md))
-     is gated on [159](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md)
-     — the final merge once `perf-vs-orca` and `proptest-openrscad` close —
-     so all 52 packets are rewritten once against the settled tree.
+     is gated on [159](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md).
+     The branch-sync half of that gate is satisfied (PR #11, `4dcc2e32`; the
+     branch now fast-forwards to `origin/master`), but the upstream half is not:
+     `perf-vs-orca` is closed and merged, while `proptest-openrscad` packets
+     15–17 are still unlanded — 15–16 sit unmerged on
+     `origin/feature/proptest-openrscad` and 17 is unimplemented. See 159's
+     Progress note; the gate stays closed.
   2. **Modern packet & quality standard (supersedes ticket 06's bare-number
      rule):** all draft and future packets use sequential prefix naming
      `docs/spec_packets/orca-feature-gaps_<NN>_<slug>/` (eliminating the
      `_OLD/253` & `_OLD/254` collision), the two-file layout (`packet.spec.md`
      + `implementation-plan.md`), `docs/22_test_quality.md`, and Authoring
      Rules 1–6; `/spec-review --preflight` is optional.
-  3. **Branch code stays on `orca-feature-gaps` for now:** do not open an
-     upstream PR to `master` as part of this wave.
+  3. ~~**Branch code stays on `orca-feature-gaps` for now:** do not open an
+     upstream PR to `master` as part of this wave.~~ **Superseded 2026-11-26.**
+     The branch was merged to `master` as PR #11 (merge commit `4dcc2e32`),
+     nine of nine checks green. Work continues on `orca-feature-gaps`
+     fast-forwarded to `origin/master`, and lands by PR. The "no upstream PR"
+     clause no longer binds anything. Phase 2's remaining gate is the upstream
+     half of
+     [159](issues/159-gate-merge-closed-perf-and-proptest-into-branch.md).
   4. **Older-LLM quality bar:** all pre-2026-11 tickets and draft packets were
      authored by earlier models; Phase 2 re-authoring tickets may freely
      redesign seams, fold/split packets, dissolve live/dead ones, or demote
      small items to direct implementation against current SOTA standards.
+
+- **The post-merge ruling queue is filed (2026-11-26).**
+  [153](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)
+  disposed every `questionable-for-ruling` and `superseded-by-master` commit
+  from [152's audit](issues/152-asset-branch-behaviour-audit.md): the fifth fill
+  role is adopted (DEV-208), claim-holder validation runs at every resolved
+  scope, canonical flush fallbacks are implemented, the ADR-0072 speed floor
+  admits 0 on the three AUTO keys, and the remainder is kept with recorded
+  divergences. Two follow-ons are filed rather than folded into the merge:
+  [162](issues/162-delete-production-dead-overlay-engine.md) deletes the
+  production-dead overlay engine (`ResolvedConfig::overlay_onto` /
+  `overlay_resolved`, reachable only from the `host_config: None` path)
+  immediately after the merge, and
+  [135](issues/135-author-packet-support-base-pattern-holder.md) owns the
+  missing support base-pattern holder/algorithm seam while master's
+  `support_base_pattern` declaration and `traditional-base-pattern` capability
+  stay.
 - **Domain:** 3D-printing slicer config/feature parity with OrcaSlicer. The gap
   source is `docs/ORCA_CONFIG_REFERENCE.md` — an upstream snapshot whose
   ✅/❌ "In Codebase" column is **hand-maintained and measurably wrong** (only
@@ -1526,6 +1554,35 @@ per-key tier table in
   - [117 — `silent_mode`: needs a per-variant machine-limit model](issues/117-silent-mode-per-variant-machine-limit-model.md) — **closed by direct implementation, no packet** (grilled Q1–Q4, all recommended). The ten `machine_max_*` fields are now `Option<MachineLimitPair>` keeping both stride-2 `(normal, stealth)` entries (scalar/1-list duplicates, first pair wins, hard errors preserved); `silent_mode` (canonical default `false`, host-only, never in the CONFIG_BLOCK) selects the stealth entry in `EstimatorLimits::from_config`. Q1 corrected the ticket: the envelope keeps the normal entry (canonical `print_machine_envelope` reads `values[extruder * stride]` — draft packet 267 already specifies this), only the estimator switches. Flavor-agnostic selection is **DEV-207** (canonical gates on Marlin flavors; this seam carries no flavor). Equal-variant pairs keep the bare-value CONFIG_BLOCK spelling (byte-stable); distinct pairs emit the canonical comma pair. 04/05 rows graduate `silent_mode` to live (Tier B); packet 281's eight scalar fields untouched (DEV-173 stands — extend the pair pattern at activation).
 - [122 — Author packet — prime tower body parity](issues/122-author-packet-prime-tower-body-parity.md) — **authored as packet 307** (`docs/spec_packets/307-prime-tower-body-parity/`, `draft`), preflight **PASS**. The body (finish_layer assembly, top-down depth planning, idle layers, tool selection, smooth mode + its suppression clause) lands in the existing `wipe-tower` module behind `PostPass::LayerFinalization`; **five keys in, none re-declared** — the three draft producers are consumed, not folded (254a depth/pitch/brim/framework, 254b interface, 255 wall primitives), landing order 254a → 254b → 255 → 307. No new module, no IR/WIT field, no ADR, no claim. **P22 and P24 are both carried by 307.** Two authoring findings: `timelapse_type`'s canonical spelling is `"0"`/`"1"` (`s_keys_map_TimelapseType`, *"using 0,1 to compatible with old files"*), so the packet carries an explicit ingest adapter (AC-14) rather than a silent Traditional fallback; and `farthest_point_timelapse` is a **second** live canonical key missing from the gap source, recorded in the fog for [123](issues/123-audit-gap-source-key-set-completeness.md). Queue target unchanged (all five keys were already in the 407).
 
+- [151 — Audit merge residue and bring `orca-feature-gaps` branch gates green](issues/151-audit-merge-residue-and-bring-branch-gates-green.md)
+  — **resolved after the PR #11 merge; all local gates green on the merged tree
+  and every residue item dispositioned.** Verified at `5b9d6147` (`4dcc2e32`
+  plus the ticket-163 docs commit): `build-guests --check` exit `0`,
+  `check-literals` 0 violations, `check-fmt` 62/62, `clippy --workspace
+  --all-targets -- -D warnings` exit `0`, `check-test-quality --report`
+  0 findings. The workspace suite was not re-run locally; PR #11's recorded run
+  (498 binaries, 5,926 passed, 0 failed) is on `14661406`, whose tree is
+  byte-identical to the merge commit. Residue: the `overlay_resolved` deletion
+  is ruled into [162](issues/162-delete-production-dead-overlay-engine.md)
+  (production-dead; lands immediately after the merge); `resolve_config`
+  (`crates/slicer-scheduler/src/config_resolution.rs`) proved to be a thin
+  adapter over `resolve_scope_stack`, not a second engine; and
+  `support_base_pattern` matches ticket 135's ruling (declaration + capability
+  stay, object metadata drops the key, `support_base_pattern_spacing` live).
+  The "stay on the branch, no upstream PR" clause is superseded by the merge.
+- [153 — Rule on questionable "canonicity" and superseded branch commits](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)
+  — **every `questionable-for-ruling` and `superseded-by-master` item disposed;
+  the three defects were fixed before the merge.** Fifth fill role adopted
+  (DEV-208); claim-holder validation at every resolved scope; canonical flush
+  fallbacks (`nozzle_temperature_range_high`,
+  `filament_max_volumetric_speed`); the ADR-0072 speed floor admits 0 on the
+  three AUTO keys; the rest kept with recorded divergences. Filed
+  [162](issues/162-delete-production-dead-overlay-engine.md) (delete the
+  production-dead overlay engine right after the merge, not inside it) and
+  [135](issues/135-author-packet-support-base-pattern-holder.md) (master's
+  `support_base_pattern` declaration and capability stay; the packet owns only
+  the missing holder/algorithm seam).
+
 
 ## Not yet specified
 
@@ -1555,19 +1612,19 @@ per-key tier table in
   complete, and [160 — Graduate Phase 2 SOTA packet re-authoring batches](issues/160-graduate-phase2-sota-packet-reauthoring-batches.md)
   graduates them.
 
-- **Post-audit code remediation of questionable "canonicity" and master-superseded commits on `orca-feature-gaps`.**
-  The ~25 non-rename behavioural commits unique to this branch may require
-  targeted reverts, PnP-native redesigns, or test-quality fixes once
-  [152 — Deep audit of non-rename behavioural and "canonicity" commits on `orca-feature-gaps`](issues/152-deep-audit-non-rename-branch-behaviour-commits.md)
-  inventories them and [153 — Rule on questionable "canonicity" and superseded branch commits](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)
-  settles each disposition with the human. Concrete remediation task tickets
-  graduate from `153`.
+- **Post-audit code remediation of questionable "canonicity" and
+  master-superseded commits on `orca-feature-gaps` — done 2026-11-26.**
+  [152](issues/152-asset-branch-behaviour-audit.md) inventoried the roster,
+  [153](issues/153-rule-on-questionable-canonicity-and-superseded-branch-commits.md)
+  disposed every item, and the fixes landed before the PR #11 merge. The one
+  deferred code deletion is
+  [162](issues/162-delete-production-dead-overlay-engine.md), filed as its own
+  post-merge ticket. Removed from the fog.
 
-- **Upstreaming `orca-feature-gaps`'s landed code to `master`.**
-  User ruling (2026-11-23): keep the branch's landed code on
-  `orca-feature-gaps` for now. Revisit whether/how to upstream once
-  `perf-vs-orca` and `proptest-openrscad` close and the re-alignment wave
-  settles.
+- **Upstreaming `orca-feature-gaps`'s landed code to `master` — done 2026-11-26.**
+  PR #11 merged the branch as `4dcc2e32` (9/9 checks green) and the branch was
+  fast-forwarded to `origin/master`. Removed from the fog; the 2026-11-23
+  "keep it on the branch" ruling is superseded (see Notes ruling 3).
 
 - **Canonical's ordinary-layer sharp-tail append is not modelled, and ticket 115's freeze
   does not model it.** Surfaced by ticket 115's scope correction. The retired
