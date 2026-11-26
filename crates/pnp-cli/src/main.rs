@@ -1113,20 +1113,65 @@ fn warn_if_off_bed(mesh: &slicer_ir::MeshIR, bed_shape: &[f64]) {
     }
 }
 
+/// Parse `printable_area` from a config JSON value.
+///
+/// Accepts both spellings Orca and this port produce: the interleaved
+/// `[x0, y0, x1, y1, ...]` float list and the 3MF point-string form
+/// (`["0x0", "250x0", ...]`, expanded through
+/// [`slicer_ir::parse_orca_point_string`]). The registry path already accepts
+/// both; this pre-ingestion reader must agree with it or bed placement uses
+/// the 250 x 250 fallback for a plate the slicer itself understands.
+fn parse_printable_area(value: &serde_json::Value) -> Option<Vec<f64>> {
+    let area = value.get("printable_area")?.as_array()?;
+    let mut out = Vec::with_capacity(area.len() * 2);
+    for item in area {
+        if let Some(number) = item.as_f64() {
+            out.push(number);
+        } else {
+            let (x, y) = slicer_ir::parse_orca_point_string(item.as_str()?)?;
+            out.push(x);
+            out.push(y);
+        }
+    }
+    Some(out)
+}
+
 /// `printable_area` from the `--config` JSON, falling back to the resolved default.
 fn read_bed_shape(config_path: Option<&std::path::Path>) -> Vec<f64> {
     let from_config = config_path
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .and_then(|value| {
-            value
-                .get("printable_area")?
-                .as_array()?
-                .iter()
-                .map(serde_json::Value::as_f64)
-                .collect::<Option<Vec<f64>>>()
-        });
+        .and_then(|value| parse_printable_area(&value));
     from_config.unwrap_or_else(|| slicer_ir::ResolvedConfig::default().printable_area)
+}
+
+#[cfg(test)]
+mod printable_area_tests {
+    use super::parse_printable_area;
+
+    #[test]
+    fn interleaved_numbers_parse() {
+        let value = serde_json::json!({ "printable_area": [0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] });
+        assert_eq!(
+            parse_printable_area(&value),
+            Some(vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0])
+        );
+    }
+
+    #[test]
+    fn orca_point_strings_parse_to_the_same_area() {
+        let value = serde_json::json!({ "printable_area": ["0x0", "250x0", "250x250", "0x250"] });
+        assert_eq!(
+            parse_printable_area(&value),
+            Some(vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0])
+        );
+    }
+
+    #[test]
+    fn malformed_point_string_is_rejected() {
+        let value = serde_json::json!({ "printable_area": ["0x0", "not-a-point"] });
+        assert_eq!(parse_printable_area(&value), None);
+    }
 }
 
 // ---------------------------------------------------------------------------
