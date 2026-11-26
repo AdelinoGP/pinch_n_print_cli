@@ -2378,6 +2378,7 @@ checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 name = "machine-gcode-emit"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2863,6 +2864,7 @@ dependencies = [
 name = "overhang-classifier-default"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2896,6 +2898,7 @@ dependencies = [
 name = "part-cooling"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -3970,6 +3973,7 @@ checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
 name = "skirt-brim"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -4018,6 +4022,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "log",
+ "proptest",
  "rayon",
  "slicer-helpers",
  "slicer-ir",
@@ -4107,10 +4112,12 @@ name = "slicer-model-io"
 version = "0.1.0"
 dependencies = [
  "log",
+ "proptest",
  "quick-xml 0.39.2",
  "serde_json",
  "slicer-ir",
  "slicer-scad",
+ "slicer-sdk",
  "stl_io",
  "tempfile",
  "tobj",
@@ -5949,6 +5956,7 @@ dependencies = [
 name = "wipe-tower"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

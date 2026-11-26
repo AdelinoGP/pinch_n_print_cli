@@ -545,6 +545,18 @@ impl FinalizationModule for WipeTower {
     }
 }
 
+// ── Opt-in property tests (H-WIPE-TOWER) ─────────────────────────────────────
+//
+// Two separately stacked gates: the literal visitor's `cfg_test_module` only
+// recognizes a bare `#[cfg(test)]`, and `collect_enforced_files`
+// (`xtask/src/check_literals.rs`) never collects
+// `modules/core-modules/*/src`. The literal and test-quality reviews for this
+// out-of-line file are manual (see its module docs), not scanner evidence.
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+
 // ── Unit tests (packet-58 TDD scaffolding) ───────────────────────────────────
 
 #[cfg(test)]

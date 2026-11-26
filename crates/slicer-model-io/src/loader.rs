@@ -185,7 +185,8 @@ pub fn detect_format(path: impl AsRef<Path>) -> Result<ModelFormat, ModelLoadErr
 }
 
 /// Deterministic object ID: UUID v5 (SHA1) keyed on the file's **basename** plus
-/// its per-file object index — e.g. `uuid5(NS_OID, "cube.stl#0")`.
+/// its per-file object index — e.g. `uuid5(X500, "cube.stl#0")`, where `X500` is
+/// the RFC 4122 §4.3 X.500 distinguished-name namespace.
 ///
 /// # Why basename and not the full path
 ///
@@ -203,7 +204,11 @@ pub fn detect_format(path: impl AsRef<Path>) -> Result<ModelFormat, ModelLoadErr
 /// rejected up front rather than silently merged — see
 /// [`check_basename_collisions`].
 fn path_object_id(path: &Path, index: usize) -> String {
-    // NAMESPACE_OID (RFC 4122 Â§4.3) â€” stable, well-known UUID namespace.
+    // RFC 4122 §4.3 **X.500 distinguished-name** namespace
+    // (`6ba7b814-9dad-11d1-80b4-00c04fd430c8`), a stable, well-known UUID
+    // namespace. The historical local name `NS_OID` was a misnomer: the OID
+    // namespace is `6ba7b812-...`, exactly one byte different, so substituting
+    // `Uuid::NAMESPACE_OID` here would silently change every object id.
     const NS: uuid::Uuid = uuid::Uuid::from_bytes([
         0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
         0xc8,
@@ -3017,6 +3022,42 @@ fn object_world_aabb(object: &ObjectMesh) -> Option<(Point3, Point3)> {
     (min.x.is_finite() && max.x.is_finite()).then_some((min, max))
 }
 
+/// Union of every object's **world-space** AABB, using the same
+/// zero-matrix-is-identity convention as [`object_world_z_extent`].
+///
+/// `None` when no object yields a finite-X world AABB (an empty world or one
+/// whose every object is rejected by the finite-X gate). This is the
+/// `MeshIR::build_volume` contract: it is the model-wide **world-space** AABB
+/// (`docs/08_coordinate_system.md` § Bed Placement;
+/// `bed_placement_tdd::build_volume_tracks_the_placed_model`), and placement
+/// must make it follow the placed model. No in-tree consumer was observed
+/// reading a stale pre-placement box, so the defect is contract-level.
+fn compute_world_bounding_box_union(objects: &[ObjectMesh]) -> Option<BoundingBox3> {
+    let mut min = Point3 {
+        x: f32::INFINITY,
+        y: f32::INFINITY,
+        z: f32::INFINITY,
+    };
+    let mut max = Point3 {
+        x: f32::NEG_INFINITY,
+        y: f32::NEG_INFINITY,
+        z: f32::NEG_INFINITY,
+    };
+    let mut any = false;
+    for object in objects {
+        if let Some((lo, hi)) = object_world_aabb(object) {
+            any = true;
+            min.x = min.x.min(lo.x);
+            min.y = min.y.min(lo.y);
+            min.z = min.z.min(lo.z);
+            max.x = max.x.max(hi.x);
+            max.y = max.y.max(hi.y);
+            max.z = max.z.max(hi.z);
+        }
+    }
+    any.then_some(BoundingBox3 { min, max })
+}
+
 /// The centre of a `bed_shape` polygon, given as interleaved
 /// `[x0, y0, x1, y1, ...]` millimetres (the `ResolvedConfig::bed_shape`
 /// encoding). Returns `None` when the polygon cannot describe a plate.
@@ -3188,7 +3229,14 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
         }
     }
 
-    mesh.build_volume = compute_bounding_box_union(mesh.objects.iter().map(|o| &o.mesh));
+    // `build_volume` is the model-wide **world-space** AABB union: the
+    // loader-assembled objects carry a real identity matrix (not the all-zero
+    // fixture convention), so the loop above folds the shift into
+    // `transform.matrix` and leaves the raw vertices untouched. A raw-vertex
+    // recompute (`compute_bounding_box_union`) would therefore keep the
+    // pre-placement box; world AABBs are the contract `visual_debug` and
+    // `bed_placement_tdd` rely on.
+    mesh.build_volume = compute_world_bounding_box_union(&mesh.objects).unwrap_or_default();
     Some(placement)
 }
 
@@ -3662,5 +3710,1147 @@ mod tests {
     fn object_world_z_extent_empty_mesh_is_none() {
         let object = make_object("empty", vec![], identity_transform());
         assert!(object_world_z_extent(&object).is_none());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H-IO-ID property tests (packet `proptest-openrscad_16_pbt-io-gcode`)
+// ---------------------------------------------------------------------------
+
+/// Registry-backed `H-IO-ID` property and its deterministic controls.
+///
+/// The gates are stacked rather than combined into
+/// `#[cfg(all(test, feature = "property_testing"))]`: the workspace literal and
+/// test-quality scanners recognize an exact `#[cfg(test)]` ident, while the
+/// selection feature keeps a context-dependent property out of an ordinary
+/// `cargo test -p slicer-model-io --lib` run (which has no
+/// `PNP_PROPERTY_CONTEXT`).
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests {
+    use std::ffi::OsStr;
+    use std::path::{Path, PathBuf};
+
+    use proptest::prelude::*;
+    use proptest::strategy::ValueTree;
+    use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestRunner};
+    use slicer_sdk::test_support::property_testing::PropertyRun;
+
+    use super::{check_basename_collisions, path_object_id, ModelLoadError};
+
+    /// Registry identity of the `H-IO-ID` charter.
+    const PROPERTY_ID: &str = "H-IO-ID";
+    /// Exact registry test name (must match `test-properties.toml`).
+    const TEST_NAME: &str = "loader::property_tests::proptest_object_id_and_basename_collisions";
+
+    /// The 16 bytes `path_object_id` keys on: the RFC 4122 §4.3 **X.500**
+    /// distinguished-name namespace
+    /// (`6ba7b814-9dad-11d1-80b4-00c04fd430c8`).
+    ///
+    /// This is deliberately a literal, not `uuid::Uuid::NAMESPACE_OID`
+    /// (`6ba7b812-...`). The production local name `NS_OID` is a misnomer; the
+    /// `io_identity_controls` test pins the distinction.
+    const X500_NAMESPACE_BYTES: [u8; 16] = [
+        0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
+        0xc8,
+    ];
+
+    /// A deterministic index well above every bounded `max_index` profile.
+    const LARGE_INDEX: usize = 1_000_000;
+
+    /// Bounded directory prefixes. Distinct entries make "same basename in a
+    /// different directory" constructible without a filter-heavy path
+    /// generator.
+    const DIRECTORY_POOL: [&str; 5] = ["", "a", "b", "sub", "ünï"];
+
+    /// Non-ASCII basenames with no path separator.
+    const UNICODE_BASENAMES: [&str; 3] = ["é.stl", "模型.stl", "naïve.obj"];
+
+    /// Prefixes that cannot exist in the test working directory, so the
+    /// two-path collision witness can never accidentally canonicalize together.
+    const COLLISION_ROOT_A: &str = "__p16_io_id_missing_a__";
+    const COLLISION_ROOT_B: &str = "__p16_io_id_missing_b__";
+
+    /// Structural mode of a generated identity/collision case.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum IoIdMode {
+        /// Ordinary bounded paths, including duplicates and empty lists.
+        Normal,
+        /// Empty path list.
+        Empty,
+        /// One path repeated with one index.
+        Repeated,
+        /// Empty/root/dot/dot-dot paths whose `file_name()` is `None`.
+        NoFileName,
+        /// A path whose trailing separator is ignored by `file_name()`.
+        TrailingSeparator,
+        /// Two distinct paths sharing a basename in different directories.
+        Collision,
+        /// A non-ASCII basename.
+        Unicode,
+    }
+
+    const MODES: [IoIdMode; 7] = [
+        IoIdMode::Normal,
+        IoIdMode::Empty,
+        IoIdMode::Repeated,
+        IoIdMode::NoFileName,
+        IoIdMode::TrailingSeparator,
+        IoIdMode::Collision,
+        IoIdMode::Unicode,
+    ];
+
+    /// One generated path plus the per-file object index used for its id.
+    #[derive(Debug, Clone)]
+    struct PathEntry {
+        path: PathBuf,
+        index: usize,
+    }
+
+    /// One generated identity/collision case.
+    #[derive(Debug, Clone)]
+    struct IdentityCase {
+        mode: IoIdMode,
+        entries: Vec<PathEntry>,
+    }
+
+    /// Validated `H-IO-ID` registry bounds.
+    #[derive(Debug, Clone, Copy)]
+    struct IdLimits {
+        max_basename_bytes: usize,
+        max_paths: usize,
+        max_index: usize,
+    }
+
+    impl IdLimits {
+        fn from_bounds(
+            max_basename_bytes: u64,
+            max_paths: u64,
+            max_index: u64,
+        ) -> Result<Self, String> {
+            let max_basename_bytes = usize::try_from(max_basename_bytes)
+                .map_err(|_| "max_basename_bytes does not fit usize".to_string())?;
+            let max_paths = usize::try_from(max_paths)
+                .map_err(|_| "max_paths does not fit usize".to_string())?;
+            let max_index = usize::try_from(max_index)
+                .map_err(|_| "max_index does not fit usize".to_string())?;
+            let min_unicode_bytes = UNICODE_BASENAMES
+                .iter()
+                .map(|name| name.len())
+                .min()
+                .unwrap_or(0);
+            if max_basename_bytes < min_unicode_bytes.max(1) {
+                return Err(format!(
+                    "max_basename_bytes {max_basename_bytes} cannot host the required \
+                     Unicode witness ({min_unicode_bytes} bytes)"
+                ));
+            }
+            if max_paths < 4 {
+                return Err(
+                    "max_paths must be at least 4 to host the required empty/root/dot/dot-dot \
+                     witnesses"
+                        .to_string(),
+                );
+            }
+            if max_index == 0 {
+                return Err("max_index must be positive".to_string());
+            }
+            if max_index >= LARGE_INDEX {
+                return Err(format!(
+                    "max_index {max_index} must stay below the deterministic large index \
+                     {LARGE_INDEX}"
+                ));
+            }
+            Ok(Self {
+                max_basename_bytes,
+                max_paths,
+                max_index,
+            })
+        }
+
+        fn witness() -> Self {
+            Self {
+                max_basename_bytes: 32,
+                max_paths: 8,
+                max_index: 64,
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Generation.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[derive(Debug, Clone)]
+    struct PayloadEntry {
+        basename: String,
+        directory: usize,
+        index: usize,
+    }
+
+    /// Bound the byte length exactly and stay on a char boundary.
+    fn truncate_to_bytes(text: &str, max_bytes: usize) -> String {
+        if text.len() <= max_bytes {
+            return text.to_owned();
+        }
+        let mut end = max_bytes.min(text.len());
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end == 0 {
+            // `max_bytes` is validated positive; fall back to one ASCII byte.
+            "a".to_owned()
+        } else {
+            text[..end].to_owned()
+        }
+    }
+
+    /// Construction-first basename text: a seed or a bounded character run,
+    /// never containing a path separator.
+    fn basename_strategy(max_bytes: usize) -> impl Strategy<Value = String> {
+        let seed = prop::sample::select(vec![
+            "cube.stl",
+            "widget.stl",
+            "é.stl",
+            "模型.stl",
+            "a",
+            "part-01.obj",
+            "x",
+        ]);
+        let generated = prop::collection::vec(
+            prop::sample::select(vec!['a', 'b', 'c', 'z', '0', '7', '-', '_', 'é', '型']),
+            0..=max_bytes,
+        );
+        (seed, generated).prop_map(move |(seed, chars)| {
+            let mut text = String::from(seed);
+            text.extend(chars);
+            truncate_to_bytes(&text, max_bytes)
+        })
+    }
+
+    fn directory_strategy() -> impl Strategy<Value = usize> {
+        0..=(DIRECTORY_POOL.len() - 1)
+    }
+
+    fn index_strategy(max_index: usize) -> impl Strategy<Value = usize> {
+        prop_oneof![Just(0usize), 1..=max_index, Just(LARGE_INDEX)]
+    }
+
+    fn payload_entry_strategy(limits: IdLimits) -> impl Strategy<Value = PayloadEntry> {
+        (
+            basename_strategy(limits.max_basename_bytes),
+            directory_strategy(),
+            index_strategy(limits.max_index),
+        )
+            .prop_map(|(basename, directory, index)| PayloadEntry {
+                basename,
+                directory,
+                index,
+            })
+    }
+
+    fn path_for(entry: &PayloadEntry) -> PathBuf {
+        let directory = DIRECTORY_POOL[entry.directory];
+        if directory.is_empty() {
+            PathBuf::from(&entry.basename)
+        } else {
+            Path::new(directory).join(&entry.basename)
+        }
+    }
+
+    fn to_entry(entry: &PayloadEntry) -> PathEntry {
+        PathEntry {
+            path: path_for(entry),
+            index: entry.index,
+        }
+    }
+
+    fn no_file_name_paths() -> [PathBuf; 4] {
+        [
+            PathBuf::from(""),
+            PathBuf::from("/"),
+            PathBuf::from("."),
+            PathBuf::from(".."),
+        ]
+    }
+
+    fn identity_case_strategy(limits: IdLimits) -> BoxedStrategy<IdentityCase> {
+        prop::sample::select(MODES.to_vec())
+            .no_shrink()
+            .prop_flat_map(move |mode| case_strategy(mode, limits))
+            .boxed()
+    }
+
+    fn case_strategy(mode: IoIdMode, limits: IdLimits) -> BoxedStrategy<IdentityCase> {
+        match mode {
+            IoIdMode::Empty => Just(IdentityCase {
+                mode,
+                entries: Vec::new(),
+            })
+            .boxed(),
+            IoIdMode::Normal => {
+                prop::collection::vec(payload_entry_strategy(limits), 0..=limits.max_paths)
+                    .prop_map(move |payload| IdentityCase {
+                        mode,
+                        entries: payload.iter().map(to_entry).collect(),
+                    })
+                    .boxed()
+            }
+            IoIdMode::Repeated => (payload_entry_strategy(limits), 2..=limits.max_paths.min(4))
+                .prop_map(move |(payload, count)| {
+                    let path = path_for(&payload);
+                    IdentityCase {
+                        mode,
+                        entries: (0..count)
+                            .map(|_| PathEntry {
+                                path: path.clone(),
+                                index: payload.index,
+                            })
+                            .collect(),
+                    }
+                })
+                .boxed(),
+            IoIdMode::NoFileName => prop::collection::vec(
+                payload_entry_strategy(limits),
+                0..=(limits.max_paths - no_file_name_paths().len()),
+            )
+            .prop_map(move |payload| {
+                let mut entries: Vec<PathEntry> = payload.iter().map(to_entry).collect();
+                for (index, path) in no_file_name_paths().into_iter().enumerate() {
+                    entries.push(PathEntry { path, index });
+                }
+                IdentityCase { mode, entries }
+            })
+            .boxed(),
+            IoIdMode::TrailingSeparator => (
+                prop::collection::vec(payload_entry_strategy(limits), 0..=(limits.max_paths - 1)),
+                basename_strategy(limits.max_basename_bytes),
+            )
+                .prop_map(move |(payload, basename)| {
+                    let mut entries: Vec<PathEntry> = payload.iter().map(to_entry).collect();
+                    entries.push(PathEntry {
+                        path: PathBuf::from(format!("sub/{basename}/")),
+                        index: 0,
+                    });
+                    IdentityCase { mode, entries }
+                })
+                .boxed(),
+            IoIdMode::Collision => (
+                basename_strategy(limits.max_basename_bytes),
+                index_strategy(limits.max_index),
+                index_strategy(limits.max_index),
+            )
+                .prop_map(move |(basename, first_index, second_index)| IdentityCase {
+                    mode,
+                    entries: vec![
+                        PathEntry {
+                            path: Path::new(COLLISION_ROOT_A).join(&basename),
+                            index: first_index,
+                        },
+                        PathEntry {
+                            path: Path::new(COLLISION_ROOT_B).join(&basename),
+                            index: second_index,
+                        },
+                    ],
+                })
+                .boxed(),
+            IoIdMode::Unicode => (
+                prop::sample::select(UNICODE_BASENAMES.to_vec()),
+                index_strategy(limits.max_index),
+                prop::collection::vec(payload_entry_strategy(limits), 0..=(limits.max_paths - 1)),
+            )
+                .prop_map(move |(basename, index, payload)| {
+                    let mut entries: Vec<PathEntry> = payload.iter().map(to_entry).collect();
+                    entries.push(PathEntry {
+                        path: PathBuf::from(basename),
+                        index,
+                    });
+                    IdentityCase { mode, entries }
+                })
+                .boxed(),
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Independent oracles and the shared checkers.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// The documented identity base: the basename, or the whole path text when
+    /// `file_name()` is `None`.
+    fn identity_key(path: &Path) -> String {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned())
+    }
+
+    /// Independent name constructor: the basename (or the whole-path fallback
+    /// when `file_name()` is `None`) plus `#<index>`.
+    fn expected_object_name(path: &Path, index: usize) -> String {
+        format!("{}#{index}", identity_key(path))
+    }
+
+    fn expected_object_id(path: &Path, index: usize) -> String {
+        let namespace = uuid::Uuid::from_bytes(X500_NAMESPACE_BYTES);
+        uuid::Uuid::new_v5(&namespace, expected_object_name(path, index).as_bytes()).to_string()
+    }
+
+    /// Canonical lowercase hyphenated `8-4-4-4-12` syntax.
+    fn is_canonical_uuid_text(text: &str) -> bool {
+        let bytes = text.as_bytes();
+        if bytes.len() != 36 {
+            return false;
+        }
+        for (position, byte) in bytes.iter().enumerate() {
+            if matches!(position, 8 | 13 | 18 | 23) {
+                if *byte != b'-' {
+                    return false;
+                }
+            } else if !byte.is_ascii_digit() && !(b'a'..=b'f').contains(byte) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// The shared identity checker: the property and `io_identity_controls`
+    /// both call this.
+    fn check_identity_value(path: &Path, index: usize, actual: &str) -> Result<(), String> {
+        if !is_canonical_uuid_text(actual) {
+            return Err(format!(
+                "path_object_id({path:?}, {index}) = {actual:?} is not canonical lowercase \
+                 hyphenated UUID text"
+            ));
+        }
+        let expected = expected_object_id(path, index);
+        if actual != expected {
+            return Err(format!(
+                "path_object_id({path:?}, {index}) = {actual}, independent oracle \
+                 uuid5(X.500, {:?}) = {expected}",
+                expected_object_name(path, index)
+            ));
+        }
+        Ok(())
+    }
+
+    /// The production `same_file` predicate, modelled from its documented
+    /// first branch (literal equality) plus canonicalization when both paths
+    /// exist.
+    fn same_file_model(a: &Path, b: &Path) -> bool {
+        if a == b {
+            return true;
+        }
+        match (a.canonicalize(), b.canonicalize()) {
+            (Ok(canonical_a), Ok(canonical_b)) => canonical_a == canonical_b,
+            _ => false,
+        }
+    }
+
+    /// First-seen grouping model of the collision guard.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum CollisionModel {
+        Clear,
+        Duplicate {
+            basename: String,
+            first: PathBuf,
+            second: PathBuf,
+        },
+    }
+
+    fn expected_collisions(paths: &[PathBuf]) -> CollisionModel {
+        let mut seen: Vec<(&OsStr, &PathBuf)> = Vec::new();
+        for path in paths {
+            let Some(base) = path.file_name() else {
+                // Mirrors the production `continue`: a path with no file name
+                // is skipped, never grouped.
+                continue;
+            };
+            let previous = seen
+                .iter()
+                .find(|(seen_base, _)| *seen_base == base)
+                .map(|(_, seen_path)| *seen_path);
+            match previous {
+                Some(first) if !same_file_model(first, path) => {
+                    return CollisionModel::Duplicate {
+                        basename: base.to_string_lossy().into_owned(),
+                        first: first.to_path_buf(),
+                        second: path.clone(),
+                    };
+                }
+                Some(_) => {}
+                None => seen.push((base, path)),
+            }
+        }
+        CollisionModel::Clear
+    }
+
+    /// The shared collision checker, comparing the exact error fields and the
+    /// input-order first/second paths.
+    fn check_collision_result(
+        paths: &[PathBuf],
+        actual: &Result<(), ModelLoadError>,
+    ) -> Result<(), String> {
+        match (expected_collisions(paths), actual) {
+            (CollisionModel::Clear, Ok(())) => Ok(()),
+            (CollisionModel::Clear, Err(error)) => Err(format!(
+                "check_basename_collisions rejected a collision-free path list: {error}"
+            )),
+            (expected @ CollisionModel::Duplicate { .. }, Ok(())) => Err(format!(
+                "check_basename_collisions missed the collision modelled as {expected:?}"
+            )),
+            (
+                CollisionModel::Duplicate {
+                    basename,
+                    first,
+                    second,
+                },
+                Err(ModelLoadError::DuplicateInputBasename {
+                    basename: actual_basename,
+                    first: actual_first,
+                    second: actual_second,
+                }),
+            ) => {
+                if actual_basename == &basename
+                    && actual_first == &first
+                    && actual_second == &second
+                {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "DuplicateInputBasename fields disagree with input order: expected \
+                         basename {basename:?}, first {first:?}, second {second:?}; got basename \
+                         {actual_basename:?}, first {actual_first:?}, second {actual_second:?}"
+                    ))
+                }
+            }
+            (expected, Err(other)) => Err(format!(
+                "expected {expected:?}, got a different error: {other}"
+            )),
+        }
+    }
+
+    fn has_trailing_separator_text(path: &Path) -> bool {
+        let text = path.to_string_lossy();
+        text.ends_with('/') || text.ends_with('\\')
+    }
+
+    fn is_unicode_name(name: &OsStr) -> bool {
+        !name.to_string_lossy().is_ascii()
+    }
+
+    /// Mode-specific structural witness, checked on the generated value and on
+    /// every shrink/complicate step.
+    fn validate_case(case: &IdentityCase, limits: IdLimits) -> Result<(), String> {
+        if case.entries.len() > limits.max_paths {
+            return Err(format!(
+                "generated {} paths exceeds max_paths {}",
+                case.entries.len(),
+                limits.max_paths
+            ));
+        }
+        for entry in &case.entries {
+            if entry.index > LARGE_INDEX {
+                return Err(format!("index {} exceeds the witness ceiling", entry.index));
+            }
+            if let Some(name) = entry.path.file_name() {
+                let text = name.to_string_lossy();
+                if text.is_empty() {
+                    return Err(format!("empty file name in {:?}", entry.path));
+                }
+                if text.len() > limits.max_basename_bytes {
+                    return Err(format!(
+                        "basename {text:?} ({} bytes) exceeds max_basename_bytes {}",
+                        text.len(),
+                        limits.max_basename_bytes
+                    ));
+                }
+                if text.contains('/') || text.contains('\\') {
+                    return Err(format!("basename {text:?} contains a path separator"));
+                }
+            }
+        }
+        match case.mode {
+            IoIdMode::Empty => {
+                if case.entries.is_empty() {
+                    Ok(())
+                } else {
+                    Err("empty mode must generate no paths".to_string())
+                }
+            }
+            IoIdMode::Repeated => {
+                let Some(first) = case.entries.first() else {
+                    return Err("repeated mode must generate at least two identical paths".into());
+                };
+                if case.entries.len() >= 2
+                    && case.entries.iter().all(|entry| entry.path == first.path)
+                {
+                    Ok(())
+                } else {
+                    Err("repeated mode lost its identical-path witness".to_string())
+                }
+            }
+            IoIdMode::NoFileName => {
+                if case
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.path.file_name().is_none())
+                    .count()
+                    >= 4
+                {
+                    Ok(())
+                } else {
+                    Err("no-file-name mode lost its empty/root/dot/dot-dot witnesses".to_string())
+                }
+            }
+            IoIdMode::TrailingSeparator => {
+                if case.entries.iter().any(|entry| {
+                    has_trailing_separator_text(&entry.path) && entry.path.file_name().is_some()
+                }) {
+                    Ok(())
+                } else {
+                    Err("trailing-separator mode lost its final-component witness".to_string())
+                }
+            }
+            IoIdMode::Collision => {
+                let paths: Vec<PathBuf> = case.entries.iter().map(|e| e.path.clone()).collect();
+                match expected_collisions(&paths) {
+                    CollisionModel::Duplicate { .. } => Ok(()),
+                    CollisionModel::Clear => {
+                        Err("collision mode lost its distinct-path collision".to_string())
+                    }
+                }
+            }
+            IoIdMode::Unicode => {
+                if case
+                    .entries
+                    .iter()
+                    .any(|entry| entry.path.file_name().is_some_and(is_unicode_name))
+                {
+                    Ok(())
+                } else {
+                    Err("Unicode mode lost its non-ASCII basename".to_string())
+                }
+            }
+            IoIdMode::Normal => Ok(()),
+        }
+    }
+
+    /// The full `H-IO-ID` check: identity/name oracle, determinism, bounded
+    /// same-basename equivalence, bounded distinctness, and the collision
+    /// guard.
+    fn check_case(case: &IdentityCase, limits: IdLimits) -> Result<(), String> {
+        validate_case(case, limits)?;
+        let mut ids = Vec::with_capacity(case.entries.len());
+        for entry in &case.entries {
+            let actual = path_object_id(&entry.path, entry.index);
+            let repeated = path_object_id(&entry.path, entry.index);
+            // test-quality: determinism pin — the same production call twice
+            // claims stable output, not correctness; correctness is the
+            // independent UUID oracle below.
+            if actual != repeated {
+                return Err(format!(
+                    "path_object_id is not deterministic for {:?}/{}: {actual} vs {repeated}",
+                    entry.path, entry.index
+                ));
+            }
+            check_identity_value(&entry.path, entry.index, &actual)?;
+            ids.push(actual);
+        }
+
+        // Same basename in a different directory mints the same id; different
+        // basenames or indices mint different ids on this bounded set. This is
+        // a bounded-domain observation, never a universal hash injectivity
+        // claim. The identity key mirrors the documented derivation: the
+        // basename, or the whole path text when `file_name()` is `None`.
+        for left in 0..case.entries.len() {
+            for right in (left + 1)..case.entries.len() {
+                let a = &case.entries[left];
+                let b = &case.entries[right];
+                let same_key = identity_key(&a.path) == identity_key(&b.path) && a.index == b.index;
+                match (same_key, ids[left] == ids[right]) {
+                    (true, true) | (false, false) => {}
+                    (true, false) => {
+                        return Err(format!(
+                            "the same identity key (basename/fallback, index) must mint the same \
+                             id: {:?}/{} vs {:?}/{}",
+                            a.path, a.index, b.path, b.index
+                        ));
+                    }
+                    (false, true) => {
+                        return Err(format!(
+                            "different identity keys collided on the bounded set: {:?}/{} = \
+                             {:?}/{} = {}",
+                            a.path, a.index, b.path, b.index, ids[left]
+                        ));
+                    }
+                }
+            }
+        }
+
+        let paths: Vec<PathBuf> = case
+            .entries
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        let actual = check_basename_collisions(&paths);
+        check_collision_result(&paths, &actual)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Shrink / complicate witness probe.
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn probe_runner(seed: u64) -> TestRunner {
+        TestRunner::new(Config {
+            cases: 1,
+            max_local_rejects: 0,
+            max_global_rejects: 0,
+            max_flat_map_regens: 0,
+            rng_algorithm: RngAlgorithm::ChaCha,
+            rng_seed: RngSeed::Fixed(seed),
+            failure_persistence: None,
+            ..Config::default()
+        })
+    }
+
+    /// Obtain a nonminimal tree, simplify to exhaustion, validate every state,
+    /// then complicate and validate again. `shrink_expected` is false for
+    /// modes whose strategy is entirely `Just`/`no_shrink`.
+    fn shrink_witness_probe<S, T, M>(
+        label: &str,
+        mode: M,
+        strategy: &S,
+        mode_of: impl Fn(&T) -> M,
+        validate: impl Fn(&T) -> Result<(), String>,
+        shrink_expected: bool,
+    ) where
+        S: Strategy<Value = T>,
+        T: std::fmt::Debug,
+        M: PartialEq + std::fmt::Debug + Copy,
+    {
+        let mut obtained_nonminimal = false;
+        for seed in 0..16u64 {
+            let mut runner = probe_runner(0x5eed_0000 + seed);
+            let mut tree = strategy
+                .new_tree(&mut runner)
+                .expect("probe strategy builds a tree");
+            assert_eq!(
+                mode_of(&tree.current()),
+                mode,
+                "{label}: strategy produced the wrong mode"
+            );
+            let mut steps = 0_usize;
+            while steps < 512 && tree.simplify() {
+                steps += 1;
+                assert_eq!(
+                    mode_of(&tree.current()),
+                    mode,
+                    "{label}: shrinking changed the required mode"
+                );
+                validate(&tree.current())
+                    .unwrap_or_else(|error| panic!("{label}: shrink step {steps}: {error}"));
+            }
+            validate(&tree.current())
+                .unwrap_or_else(|error| panic!("{label}: minimal state: {error}"));
+            for _ in 0..8 {
+                if !tree.complicate() {
+                    break;
+                }
+                assert_eq!(
+                    mode_of(&tree.current()),
+                    mode,
+                    "{label}: complicating changed the required mode"
+                );
+                validate(&tree.current())
+                    .unwrap_or_else(|error| panic!("{label}: complicate step: {error}"));
+            }
+            if steps > 0 {
+                obtained_nonminimal = true;
+                break;
+            }
+            if !shrink_expected {
+                break;
+            }
+        }
+        if shrink_expected {
+            assert!(
+                obtained_nonminimal,
+                "{label}: probe failed to obtain a nonminimal value tree, so the shrink audit \
+                 certifies nothing"
+            );
+        } else {
+            assert!(
+                !obtained_nonminimal,
+                "{label}: a no-payload mode simplified unexpectedly"
+            );
+        }
+    }
+
+    fn probe_case(
+        mode: IoIdMode,
+        limits: IdLimits,
+        len: usize,
+        paths: usize,
+        index: usize,
+    ) -> IdentityCase {
+        let basename = truncate_to_bytes(
+            &format!("{}.stl", "x".repeat(len.max(1))),
+            limits.max_basename_bytes,
+        );
+        let entry = |directory: usize| PathEntry {
+            path: path_for(&PayloadEntry {
+                basename: basename.clone(),
+                directory,
+                index,
+            }),
+            index,
+        };
+        let entries = match mode {
+            IoIdMode::Empty => Vec::new(),
+            IoIdMode::Normal => (0..paths)
+                .map(|position| entry(position % DIRECTORY_POOL.len()))
+                .collect(),
+            IoIdMode::Repeated => (0..paths.max(2)).map(|_| entry(0)).collect(),
+            IoIdMode::NoFileName => no_file_name_paths()
+                .into_iter()
+                .enumerate()
+                .map(|(position, path)| PathEntry {
+                    path,
+                    index: index + position,
+                })
+                .collect(),
+            IoIdMode::TrailingSeparator => vec![PathEntry {
+                path: PathBuf::from(format!("sub/{basename}/")),
+                index,
+            }],
+            IoIdMode::Collision => vec![
+                PathEntry {
+                    path: Path::new(COLLISION_ROOT_A).join(&basename),
+                    index,
+                },
+                PathEntry {
+                    path: Path::new(COLLISION_ROOT_B).join(&basename),
+                    index,
+                },
+            ],
+            IoIdMode::Unicode => vec![PathEntry {
+                path: PathBuf::from(UNICODE_BASENAMES[0]),
+                index,
+            }],
+        };
+        IdentityCase { mode, entries }
+    }
+
+    fn probe_case_strategy(mode: IoIdMode, limits: IdLimits) -> BoxedStrategy<IdentityCase> {
+        if mode == IoIdMode::Empty {
+            // No payload exists in an empty path list; a `Just` tree makes the
+            // intentional absence of shrinking explicit.
+            return Just(probe_case(mode, limits, 0, 0, 0)).boxed();
+        }
+        (
+            0..=limits.max_basename_bytes,
+            0..=limits.max_paths,
+            0..=limits.max_index,
+        )
+            .prop_map(move |(len, paths, index)| probe_case(mode, limits, len, paths, index))
+            .boxed()
+    }
+
+    fn run_shrink_probe(limits: IdLimits) {
+        for mode in MODES {
+            let strategy = probe_case_strategy(mode, limits);
+            let shrink_expected = !matches!(mode, IoIdMode::Empty);
+            shrink_witness_probe(
+                &format!("H-IO-ID {mode:?}"),
+                mode,
+                &strategy,
+                |case: &IdentityCase| case.mode,
+                |case| validate_case(case, limits),
+                shrink_expected,
+            );
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Registry-backed property.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn proptest_object_id_and_basename_collisions() {
+        let run = PropertyRun::new(PROPERTY_ID, TEST_NAME).expect("H-IO-ID registry context");
+        let limits = IdLimits::from_bounds(
+            run.bound("max_basename_bytes").expect("max_basename_bytes"),
+            run.bound("max_paths").expect("max_paths"),
+            run.bound("max_index").expect("max_index"),
+        )
+        .expect("H-IO-ID domain bounds");
+
+        run_shrink_probe(limits);
+        let strategy = identity_case_strategy(limits);
+        run.check(&strategy, |case, _guard| {
+            check_case(&case, limits).map_err(TestCaseError::fail)
+        })
+        .expect("H-IO-ID basename-plus-index identity and collision contract");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Deterministic controls (no `PropertyRun`, no `PNP_PROPERTY_CONTEXT`).
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn namespace_uuid() -> uuid::Uuid {
+        uuid::Uuid::from_bytes(X500_NAMESPACE_BYTES)
+    }
+
+    fn uuid_v5_name(name: &str) -> String {
+        uuid::Uuid::new_v5(&namespace_uuid(), name.as_bytes()).to_string()
+    }
+
+    #[test]
+    fn io_identity_controls() {
+        let limits = IdLimits::witness();
+
+        // ── The source namespace is X.500, not OID. ────────────────────────
+        assert_eq!(
+            namespace_uuid(),
+            uuid::Uuid::parse_str("6ba7b814-9dad-11d1-80b4-00c04fd430c8").unwrap(),
+            "the 16 literal bytes are the RFC 4122 X.500 namespace"
+        );
+        assert_eq!(
+            uuid::Uuid::NAMESPACE_OID,
+            uuid::Uuid::parse_str("6ba7b812-9dad-11d1-80b4-00c04fd430c8").unwrap()
+        );
+        assert_ne!(
+            namespace_uuid(),
+            uuid::Uuid::NAMESPACE_OID,
+            "the historical NS_OID name is a misnomer"
+        );
+
+        let in_directory = Path::new("models").join("cube.stl");
+        let production = path_object_id(&in_directory, 0);
+        check_identity_value(&in_directory, 0, &production)
+            .expect("production must match the independent oracle on the control witness");
+        assert_eq!(
+            production,
+            uuid_v5_name(&expected_object_name(&in_directory, 0))
+        );
+
+        // ── Rejected: full-path hash instead of basename-plus-index. ───────
+        let full_path_hash = uuid_v5_name(&format!("{}#0", in_directory.to_string_lossy()));
+        assert!(
+            check_identity_value(&in_directory, 0, &full_path_hash).is_err(),
+            "a full-path hash must be rejected by the shared identity checker"
+        );
+
+        // ── Rejected: an id that ignores the per-file index. ───────────────
+        let indexless = uuid_v5_name("cube.stl");
+        assert!(
+            check_identity_value(&in_directory, 7, &indexless).is_err(),
+            "an index-ignoring id must be rejected"
+        );
+
+        // ── Rejected: the OID namespace substituted for X.500. ─────────────
+        let oid_id = uuid::Uuid::new_v5(
+            &uuid::Uuid::NAMESPACE_OID,
+            expected_object_name(&in_directory, 0).as_bytes(),
+        )
+        .to_string();
+        assert_ne!(oid_id, production);
+        assert!(
+            check_identity_value(&in_directory, 0, &oid_id).is_err(),
+            "the NAMESPACE_OID substitution must be rejected, pinning the namespace"
+        );
+
+        // ── Same basename in different directories -> same id. ─────────────
+        let other_directory = Path::new("elsewhere").join("cube.stl");
+        assert_eq!(
+            production,
+            path_object_id(&other_directory, 0),
+            "the directory must not enter the id"
+        );
+
+        // ── Trailing separator uses its final normal component. ────────────
+        let trailing = PathBuf::from("sub/cube.stl/");
+        assert_eq!(
+            trailing.file_name(),
+            Some(OsStr::new("cube.stl")),
+            "Rust ignores a trailing separator for the final normal component"
+        );
+        assert_eq!(
+            path_object_id(&trailing, 3),
+            path_object_id(Path::new("cube.stl"), 3),
+            "the trailing-separator path must be grouped under `cube.stl`, not skipped"
+        );
+
+        // ── file_name() == None falls back to the whole path text. ─────────
+        let none_paths: Vec<PathBuf> = no_file_name_paths().to_vec();
+        for (index, path) in none_paths.iter().enumerate() {
+            assert!(
+                path.file_name().is_none(),
+                "{path:?} must have no file name on this host"
+            );
+            let actual = path_object_id(path, index);
+            check_identity_value(path, index, &actual).expect("fallback text oracle");
+        }
+        assert!(
+            check_collision_result(&none_paths, &Ok(())).is_ok(),
+            "paths without a file name are skipped, never grouped"
+        );
+
+        // ── A missing collision is rejected. ───────────────────────────────
+        let collision_pair = vec![
+            Path::new(COLLISION_ROOT_A).join("cube.stl"),
+            Path::new(COLLISION_ROOT_B).join("cube.stl"),
+        ];
+        let actual = check_basename_collisions(&collision_pair);
+        assert!(
+            matches!(actual, Err(ModelLoadError::DuplicateInputBasename { .. })),
+            "distinct paths sharing a basename must be a hard error, got {actual:?}"
+        );
+        check_collision_result(&collision_pair, &actual)
+            .expect("production must match the input-order collision oracle");
+        assert!(
+            check_collision_result(&collision_pair, &Ok(())).is_err(),
+            "claiming no collision must be rejected"
+        );
+        let Err(ModelLoadError::DuplicateInputBasename { basename, .. }) = &actual else {
+            unreachable!("checked above");
+        };
+        let swapped: Result<(), ModelLoadError> = Err(ModelLoadError::DuplicateInputBasename {
+            basename: basename.clone(),
+            first: collision_pair[1].clone(),
+            second: collision_pair[0].clone(),
+        });
+        assert!(
+            check_collision_result(&collision_pair, &swapped).is_err(),
+            "a first/second order swap must be rejected"
+        );
+
+        // ── A same-file pair is not a collision. ───────────────────────────
+        let root = tempfile::tempdir().expect("tempdir");
+        let nested = root.path().join("a");
+        std::fs::create_dir_all(nested.join("sub")).expect("create nested dirs");
+        let canonical = nested.join("cube.stl");
+        std::fs::write(&canonical, b"solid cube\nendsolid cube\n").expect("write cube");
+        let dot_alias = root.path().join("a").join(".").join("cube.stl");
+        let parent_alias = nested.join("sub").join("..").join("cube.stl");
+        assert_eq!(
+            canonical.canonicalize().expect("canonical"),
+            dot_alias.canonicalize().expect("dot alias canonicalizes"),
+            "the `./`-style alias must denote the same file"
+        );
+        assert_eq!(
+            canonical.canonicalize().expect("canonical"),
+            parent_alias
+                .canonicalize()
+                .expect("parent alias canonicalizes")
+        );
+        let same_file_paths = vec![canonical.clone(), dot_alias.clone()];
+        let actual = check_basename_collisions(&same_file_paths);
+        assert!(
+            actual.is_ok(),
+            "`./a/cube.stl` and the absolute path are the same file, got {actual:?}"
+        );
+        check_collision_result(&same_file_paths, &actual).expect("same-file model agrees");
+        let false_collision: Result<(), ModelLoadError> =
+            Err(ModelLoadError::DuplicateInputBasename {
+                basename: "cube.stl".to_string(),
+                first: canonical.clone(),
+                second: dot_alias.clone(),
+            });
+        assert!(
+            check_collision_result(&same_file_paths, &false_collision).is_err(),
+            "a same-file false collision must be rejected"
+        );
+
+        // ── A genuinely relative `./...` path versus its absolute path. ────
+        // The control above uses absolute paths with `.`/`..` components; this
+        // one proves the guard also canonicalizes a path relative to the
+        // process working directory (the crate root) against an absolute path.
+        let relative_root = tempfile::Builder::new()
+            .prefix("p16_io_relative_")
+            .tempdir_in(".")
+            .expect("tempdir in the crate root");
+        let relative_name = relative_root
+            .path()
+            .file_name()
+            .expect("temp dir has a name")
+            .to_owned();
+        let absolute_dir =
+            std::path::absolute(relative_root.path()).expect("absolute temp directory path");
+        std::fs::create_dir_all(absolute_dir.join("a")).expect("create a");
+        let relative_file = PathBuf::from(".")
+            .join(&relative_name)
+            .join("a")
+            .join("cube.stl");
+        let absolute_file = absolute_dir.join("a").join("cube.stl");
+        std::fs::write(&absolute_file, b"solid cube\nendsolid cube\n")
+            .expect("write relative cube");
+        assert!(
+            relative_file.is_relative(),
+            "{relative_file:?} must be a relative path"
+        );
+        assert!(
+            absolute_file.is_absolute(),
+            "{absolute_file:?} must be an absolute path"
+        );
+        assert_eq!(
+            relative_file
+                .canonicalize()
+                .expect("relative path canonicalizes"),
+            absolute_file
+                .canonicalize()
+                .expect("absolute path canonicalizes"),
+            "`./<temp>/a/cube.stl` must denote the same existing file"
+        );
+        let relative_pair = vec![relative_file.clone(), absolute_file.clone()];
+        let actual = check_basename_collisions(&relative_pair);
+        assert!(
+            actual.is_ok(),
+            "a relative and absolute path to one file must not collide, got {actual:?}"
+        );
+        check_collision_result(&relative_pair, &actual).expect("relative same-file model agrees");
+        let false_relative_collision: Result<(), ModelLoadError> =
+            Err(ModelLoadError::DuplicateInputBasename {
+                basename: "cube.stl".to_string(),
+                first: relative_file,
+                second: absolute_file,
+            });
+        assert!(
+            check_collision_result(&relative_pair, &false_relative_collision).is_err(),
+            "a relative/absolute same-file false collision must be rejected"
+        );
+
+        // ── Repeated identical paths and distinct basenames are allowed. ───
+        let repeated = vec![canonical.clone(), canonical.clone()];
+        let actual = check_basename_collisions(&repeated);
+        assert!(
+            actual.is_ok(),
+            "a repeated identical path is not a collision"
+        );
+        check_collision_result(&repeated, &actual).expect("repeat model agrees");
+        let widget = nested.join("widget.stl");
+        std::fs::write(&widget, b"solid widget\nendsolid widget\n").expect("write widget");
+        let distinct = vec![canonical.clone(), widget];
+        let actual = check_basename_collisions(&distinct);
+        assert!(actual.is_ok(), "distinct basenames are not a collision");
+        check_collision_result(&distinct, &actual).expect("distinct-basename model agrees");
+
+        // ── A Unicode basename is grouped and oracle-checked. ──────────────
+        let unicode = Path::new("dir").join(UNICODE_BASENAMES[1]);
+        let unicode_id = path_object_id(&unicode, 2);
+        check_identity_value(&unicode, 2, &unicode_id).expect("Unicode basename oracle");
+        assert_eq!(
+            unicode_id,
+            path_object_id(&Path::new("other").join(UNICODE_BASENAMES[1]), 2)
+        );
+        let unicode_pair = vec![
+            Path::new(COLLISION_ROOT_A).join(UNICODE_BASENAMES[1]),
+            Path::new(COLLISION_ROOT_B).join(UNICODE_BASENAMES[1]),
+        ];
+        let actual = check_basename_collisions(&unicode_pair);
+        check_collision_result(&unicode_pair, &actual)
+            .expect("Unicode basenames collide exactly like ASCII ones");
+
+        // ── The shrink/complicate witness probe (no registry context). ─────
+        run_shrink_probe(limits);
     }
 }

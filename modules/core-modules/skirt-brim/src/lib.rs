@@ -739,3 +739,7 @@ impl FinalizationModule for SkirtBrim {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

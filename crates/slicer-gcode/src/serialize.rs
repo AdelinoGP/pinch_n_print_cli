@@ -897,10 +897,13 @@ impl DefaultGCodeSerializer {
     /// Coarse chunk size (commands/chunk) to amortize Rayon wakeup and keep CPU overhead negligible.
     const PARALLEL_CHUNK_SIZE: usize = 32_768;
 
-    /// Compute the exact `e_accumulator` value at `commands[start]` in relative-E mode
-    /// by scanning backward to the nearest absolute-E anchor (`Move { e: Some(_) }` or
-    /// `Raw` `G92 E<val>`) and replaying any subsequent `Retract`/`Unretract` deltas in
-    /// original forward order so floating-point rounding is 0-ULP bit-identical to serial.
+    /// Compute the exact `e_accumulator` value at `commands[start]` in either
+    /// extrusion mode by scanning backward to the nearest absolute-E anchor
+    /// (`Move { e: Some(_) }` or `Raw` `G92 E<val>`) and replaying any subsequent
+    /// `Retract`/`Unretract` deltas in original forward order so floating-point
+    /// rounding is 0-ULP bit-identical to serial. Absolute mode needs this too:
+    /// a retract/unretract emits the updated absolute position, which depends on
+    /// everything before the chunk.
     fn seed_e_accumulator(commands: &[GCodeCommand], start: usize) -> f64 {
         let mut trailing_deltas: Vec<f64> = Vec::new();
         let mut base = 0.0_f64;
@@ -979,7 +982,10 @@ impl DefaultGCodeSerializer {
                             push_fixed_e5(output, delta);
                             e_accumulator = abs_e;
                         } else {
+                            // Absolute mode emits absolute positions, so the
+                            // accumulator tracks the last emitted absolute E.
                             push_fixed_e5_f32(output, *e_val);
+                            e_accumulator = *e_val as f64;
                         }
                     }
                     if let Some(f_val) = f {
@@ -994,15 +1000,20 @@ impl DefaultGCodeSerializer {
                     mode,
                 } => match mode {
                     slicer_ir::RetractMode::Gcode => {
-                        output.push_str("G1 E-");
                         if self.relative {
+                            output.push_str("G1 E-");
                             push_fixed_e5_f32(output, *length);
                             output.push_str(" F");
                             push_fixed_trimmed(output, *speed, 4);
                             output.push('\n');
                             e_accumulator -= *length as f64;
                         } else {
-                            push_fixed_trimmed(output, *length, 4);
+                            // Absolute mode: the documented contract is an
+                            // absolute E position, never a bare delta. Update
+                            // the accumulator first, then emit its new value.
+                            e_accumulator -= *length as f64;
+                            output.push_str("G1 E");
+                            push_fixed_e5_f32(output, e_accumulator as f32);
                             output.push_str(" F");
                             push_fixed_trimmed(output, *speed, 4);
                             output.push('\n');
@@ -1018,15 +1029,17 @@ impl DefaultGCodeSerializer {
                     mode,
                 } => match mode {
                     slicer_ir::RetractMode::Gcode => {
-                        output.push_str("G1 E");
                         if self.relative {
+                            output.push_str("G1 E");
                             push_fixed_e5_f32(output, *length);
                             output.push_str(" F");
                             push_fixed_trimmed(output, *speed, 4);
                             output.push('\n');
                             e_accumulator += *length as f64;
                         } else {
-                            push_fixed_trimmed(output, *length, 4);
+                            e_accumulator += *length as f64;
+                            output.push_str("G1 E");
+                            push_fixed_e5_f32(output, e_accumulator as f32);
                             output.push_str(" F");
                             push_fixed_trimmed(output, *speed, 4);
                             output.push('\n');
@@ -1037,10 +1050,11 @@ impl DefaultGCodeSerializer {
                     }
                 },
                 GCodeCommand::Raw { text } => {
-                    if self.relative {
-                        if let Some(val) = parse_g92_e(text) {
-                            e_accumulator = val;
-                        }
+                    // `G92 E<value>` redefines the absolute E position, so it
+                    // resets the accumulator in both extrusion modes. The
+                    // accumulator is unchanged when no E token parses.
+                    if let Some(val) = parse_g92_e(text) {
+                        e_accumulator = val;
                     }
                     output.push_str(text);
                     output.push('\n');
@@ -1132,7 +1146,11 @@ impl GCodeSerializer for DefaultGCodeSerializer {
             .par_iter()
             .map(|&start| {
                 let end = (start + Self::PARALLEL_CHUNK_SIZE).min(commands.len());
-                let seed = if self.relative && start > 0 {
+                // Both modes carry a running E position: relative mode needs
+                // the last absolute anchor to emit deltas, and absolute mode
+                // needs it because a retract/unretract emits the updated
+                // absolute position.
+                let seed = if start > 0 {
                     Self::seed_e_accumulator(commands, start)
                 } else {
                     0.0

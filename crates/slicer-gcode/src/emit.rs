@@ -558,6 +558,14 @@ fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
         (ExtrusionRole::WipeTower, ExtrusionRole::WipeTower) => true,
         (ExtrusionRole::PrimeTower, ExtrusionRole::PrimeTower) => true,
         (ExtrusionRole::Ironing, ExtrusionRole::Ironing) => true,
+        // These three arms were missing: two consecutive entities of any of
+        // these roles fell through to `_ => false` and re-emitted an identical
+        // `;TYPE:` label even though the role did not change. Pinned by
+        // `same_role_entities_emit_one_type_label_including_gap_fill`
+        // (`crates/slicer-gcode/tests/gcode_emit_tdd.rs`).
+        (ExtrusionRole::GapFill, ExtrusionRole::GapFill) => true,
+        (ExtrusionRole::SupportBaseInterface, ExtrusionRole::SupportBaseInterface) => true,
+        (ExtrusionRole::RaftInfill, ExtrusionRole::RaftInfill) => true,
         (ExtrusionRole::Custom(a_str), ExtrusionRole::Custom(b_str)) => a_str == b_str,
         _ => false,
     }

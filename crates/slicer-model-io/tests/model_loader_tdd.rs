@@ -1236,17 +1236,20 @@ fn object_id_is_the_documented_basename_uuid5() {
     let path = dir.path().join("cube.stl");
     std::fs::write(&path, &stl_bytes).expect("write");
 
-    // uuid5(NAMESPACE_OID, "cube.stl#0") — computed from the documented rule.
-    const NS_OID: uuid::Uuid = uuid::Uuid::from_bytes([
+    // uuid5(X.500, "cube.stl#0") — computed from the documented rule. The
+    // 16 bytes are the RFC 4122 §4.3 X.500 distinguished-name namespace; the
+    // production local name `NS_OID` (and this baseline's old local name) is a
+    // historical misnomer, not `Uuid::NAMESPACE_OID` (`6ba7b812-...`).
+    const NS_X500: uuid::Uuid = uuid::Uuid::from_bytes([
         0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
         0xc8,
     ]);
-    let expected = uuid::Uuid::new_v5(&NS_OID, b"cube.stl#0").to_string();
+    let expected = uuid::Uuid::new_v5(&NS_X500, b"cube.stl#0").to_string();
 
     let mesh = load_model(&path).expect("load");
     assert_eq!(
         mesh.objects[0].id, expected,
-        "object id must be uuid5(NAMESPACE_OID, \"<basename>#<index>\")"
+        "object id must be uuid5(X.500, \"<basename>#<index>\")"
     );
 }
 

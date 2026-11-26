@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_16_pbt-io-gcode
-status: draft
+status: implemented
 ---
 
 # H-IO, H-GCODE and the I/O-facing module kernels
@@ -83,7 +83,7 @@ Oracle: for the zero matrix, `z_i = v.z`; otherwise compute the exact real value
 
 Owner: `slicer-model-io`, `property_io`, `proptest_place_bare_mesh_on_bed`, calling the real `place_bare_mesh_on_bed`. Generate 0..=`max_objects` objects with 0..=`max_vertices_per_object` dyadic vertices, zero-matrix (identity convention) or a bounded live affine transform selected with `no_shrink()`, and a finite dyadic `bed_center`. Use `analytical_meshes(SolidKind::Box, ...)` or an equivalent construction-first box family for nonempty worlds; include an empty world, one empty object beside a nonempty object, a single object, multiple objects, an already-placed world, and a below-bed/off-centre world.
 
-Oracle: independently compute each object's world AABB using the documented zero-matrix-is-identity convention, union them, and derive `dx = bed_center.0 - (min.x+max.x)/2`, `dy = bed_center.1 - (min.y+max.y)/2`, `dz = -min.z`. Compare the returned `BedPlacement` to that formula on the f32 values. After placement, require: the new world `z_min` is `0` within a derived envelope; the new XY AABB centre is `bed_center` within `2 * ulp(max(|coordinate|, |bed_center|))`; every pair of objects preserves its AABB min/max differences within `4 * EPSILON * max_abs` (the bound covers `fl(a+t) - fl(b+t) - (a-b)`); and no object is individually re-centred or re-dropped. For zero-matrix objects only, assert `mesh.build_volume` equals the union of the shifted raw vertices. For live-transform objects, `build_volume` is currently computed from raw vertices (`compute_bounding_box_union`), not world AABBs; do not assert raw-vertex union equals world union. Record the observed field and classify a confirmed mismatch under the defect policy. `None` is expected when no object yields the function's finite-X AABB gate (an empty or all-nonfinite-X world); non-finite Y/Z are outside the valid domain. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, and a fabricated placement for an empty world.
+Oracle: independently compute each object's world AABB using the documented zero-matrix-is-identity convention, union them, and derive `dx = bed_center.0 - (min.x+max.x)/2`, `dy = bed_center.1 - (min.y+max.y)/2`, `dz = -min.z`. Compare the returned `BedPlacement` to that formula on the f32 values. After placement, require: the new world `z_min` is `0` within a derived envelope; the new XY AABB centre is `bed_center` within `2 * ulp(max(|coordinate|, |bed_center|))`; every pair of objects preserves its AABB min/max differences within `4 * EPSILON * max_abs` (the bound covers `fl(a+t) - fl(b+t) - (a-b)`); and no object is individually re-centred or re-dropped. For zero-matrix objects only, assert `mesh.build_volume` equals the union of the shifted raw vertices. For live-transform objects the authored note said `build_volume` is computed from raw vertices and the observation must be classified; **Deviation 3 supersedes that**: the raw-vertex recompute was a confirmed SUT defect, production now computes `compute_world_bounding_box_union`, and the property asserts the post-placement world union for every scene (identity scenes additionally satisfy the shifted raw union). `None` is expected when no object yields the function's finite-X AABB gate (an empty or all-nonfinite-X world); non-finite Y/Z are outside the valid domain. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, and a fabricated placement for an empty world. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, and a fabricated placement for an empty world.
 
 ### H-GCODE-FEEDRATE: role table, factor clamp, conversion and rounding
 
@@ -217,7 +217,7 @@ Read through a delegated subagent at the available canonical checkout; cite by f
 
 - **AC-1** `H-IO-ID` under `P` calls the real `path_object_id` and `check_basename_collisions`; the independent UUID/name oracle with the actual X.500 namespace bytes and the input-order collision model pass for empty, repeated, same-basename/different-directory, Unicode, `file_name() == None` (root/dot/dot-dot), trailing-separator and collision cases. The trailing-separator case uses its final normal component as the basename and is not skipped. The error names `DuplicateInputBasename { basename, first, second }` with the correct paths. No universal injectivity is asserted. `io_identity_controls` under `E` rejects a full-path hash, an index-ignoring id, the `NAMESPACE_OID` substitution for the actual X.500 bytes, a missing collision and a same-file false collision.
 - **AC-2** `H-IO-EXTENT` under `P` returns exact `Some((min,max))` on the declared dyadic affine domain, treats the all-zero matrix as identity, and returns `None` for empty, degenerate or non-finite reduced extents without panicking; the NaN-ignored/infinity-extent policy is observed separately. `io_extent_controls` under `E` rejects a missing `m[2]/m[6]/m[10]/m[14]` term, a raw-vertex extent and a swapped min/max.
-- **AC-3** `H-IO-PLACEMENT` under `P` applies one rigid translation, leaves world `z_min = 0`, centres the whole XY AABB on the bed within the derived envelope, preserves every pair of object AABB differences, and returns `None` for an empty/unplaceable world. Identity-mode `build_volume` equals the shifted raw union; the live-transform `build_volume` observation is classified, not falsely equated to the world union. `io_placement_controls` under `E` rejects per-object centring, Z-only drop, non-rigid scaling and a fabricated empty-world placement.
+- **AC-3** `H-IO-PLACEMENT` under `P` applies one rigid translation, leaves world `z_min = 0`, centres the whole XY AABB on the bed within the derived envelope, preserves every pair of object AABB differences, and returns `None` for an empty/unplaceable world. Identity-mode `build_volume` equals the shifted raw union **and, for every scene, the post-placement `build_volume` equals the world-space AABB union** (Deviation 3 supersedes the earlier "classified, not equated" wording: the raw-vertex recompute was a confirmed defect, now fixed and asserted unconditionally). `io_placement_controls` under `E` rejects per-object centring, Z-only drop, non-rigid scaling and a fabricated empty-world placement.
 - **AC-4** `H-GCODE-FEEDRATE` under `P` matches the role decision table, `clamp(0.05, 5.0)`, the 60× conversion and round-to-millidegree for every role over bounded finite bases/factors. The overflow boundary probe observes `f32::INFINITY` beyond the derived finite base; non-finite factors are separately observed, not called valid. `gcode_feedrate_controls` under `E` rejects a missing conversion, a wrong clamp, truncation, a role swap and an unjustified exact-roundtrip claim.
 - **AC-5** `H-GCODE-EMIT` under `P` matches the state model for layer headers, skipped empty layers, entity/role/point order, tool changes, retract → z-hop → travel → T → annotation → z-hop-down → unretract, per-tool E/filament bookkeeping (including a zero entry for a singleton/non-extruding entity and no entry for a tool-change-only tool) and chain-insensitive emission with a #11-ordered `RegionKey` supplied only as fixture input. The negative modes observe `MissingToolchangePurge`, `ToolIndexOutOfRange` and the automatic-volumetric `Emit` errors. `gcode_emission_controls` under `E` rejects a missing header, a dropped empty-layer skip, an unretracted/reordered tool change, a per-entity E accumulator, a dropped singleton zero entry and a fabricated tool-change-only entry.
 - **AC-6** `H-GCODE-SERIALIZE` under `P` matches the independent text renderer on the declared dyadic domain in relative and absolute modes, including `G0`/`G1`, one matching `M82`/`M83` stream mode, G92 accumulator reset, relative/absolute Gcode and firmware retract forms, absolute Move/G92 accumulator tracking, fan/temperature/tool-change/comment/raw ordering and exact decimal text. Absolute-mode Gcode retracts/unretracts are expected to emit updated absolute E and keep the accumulator consistent; the current delta/no-update branch is a candidate SUT defect requiring a focused fix and named concrete regression if reproduced. `gcode_serializer_controls` under `E` rejects a mode swap, a missed G92 reset, a relative retract/unretract accumulator error, a formatting-boundary error, a reordered header and a mutated E delta.
@@ -321,7 +321,12 @@ Every plain Cargo test below runs under Bash with `set -o pipefail`, an existing
 ## Open questions
 
 - [FWD] Measure Windows routine/extended pilots and select cases, bounds, rejection/shrink limits and isolation for all eleven records. No numeric budget is supplied by authoring; a pilot profile is not completion evidence until measured and recorded.
-- [FWD] Classify `place_bare_mesh_on_bed`'s `build_volume` behavior for live-transform objects: `compute_bounding_box_union` unions raw vertices, not world AABBs. The property asserts world placement directly and `build_volume` only for the identity/bare-mesh mode; a confirmed mismatch gets a focused fix and regression.
+- [CLOSED — see Deviations 3] `place_bare_mesh_on_bed`'s `build_volume` is the
+  post-placement world-space AABB union. The raw-vertex recompute was a confirmed
+  SUT defect for loader-assembled (real identity matrix) objects; fixed by
+  `compute_world_bounding_box_union` and pinned by
+  `bed_placement_tdd::identity_matrix_placement_updates_build_volume_to_the_world_union`.
+  No raw-vs-world acceptance remains in the property.
 - [FWD] Confirm the supported wipe-tower bed domain is convex polygons and that the concave-bed control is a test-oracle demonstration, not a production rejection claim. If product support for concave beds is later approved, it becomes explicit fix work, not a property extension.
 - [FWD] Recheck #1/#2/#6's actual `PropertyRun`, `CaseGuard`, registry, feature and domain/oracle exports after they are implemented; this packet must not invent a shared API or assume a `GCodeDomain`/`MeshDomain` that does not exist. Preserve #11's ordered-chain identity in fixtures without adding #11 as a dependency.
 
@@ -342,3 +347,114 @@ Every plain Cargo test below runs under Bash with `set -o pipefail`, an existing
 | 11 | Completeness | PASS | No template placeholder or unresolved scope-changing blocker; the absolute-mode retract and `calculate_speed` last-boundary contracts are resolved as canonical-correct round-then-cap behavior with candidate-defect fix/regression obligations; the 1.19/0.17 skirt/brim boundary is invoked by `skirt_brim_controls` and has an exact E command, the magnitude bound includes `max_skirt_distance_mm`, and singleton/tool-change-only filament entries are explicit. Measurement, live-transform `build_volume`, convex-bed support and prerequisite recheck remain bounded [FWD] implementation obligations. |
 
 **Verdict: AUTHOR SELF-PREFLIGHT PASS (authoring only; #1/#2/#6 are draft, and no property, profile, Windows run or SUT fix has been executed).**
+
+## Deviations
+
+Implementation-time corrections against the tree (the code and its tests are the
+authority; these are recorded so a reviewer can check the disposition rather
+than the prose):
+
+1. **H-SKIRT-BRIM cited symbols do not exist; the oracle is re-derived from the
+   real owner seam.** `SkirtBrim::generate_skirt_entities` and
+   `generate_brim_entities` are absent. The owner has one private
+   `SkirtBrim::generate(&[LayerSnapshot<'_>]) -> Vec<GeneratedEntity>` (plus the
+   public `process`/`run_finalization`), so the property drives `generate` from
+   an in-crate `src/property_tests.rs` with constructed `LayerSnapshot`s. Two
+   further authored assumptions are wrong for the same reason:
+   - the brim is a contour-anchored annulus (`brim_object_gap` .. `+quantised`,
+     where `quantised = floor(brim_width / spacing / 2) * spacing * 2` and
+     `spacing = SkirtBrim::flow_spacing()`, not `line_width`) filled by
+     concentric bands stepped one `spacing` inward from `spacing/2`; every band
+     emits both its outer contour and its hole boundary, so the ring-entity
+     count is `2 * floor(brim_width / spacing / 2)` — not
+     `ceil(brim_width / line_width)`;
+   - the skirt is a convex-hull offset of the occupied outline (raw layer-0
+     points plus brim-area contours), not a bbox rectangle; loops are emitted
+     outermost-first.
+
+   AC-10's intent (counts, closure, whole-bbox edge enclosure, nesting and
+   clearance on a justified sub-domain) is preserved; the exact-count oracle is
+   the quantised one, and values within the derived envelope of a
+   `brim_width / (2 * spacing)` integer boundary are classified rather than
+   asserted as exact. The registry `production_symbol` is corrected to
+   `skirt_brim::SkirtBrim::generate`. The 1.19/0.17 boundary control is retained
+   and now measures the real band count/offsets.
+
+   **Measured extension (extended tier, 2026-11-25):** the exact
+   `2 * floor(brim_width / spacing / 2)` count is only valid above the offset's
+   arc-decimation bound. For a 90-degree corner the outer boundary's chord sits
+   up to `wall_width/2 * (1 - cos 45 deg) = 0.058579 mm` inside a parallel
+   offset, plus `BRIM_ARC_TOLERANCE_MM` per boundary, so the two boundaries can
+   meet when `spacing <= 0.083579 mm` (only `line_width = 1/8` on the declared
+   domain). In that tail the last band may split into several non-degenerate
+   clipper rings. The property now keeps the exact structure for the first
+   `2 * (bands - 1)` rings, validates every tail fragment (closed, >= 3 distinct
+   vertices, non-zero area, inside the last band's clearance window) and records
+   the fragment count without inventing a bound. The measured failing input
+   (`line_width 0.125`, `brim_width 56.6875`, a `1/16 x 3/16` mm rectangle at
+   `(-64,-64)`) yields 693 rings (690 clean + 2 contour lobes + 3 sliver holes of
+   0.0004-0.0016 mm2). The sliver emission is recorded as a **candidate
+   observation, not a proven equivalence**: canonical
+   `Brim.cpp::tryExPolygonOffset` appends every contour and hole Clipper2
+   returns with no area filter, but it erodes `-1.3*spacing` and dilates
+   `+0.3*spacing` per iteration with `douglas_peucker` between passes while
+   `SkirtBrim::generate` does one `-depth` offset per band, so whether canonical
+   reaches these slivers is unmeasured. No production fix or regression was
+   needed for this family.
+
+2. **H-WIPE-TOWER bed containment is not in `generate_purge_paths`.** The
+   bed-polygon check (`point_in_polygon`) lives in
+   `WipeTower::run_finalization`; the purge generator never reads `bed_shape`.
+   The property asserts tower-rectangle containment for every generated point
+   and uses the convex bed as an independent scene witness (tower rectangle
+   inside the bed implies every generated point is inside the bed). The
+   concave-bed control remains a test-oracle demonstration, as authored.
+
+3. **H-IO-PLACEMENT `build_volume` is the world-space model AABB (defect
+   fixed).** `MeshIR::build_volume` is the model-wide **world-space** extent by
+   contract (`docs/08_coordinate_system.md` § Bed Placement,
+   `bed_placement_tdd::build_volume_tracks_the_placed_model`, and the world-space
+   prepass in `slicer_core::algos::prepass_slice::object_world_mesh`).
+   `crates/pnp-cli/src/visual_debug.rs` names the field as world-space but never
+   sees a placed mesh, so **no consumer was observed reading the stale box**;
+   the defect is real at the contract level. `place_bare_mesh_on_bed` folds the
+   shift into `transform.matrix`, so its former raw-vertex
+   `compute_bounding_box_union` preserved the pre-placement box (a confirmed SUT
+   defect). The seam now computes `compute_world_bounding_box_union` (the union
+   of `object_world_aabb`), and
+   `bed_placement_tdd::
+   identity_matrix_placement_updates_build_volume_to_the_world_union` names the
+   formerly failing input: an identity-matrix object at
+   x[-500,-490], y[-500,-490], z[-10,0] placed at (125,125) reported
+   `build_volume.min.x = -500`, `max.z = 0` instead of x[120,130], y[120,130],
+   z[0,10]. The property asserts the post-placement world union for every scene,
+   keeps the identity-scene shifted-raw-union equivalence, counts live-transform
+   cases, and adds a generated all-nonfinite-X `None` mode. The exactly-zero
+   early return still does not recompute `build_volume`; loaders supply a correct
+   world-space box there because their objects carry identity transforms
+   (raw == world at load).
+
+4. **Authoring preflight row 1 ("Symbols PASS") is inaccurate for the
+   skirt/brim seam**; it is left in place as authored history and superseded by
+   deviation 1.
+
+5. **The `docs/21_data_defaults_and_fixtures.md` docs-impact item needed no
+   edit**: §7.1 already records the out-of-line-module/module-`src` scanner
+   blind spot and the mandatory manual FRU/waiver review, and §5 already
+   requires FRU for `property_testing` fixtures.
+
+6. **H-SKIRT-BRIM skirt enclosure is a sampled f64 ray cast, not
+   `segment_in_region`.** `oracle::segment_in_region` takes `Point2`, but the
+   skirt ring's vertices are Clipper2 f32 output rounded onto the 1e-4 mm grid
+   with round-join arcs, and the witness points are the footprint's four edges
+   sampled at `min(spacing / 2, 0.25 mm)` with `MAX_SAMPLES_PER_EDGE = 256` per
+   edge (a binding cap is reported through the run's `coarse` counter, never
+   silently applied). Quantising either side to integer units would decide a
+   witness point lying within one grid unit of a ring chord by the conversion's
+   own rounding rather than by the geometry, so the owner test uses a documented
+   f64 ray cast with `ON_BOUNDARY_MM = 1e-6` as the inside-or-on tolerance. The
+   sampled witness is strictly stronger than four-corner membership and weaker
+   than an exact `segment_in_region` call; the `enclosed_loops` and
+   `fine`/`coarse` counters keep it non-vacuous, and `skirt_brim_controls`
+   rejects both a shrunk loop and a 25%-inflated witness, so the check is
+   falsifiable.
