@@ -200,6 +200,7 @@ description = "OrcaSlicer coInts key nozzle_temperature_range_high; fallback for
 type    = "float"
 default = 0.0
 min     = 0.0
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 display = "Filament max volumetric speed"
 group   = "Machine G-code"
 description = "OrcaSlicer coFloats key filament_max_volumetric_speed; fallback for a zero filament_flush_volumetric_speed. Scalar-subset: first entry (ticket 125 owns the vector)."

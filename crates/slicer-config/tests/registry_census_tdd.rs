@@ -245,7 +245,7 @@ fn assembled_real_registry() -> slicer_config::ConfigSchemaRegistry {
 
 #[test]
 fn host_runtime_rows_are_exact() {
-    assert_eq!(HOST_RUNTIME_KEYS.len(), 19);
+    assert_eq!(HOST_RUNTIME_KEYS.len(), 26);
 
     let relative_e_distances = &HOST_RUNTIME_KEYS[0];
     assert_eq!(relative_e_distances.key, "use_relative_e_distances");
@@ -350,6 +350,13 @@ fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
             "filament_max_volumetric_speed",
             "support_filament",
             "support_interface_filament",
+            "sparse_infill_filament_id",
+            "internal_solid_filament_id",
+            "top_surface_filament_id",
+            "bottom_surface_filament_id",
+            "inner_wall_filament_id",
+            "outer_wall_filament_id",
+            "nozzle_temperature_range_high",
             "gcode_add_line_number",
             "post_process",
         ]
@@ -385,6 +392,41 @@ fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
             "runtime {key} has no denied scopes"
         );
     }
+
+    // Ticket 152 appended the six canonical feature-filament selectors (P39):
+    // int, print-scoped, unseeded (0 = inherit), min 0.
+    for (offset, key) in [
+        "sparse_infill_filament_id",
+        "internal_solid_filament_id",
+        "top_surface_filament_id",
+        "bottom_surface_filament_id",
+        "inner_wall_filament_id",
+        "outer_wall_filament_id",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let row = &HOST_RUNTIME_KEYS[17 + offset];
+        assert_eq!(row.key, *key);
+        assert_eq!(row.field_type, "int", "runtime {key} type");
+        assert_eq!(row.scope, "print", "runtime {key} scope");
+        assert_eq!(row.default, None, "runtime {key} must stay unseeded");
+        assert_eq!(row.meta.min, Some(0.0), "runtime {key} min");
+        assert!(!row.selector, "runtime {key} is not a selector");
+        assert!(row.denied_scopes.is_empty(), "runtime {key} denied scopes");
+    }
+
+    // The canonical flush-temperature fallback row carries its declared
+    // default and canonical bounds.
+    let nozzle_high = &HOST_RUNTIME_KEYS[23];
+    assert_eq!(nozzle_high.key, "nozzle_temperature_range_high");
+    assert_eq!(nozzle_high.field_type, "int");
+    assert_eq!(nozzle_high.scope, "print");
+    assert_eq!(nozzle_high.default, Some("240"));
+    assert_eq!(nozzle_high.meta.min, Some(0.0));
+    assert_eq!(nozzle_high.meta.max, Some(1500.0));
+    assert!(!nozzle_high.selector);
+    assert!(nozzle_high.denied_scopes.is_empty());
 }
 
 #[test]
