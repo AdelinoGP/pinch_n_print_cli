@@ -3198,31 +3198,50 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
         return None;
     }
 
+    // Compute the midpoints in f64: `(min + max)` overflows f32 when both
+    // extremes share a sign and exceed about 1.7e38, which would produce an
+    // infinite shift. A non-finite shift cannot place the model without
+    // destroying finiteness, so it returns `None` before any mutation.
+    let midpoint_x = (f64::from(min.x) + f64::from(max.x)) / 2.0;
+    let midpoint_y = (f64::from(min.y) + f64::from(max.y)) / 2.0;
+    let (dx, dy, dz) = (
+        f64::from(bed_center.0) - midpoint_x,
+        f64::from(bed_center.1) - midpoint_y,
+        -f64::from(min.z),
+    );
+    if !dx.is_finite() || !dy.is_finite() || !dz.is_finite() {
+        return None;
+    }
     let placement = BedPlacement {
-        dx: bed_center.0 - (min.x + max.x) / 2.0,
-        dy: bed_center.1 - (min.y + max.y) / 2.0,
-        dz: -min.z,
+        dx: dx as f32,
+        dy: dy as f32,
+        dz: dz as f32,
     };
 
-    for object in &mut mesh.objects {
-        let m = &mut object.transform.matrix;
-        if m.iter().all(|v| *v == 0.0) {
-            // Zero matrix is the identity convention, and `assemble_object`
-            // bakes authored transforms into vertices, so shifting vertices
-            // keeps the "world transform lives in the vertices" invariant the
-            // rest of the pipeline relies on.
-            for v in &mut object.mesh.vertices {
-                v.x += placement.dx;
-                v.y += placement.dy;
-                v.z += placement.dz;
+    // An exactly-zero shift is a no-op for the geometry. Skipping the loop
+    // preserves bit patterns (notably `-0.0` vertices, which `+0.0` would
+    // otherwise replace); the `build_volume` recompute below still runs.
+    if placement.dx != 0.0 || placement.dy != 0.0 || placement.dz != 0.0 {
+        for object in &mut mesh.objects {
+            let m = &mut object.transform.matrix;
+            if m.iter().all(|v| *v == 0.0) {
+                // Zero matrix is the identity convention, and `assemble_object`
+                // bakes authored transforms into vertices, so shifting vertices
+                // keeps the "world transform lives in the vertices" invariant the
+                // rest of the pipeline relies on.
+                for v in &mut object.mesh.vertices {
+                    v.x += placement.dx;
+                    v.y += placement.dy;
+                    v.z += placement.dz;
+                }
+            } else {
+                // A live transform: fold the shift into its translation column so
+                // the result is a world-space translation regardless of the
+                // linear part.
+                m[12] += f64::from(placement.dx);
+                m[13] += f64::from(placement.dy);
+                m[14] += f64::from(placement.dz);
             }
-        } else {
-            // A live transform: fold the shift into its translation column so
-            // the result is a world-space translation regardless of the
-            // linear part.
-            m[12] += f64::from(placement.dx);
-            m[13] += f64::from(placement.dy);
-            m[14] += f64::from(placement.dz);
         }
     }
 
@@ -3237,12 +3256,25 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
     if let Some(union) = compute_world_bounding_box_union(&mesh.objects) {
         mesh.build_volume = union;
     } else {
-        // Unreachable in the declared domain: the finite-X gate that produced
-        // `Some(placement)` above still holds after a finite rigid shift.
+        // The finite-placement guard above makes this unreachable in-domain
+        // (a finite shift of a finite AABB stays finite). Keep a derived
+        // post-shift box instead of panicking or leaving a stale value.
         debug_assert!(
             false,
             "a finite placement produced no finite world AABB union"
         );
+        mesh.build_volume = BoundingBox3 {
+            min: Point3 {
+                x: min.x + placement.dx,
+                y: min.y + placement.dy,
+                z: min.z + placement.dz,
+            },
+            max: Point3 {
+                x: max.x + placement.dx,
+                y: max.y + placement.dy,
+                z: max.z + placement.dz,
+            },
+        };
     }
     Some(placement)
 }

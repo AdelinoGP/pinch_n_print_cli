@@ -2069,10 +2069,13 @@ fn io_placement_controls() {
         "the checker must reject a fabricated placement for an all-nonfinite-X world"
     );
 
-    // Mutation 7: a live-transform scene with the pre-placement (raw-vertex)
-    // `build_volume` is rejected. This is the former production recompute the
-    // fix replaced; raw vertices do not move when the shift folds into the
-    // matrix, so the stale box is exactly the defect.
+    // Mutation 7: a live-transform scene with the **pre-placement world union**
+    // as `build_volume` is rejected. `mesh_from_parts` seeds the box from
+    // `union_aabb`, which already applies the live transform, so this is not
+    // the former raw-space box (the bed-placement regression
+    // `identity_matrix_placement_updates_build_volume_to_the_world_union` pins
+    // that). Both stale boxes are wrong after placement; this one proves the
+    // world-space contract independently of the identity convention.
     let mut live_matrix = [0.0_f64; 16];
     live_matrix[0] = 1.0;
     live_matrix[5] = 1.0;

@@ -269,7 +269,10 @@ fn zero_shift_placement_still_refreshes_build_volume() {
     // `build_volume` was stale, placed with an exactly-zero translation. The
     // old early return skipped the recompute and left the stale box; the
     // world-space contract is refreshed on every successful placement.
-    let vertices = vec![p3(-1.0, -1.0, 0.0), p3(1.0, -1.0, 0.0), p3(-1.0, 1.0, 2.0)];
+    //
+    // The x coordinates are signed zeros, so the same test pins that a
+    // zero-shift placement does not rewrite `-0.0` to `+0.0`.
+    let vertices = vec![p3(-0.0, -1.0, 0.0), p3(0.0, 1.0, 0.0), p3(-0.0, 0.0, 2.0)];
     let mut mesh = mesh_of(vec![object("centred", vertices)]);
     mesh.objects[0].transform = identity_transform();
     mesh.build_volume = BoundingBox3 {
@@ -283,12 +286,49 @@ fn zero_shift_placement_still_refreshes_build_volume() {
         (0.0, 0.0, 0.0),
         "the test input must be exactly centred so the old early return fired"
     );
+    assert_eq!(
+        mesh.objects[0].mesh.vertices[0].x.to_bits(),
+        (-0.0_f32).to_bits(),
+        "a zero-shift placement must preserve the `-0.0` bit pattern"
+    );
     let (lo, hi) = world_aabb_transformed(&mesh);
     assert_eq!(
         mesh.build_volume,
         BoundingBox3 { min: lo, max: hi },
         "a zero-shift placement must still refresh build_volume; the old early return kept \
          the stale [-9,9] box"
+    );
+}
+
+#[test]
+fn extreme_same_sign_extents_do_not_overflow_the_midpoint() {
+    // Formerly failing input: every vertex at x = +2e38. The f32 expression
+    // `(min.x + max.x) / 2.0` overflowed to `+inf`, so `dx` became `-inf`, the
+    // shifted vertices became non-finite, and the post-shift union was `None`
+    // (a panic on the debug-build arm). The f64 midpoint keeps the shift
+    // finite and the world-space box is still refreshed.
+    let vertices = vec![
+        p3(2.0e38, -1.0, 0.0),
+        p3(2.0e38, 1.0, 0.0),
+        p3(2.0e38, 0.0, 2.0),
+    ];
+    let mut mesh = mesh_of(vec![object("extreme", vertices)]);
+    mesh.objects[0].transform = identity_transform();
+    mesh.build_volume = BoundingBox3 {
+        min: p3(-9.0, -9.0, -9.0),
+        max: p3(9.0, 9.0, 9.0),
+    };
+
+    let placement = place_bare_mesh_on_bed(&mut mesh, (125.0, 125.0)).expect("finite geometry");
+    assert!(
+        placement.dx.is_finite() && placement.dy.is_finite() && placement.dz.is_finite(),
+        "the f64 midpoint must keep an extreme same-sign shift finite, got {placement:?}"
+    );
+    let (lo, hi) = world_aabb_transformed(&mesh);
+    assert_eq!(
+        mesh.build_volume,
+        BoundingBox3 { min: lo, max: hi },
+        "an extreme-coordinate placement must still refresh build_volume"
     );
 }
 

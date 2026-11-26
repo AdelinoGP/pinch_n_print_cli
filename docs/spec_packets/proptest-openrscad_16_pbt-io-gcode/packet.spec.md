@@ -393,16 +393,22 @@ than the prose):
    the fragment count without inventing a bound. The measured failing input
    (`line_width 0.125`, `brim_width 56.6875`, a `1/16 x 3/16` mm rectangle at
    `(-64,-64)`) yields 693 rings (690 clean + 2 contour lobes + 3 sliver holes of
-   0.0004-0.0016 mm2). Canonical's emission policy is verified against
+   0.0004-0.0016 mm2). Canonical's **append step** is verified against
    `Brim.cpp::tryExPolygonOffset` (current upstream `main`, read 2026-11-26):
    after a first `-0.5*spacing` offset it appends **every contour and hole** of
    each Clipper2 result with no area or vertex filter, and its brim width uses
-   the same `floor(width/flow/2)*flow*2` quantisation. PnP therefore matches the
-   *emission policy*; the exact tail ring multiset is **not claimed equivalent**
-   because canonical then applies `-1.3*spacing` / `+0.3*spacing` open-close with
-   `douglas_peucker` between passes while `SkirtBrim::generate` applies one
-   `-depth` offset per band. The slivers stay a recorded candidate observation;
-   no production fix or regression was needed for this family.
+   the same `floor(width/flow/2)*flow*2` quantisation. That is not the whole
+   pipeline: canonical Douglas-Peucker-simplifies each result at
+   `0.0125 / SCALING_FACTOR` immediately before appending, and
+   `Brim.cpp::makeBrimInfillImpl` then unions the loops with
+   `union_pt_chained_outside_in`. PnP does neither, and a 3-vertex sliver under
+   0.0125 mm high is exactly what Douglas-Peucker collapses, so whether
+   canonical emits these slivers is **unmeasured and not claimed**. The exact
+   tail ring multiset is likewise not claimed: canonical applies
+   `-1.3*spacing` / `+0.3*spacing` open-close with `douglas_peucker` between
+   passes while `SkirtBrim::generate` applies one `-depth` offset per band. The
+   slivers stay a recorded candidate observation; no production fix or
+   regression was needed for this family.
 
 2. **H-WIPE-TOWER bed containment is not in `generate_purge_paths`.** The
    bed-polygon check (`point_in_polygon`) lives in
@@ -432,9 +438,13 @@ than the prose):
    z[0,10]. The recompute now runs on **every** successful placement, including
    an exactly-zero shift, so a stale caller-supplied box is refreshed rather than
    preserved; `bed_placement_tdd::
-   zero_shift_placement_still_refreshes_build_volume` pins that path, and the
-   property starts its zero-shift witness from a deliberately stale box. The
-   property asserts the post-placement world union for every scene, keeps the
+   zero_shift_placement_still_refreshes_build_volume` pins that path (and that a
+   zero shift preserves `-0.0` bit patterns), and the property starts its
+   zero-shift witness from a deliberately stale box. The shift midpoint is
+   computed in f64 and a non-finite shift returns `None` before any mutation, so
+   an extreme same-sign AABB cannot overflow the placement
+   (`extreme_same_sign_extents_do_not_overflow_the_midpoint`). The property
+   asserts the post-placement world union for every scene, keeps the
    identity-scene shifted-raw-union equivalence, and counts live-transform
    scenes. A generated all-nonfinite-X `None` mode covers the finite-X gate.
 

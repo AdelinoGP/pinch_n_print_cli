@@ -258,19 +258,19 @@ libtest times from the combined selections.
 
 | ID | routine cases / wall | extended cases / wall |
 | --- | --- | --- |
-| `H-IO-ID` | 64 / 0.04 s | 256 / 0.18 s |
-| `H-IO-EXTENT` | 64 / 0.03 s | 256 / 0.10 s |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.11 s |
+| `H-IO-EXTENT` | 64 / 0.04 s | 256 / 0.10 s |
 | `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
-| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.09 s |
-| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.18 s |
-| `H-GCODE-SERIALIZE` | 64 / 0.29 s | 256 / 0.17 s |
-| `H-GCODE-TEMPLATE` | 64 / 0.04 s | 256 / 0.17 s |
-| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
-| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.11 s |
-| `H-SKIRT-BRIM` | 64 / 0.57 s | 256 / 2.14 s |
-| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.10 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.08 s |
+| `H-GCODE-EMIT` | 64 / 0.04 s | 256 / 0.17 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.09 s | 256 / 0.18 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.07 s | 256 / 0.17 s |
+| `H-COOLING` | 64 / 0.04 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.05 s | 256 / 0.34 s |
+| `H-SKIRT-BRIM` | 64 / 0.51 s | 256 / 1.60 s |
+| `H-WIPE-TOWER` | 64 / 0.05 s | 256 / 0.09 s |
 
-The 11-record combined selection took 30 s (routine) and 34 s (extended) warm wall. Every record
+The 11-record combined selection took 36 s (routine) and 32 s (extended) warm wall. Every record
 reported `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, zero local/global rejects,
 `call_counts_complete = true` and `outcome = passed`; `shrink_completed` is null because Proptest 1.11
 cannot report completion. Profiles: 64/32/64 and 256/128/256, zero rejection/regeneration budgets,
@@ -9431,13 +9431,17 @@ rings; every fragment is validated (closed, >= 3 distinct vertices, non-zero are
 clearance window), the fragment count is recorded as `tail_fragments`, and no bound is invented. The
 measured failing input (`line_width 0.125`, `brim_width 56.6875`, 1/16 x 3/16 mm rectangle at (-64,-64))
 yields 693 rings: 690 clean rings plus 2 contour lobes and 3 sliver holes of 0.0004-0.0016 mm2 area, all at
-the band-344 hole boundary. The sliver emission is a **recorded candidate observation**. Canonical's emission policy is verified
-against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): after a first `-0.5*spacing`
-offset it appends every contour **and hole** of each Clipper2 result with no area/vertex filter, and its
-brim width uses the same `floor(width/flow/2)*flow*2` quantisation, so PnP matches the emission policy.
-The exact tail ring multiset is not claimed equivalent: canonical applies `-1.3*spacing` /
-`+0.3*spacing` open-close with `douglas_peucker` between passes while `SkirtBrim::generate` applies one
-`-depth` offset per band.
+the band-344 hole boundary. The sliver emission is a **recorded candidate observation**. Canonical's
+**append step** is verified against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26):
+after a first `-0.5*spacing` offset it appends every contour **and hole** of each Clipper2 result with no
+area/vertex filter, and its brim width uses the same `floor(width/flow/2)*flow*2` quantisation. That is
+not the full emission pipeline: canonical Douglas-Peucker-simplifies each result at
+`0.0125 / SCALING_FACTOR` immediately before appending, and `Brim.cpp::makeBrimInfillImpl` unions the
+loops with `union_pt_chained_outside_in`; PnP does neither, and a 3-vertex sliver under 0.0125 mm high is
+exactly what Douglas-Peucker collapses. Whether canonical emits these slivers is therefore **unmeasured
+and not claimed**. The exact tail ring multiset is likewise not claimed: canonical applies
+`-1.3*spacing` / `+0.3*spacing` open-close with `douglas_peucker` between passes while
+`SkirtBrim::generate` applies one `-depth` offset per band.
 
 **Corner-join windows (derived, measured).** The brim's outer boundary offset decimates the reconstruction
 contour's 90-degree corner arc against `OFFSET_SHORTEST_EDGE_FACTOR * quantised`, which can place a ring
@@ -9487,6 +9491,6 @@ zero-offset ring (the authored note is classified as a mis-prediction). `skirt_b
 boundary helper, rejects an off-by-one count, inward skirt order, an open loop, lost whole-bbox enclosure, a
 dropped brim loop and a fabricated rectangle-shape equality, and `skirt_brim_corner_join_witness` pins the
 corner-join geometry and the half-anchor rejection. Final runs: routine `decimation_classified=0`; `thin_tail`/`tail_fragments` are single-run samples, not
-bounds (routine 1/0, extended 20-27/0-6 across the observed runs),
+bounds (across the observed runs, routine `thin_tail` 1-4 / `tail_fragments` 0, extended 20-27 / 0-7),
 `max_clearance_dev=0`, `max_bbox_excess=0`, `enclosed_loops` 57 routine / 238 extended. The two
 `skirt_brim_tdd` baselines pass unchanged. No production code changed for this family.

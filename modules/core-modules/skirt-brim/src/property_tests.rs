@@ -83,21 +83,24 @@
 //! 0.000351 mm²). Every one is closed, has three distinct vertices and
 //! non-zero area.
 //!
-//! **Candidate observation — emission policy verified, multiset not claimed.**
-//! Canonical's policy is confirmed against `Brim.cpp::tryExPolygonOffset`
-//! (upstream `main`, read 2026-11-26): after a first `-0.5 * spacing` offset it
-//! appends every contour **and every hole** of each Clipper2 result
-//! (`polygons_append(loops, to_polygons(islands_ex))`) with no area, vertex or
-//! `has_inner_brim` filter, and its brim width uses the same
-//! `floor(width/flow/2)*flow*2` quantisation. PnP therefore matches canonical's
-//! *emission policy*: a 3-vertex non-zero-area sliver would be emitted by both.
-//! The exact tail ring multiset is **not claimed equivalent**, because canonical
-//! then erodes `-1.3 * spacing` and dilates `+0.3 * spacing` per iteration (net
-//! one spacing) with `douglas_peucker` between passes, whereas
+//! **Candidate observation — append policy verified, emission not claimed.**
+//! Canonical's *append step* is confirmed against
+//! `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): after a
+//! first `-0.5 * spacing` offset it appends every contour **and every hole** of
+//! each Clipper2 result (`polygons_append(loops, to_polygons(islands_ex))`)
+//! with no area, vertex or `has_inner_brim` filter, and its brim width uses the
+//! same `floor(width/flow/2)*flow*2` quantisation. That is **not** the whole
+//! emission pipeline: canonical calls `poly_ex.douglas_peucker(resolution)`
+//! with `resolution = 0.0125 / SCALING_FACTOR` immediately before each append,
+//! and `makeBrimInfillImpl` then unions the loops with
+//! `union_pt_chained_outside_in`. PnP does neither, and a 3-vertex sliver less
+//! than 0.0125 mm high is exactly what Douglas-Peucker collapses, so **whether
+//! canonical would emit these four-point slivers is unmeasured and not
+//! claimed**. The exact tail ring multiset is likewise not claimed equivalent:
+//! canonical erodes `-1.3 * spacing` and dilates `+0.3 * spacing` per iteration
+//! (net one spacing) with `douglas_peucker` between passes, whereas
 //! `SkirtBrim::generate` performs a single `-depth` offset per band with
-//! `depth += spacing`. That open-close can delete features thinner than its
-//! dilation radius, so whether canonical reaches these four-point slivers is
-//! unmeasured and is not claimed. The disposition is: classified and recorded
+//! `depth += spacing`. The disposition is: classified and recorded
 //! (`tail_fragments`), each fragment validated, production left unchanged, and
 //! the sliver emission logged here as a candidate observation for a differential
 //! check — not claimed defect-free.
