@@ -73,6 +73,18 @@ impl FinalizationModule for SdkFinalizationModule {
             ));
         }
 
+        // Non-fatal witness: `common.wit`'s `module-error.fatal` doc and
+        // `slicer_sdk::error::ModuleError` define `fatal = false` as
+        // "host logs and continues" — a degraded success, not a stage abort.
+        // Its own key keeps the fatal round-trip witness above intact while
+        // making the continuation path observable from a host test.
+        if let Some(code) = config.get_int("intentional_non_fatal_error_code") {
+            return Err(ModuleError::non_fatal(
+                code as u32,
+                "sdk-finalization-guest: intentional non-fatal error from config",
+            ));
+        }
+
         // Deep-copy input witness: emit one synthetic extrusion per
         // observed layer encoding the observed `(layer_index, z,
         // entity_count, tool_changes.len(), z_hops.len())` plus a

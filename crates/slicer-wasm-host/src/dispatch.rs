@@ -245,6 +245,69 @@ impl std::fmt::Display for DispatchError {
 
 impl std::error::Error for DispatchError {}
 
+/// Log a module error that the WIT contract says the host continues past.
+///
+/// `common.wit`'s `module-error.fatal` doc and `slicer-sdk`'s `error.rs`
+/// ("If false, host logs and continues") define `fatal = false` as a
+/// degraded-success signal, not a stage abort. Every dispatch path (layer,
+/// prepass, finalization, postpass — wasm and native) routes its non-fatal
+/// arm through this one warning so the policy has a single source.
+fn warn_non_fatal_module_error(
+    module_id: &str,
+    stage_id: &str,
+    export_name: Option<&str>,
+    module_err: &slicer_sdk::error::ModuleError,
+) {
+    match export_name {
+        Some(export_name) => log::warn!(
+            "module {} at stage {} (export `{}`) reported non-fatal error (code={}): {}",
+            module_id,
+            stage_id,
+            export_name,
+            module_err.code,
+            module_err.message
+        ),
+        None => log::warn!(
+            "module {} at stage {} reported non-fatal error (code={}): {}",
+            module_id,
+            stage_id,
+            module_err.code,
+            module_err.message
+        ),
+    }
+}
+
+/// Wire-side counterpart to [`warn_non_fatal_module_error`].
+///
+/// The bindgen-generated `module-error` record is a distinct type from
+/// `slicer_sdk::error::ModuleError`, so the two fields are passed explicitly
+/// rather than converting (the SDK type is never constructed on this path).
+fn warn_non_fatal_wire_module_error(
+    module_id: &str,
+    stage_id: &str,
+    export_name: Option<&str>,
+    code: u32,
+    message: &str,
+) {
+    match export_name {
+        Some(export_name) => log::warn!(
+            "module {} at stage {} (export `{}`) reported non-fatal error (code={}): {}",
+            module_id,
+            stage_id,
+            export_name,
+            code,
+            message
+        ),
+        None => log::warn!(
+            "module {} at stage {} reported non-fatal error (code={}): {}",
+            module_id,
+            stage_id,
+            code,
+            message
+        ),
+    }
+}
+
 /// Convert a borrowed resource handle into an owned handle for component calls.
 fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
     Resource::new_own(r.rep())
@@ -1291,13 +1354,12 @@ impl WasmRuntimeDispatcher {
                     ),
                 });
             }
-            log::warn!(
-                "module {} at stage {} (export `{}`) reported non-fatal error (code={}): {}",
+            warn_non_fatal_wire_module_error(
                 module_id,
                 stage_id,
-                export_name,
+                Some(export_name),
                 module_err.code,
-                module_err.message
+                &module_err.message,
             );
         }
 
@@ -1675,12 +1737,12 @@ impl WasmRuntimeDispatcher {
                     ),
                 });
             }
-            log::warn!(
-                "module {} at stage {} reported non-fatal error (code={}): {}",
+            warn_non_fatal_wire_module_error(
                 module_id,
                 stage_id,
+                None,
                 module_err.code,
-                module_err.message
+                &module_err.message,
             );
         }
 
@@ -1832,16 +1894,34 @@ impl WasmRuntimeDispatcher {
                     reason,
                 });
             }
-            call_result.map_err(|module_err| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::TypedExportCall,
-                reason: format!(
-                    "module error (code={}, fatal={}): {}",
-                    module_err.code, module_err.fatal, module_err.message
-                ),
-            })?;
+            // WIT contract (`common.wit` `module-error.fatal` doc +
+            // `slicer-sdk` `error.rs`): `fatal = false` means "host logs and
+            // continues" — a degraded-success signal, not a finalization
+            // abort. Continue with no module-injected output (the output
+            // builder is drained below). Only a fatal=true error escalates
+            // to `DispatchError` and through the runner to
+            // `FinalizationError::FatalModule`.
+            if let Err(module_err) = call_result {
+                if module_err.fatal {
+                    return Err(DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::TypedExportCall,
+                        reason: format!(
+                            "module error (code={}, fatal={}): {}",
+                            module_err.code, module_err.fatal, module_err.message
+                        ),
+                    });
+                }
+                warn_non_fatal_wire_module_error(
+                    module_id,
+                    stage_id,
+                    Some(export_name),
+                    module_err.code,
+                    &module_err.message,
+                );
+            }
 
             // Forward module log messages to the host log facade before the
             // store (and its HostExecutionContext) is consumed.
@@ -2020,6 +2100,20 @@ impl WasmRuntimeDispatcher {
                 };
                 (Ok(output), runtime_reads)
             }
+            // WIT `module-error.fatal` contract: `fatal = false` means the
+            // host logs and continues with no module-injected output, so the
+            // caller leaves the incoming command stream untouched. Only a
+            // fatal=true error escalates to `DispatchError`.
+            Ok(Err(module_err)) if !module_err.fatal => {
+                warn_non_fatal_wire_module_error(
+                    module_id,
+                    stage_id,
+                    Some(export_name),
+                    module_err.code,
+                    &module_err.message,
+                );
+                (Ok(None), runtime_reads)
+            }
             Ok(Err(module_err)) => (
                 Err(DispatchError {
                     module_id: module_id.to_string(),
@@ -2174,6 +2268,21 @@ impl WasmRuntimeDispatcher {
 
         match call_result {
             Ok(Ok(result_text)) => (Ok(result_text), runtime_reads),
+            // WIT `module-error.fatal` contract: `fatal = false` means the
+            // host logs and continues. A text-postprocess module that injected
+            // nothing leaves the incoming text unchanged, so passing it back
+            // is the "no injected output" continuation. Only a fatal=true
+            // error escalates to `DispatchError`.
+            Ok(Err(module_err)) if !module_err.fatal => {
+                warn_non_fatal_wire_module_error(
+                    module_id,
+                    stage_id,
+                    Some(export_name),
+                    module_err.code,
+                    &module_err.message,
+                );
+                (Ok(text.to_string()), runtime_reads)
+            }
             Ok(Err(module_err)) => (
                 Err(DispatchError {
                     module_id: module_id.to_string(),
@@ -2954,18 +3063,34 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match prepass runner".to_string(),
                 });
             };
-            let response = entry(
+            let response = match entry(
                 &crate::marshal::native::build_native_prepass_request(stage_export, &input, module),
                 Some(&self.layer_planning_objects),
-            )
-            .map_err(|e| slicer_ir::PrepassRunnerError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: format!(
-                    "module error (code={}, fatal={}): {}",
-                    e.code, e.fatal, e.message
-                ),
-            })?;
+            ) {
+                Ok(response) => response,
+                // WIT `module-error.fatal` contract: `fatal = false` is a
+                // degraded success. The host logs it and continues with no
+                // module-injected output instead of failing the stage.
+                Err(module_err) if !module_err.fatal => {
+                    warn_non_fatal_module_error(
+                        &module.module_id,
+                        stage_id,
+                        Some(stage_export),
+                        &module_err,
+                    );
+                    return Ok(slicer_core::PrepassStageOutput::None);
+                }
+                Err(module_err) => {
+                    return Err(slicer_ir::PrepassRunnerError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: format!(
+                            "module error (code={}, fatal={}): {}",
+                            module_err.code, module_err.fatal, module_err.message
+                        ),
+                    });
+                }
+            };
             return crate::marshal::native::commit_native_prepass_response_with_inputs(
                 &response,
                 stage_export,
@@ -3348,34 +3473,68 @@ impl WasmRuntimeDispatcher {
                 layer.is_raft,
             );
             let response = if let Some((binding, owner)) = prepared {
-                binding
-                    .with_native_plan(owner, |frozen_entry| {
-                        let NativeStageEntry::Layer(frozen_entry) = frozen_entry else {
-                            return Err(slicer_sdk::error::ModuleError::fatal(
-                                57400,
-                                "native entry family does not match layer runner",
-                            ));
-                        };
-                        frozen_entry(&request)
-                    })
-                    .map_err(|error| {
+                match binding.with_native_plan(owner, |frozen_entry| {
+                    let NativeStageEntry::Layer(frozen_entry) = frozen_entry else {
+                        return Err(slicer_sdk::error::ModuleError::fatal(
+                            57400,
+                            "native entry family does not match layer runner",
+                        ));
+                    };
+                    frozen_entry(&request)
+                }) {
+                    Ok(response) => response,
+                    // WIT `module-error.fatal` contract: a prepared native
+                    // entry that reports `fatal = false` is a degraded success,
+                    // exactly like the ordinary leg below and the wasm leg.
+                    // Log, record no preparation failure (there is none — the
+                    // prepare phase succeeded) and continue with no commit.
+                    Err(crate::preparation::PreparationFailure::Module(module_err))
+                        if !module_err.fatal =>
+                    {
+                        warn_non_fatal_module_error(
+                            &module.module_id,
+                            stage_id,
+                            Some(stage_export),
+                            &module_err,
+                        );
+                        return Ok(None);
+                    }
+                    Err(error) => {
                         let message = error.to_string();
                         *preparation_failure = Some(Arc::new(error));
-                        slicer_ir::LayerStageError::FatalModule {
+                        return Err(slicer_ir::LayerStageError::FatalModule {
                             stage_id: stage_id.clone(),
                             module_id: module.module_id.clone(),
                             message,
-                        }
-                    })?
+                        });
+                    }
+                }
             } else {
-                entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message: format!(
-                        "module error (code={}, fatal={}): {}",
-                        e.code, e.fatal, e.message
-                    ),
-                })?
+                match entry(&request) {
+                    Ok(response) => response,
+                    // WIT `module-error.fatal` contract: `fatal = false` is a
+                    // degraded success. The host logs it and continues with no
+                    // module-injected output instead of failing the layer.
+                    Err(module_err) if !module_err.fatal => {
+                        warn_non_fatal_module_error(
+                            &module.module_id,
+                            stage_id,
+                            Some(stage_export),
+                            &module_err,
+                        );
+                        return Ok(None);
+                    }
+                    Err(module_err) => {
+                        return Err(slicer_ir::LayerStageError::FatalModule {
+                            stage_id: stage_id.clone(),
+                            module_id: module.module_id.clone(),
+                            message: format!(
+                                "module error (code={}, fatal={}): {}",
+                                module_err.code, module_err.fatal, module_err.message
+                            ),
+                        });
+                    }
+                }
             };
             return crate::marshal::native::commit_native_layer_response_with_authored(
                 &response,
@@ -3561,20 +3720,39 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match finalization runner".to_string(),
                 });
             };
-            let response = entry(&crate::marshal::native::build_native_finalization_request(
+            let response = match entry(&crate::marshal::native::build_native_finalization_request(
                 stage_export,
                 &input,
                 module,
                 layers,
-            ))
-            .map_err(|e| slicer_ir::FinalizationError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: format!(
-                    "module error (code={}, fatal={}): {}",
-                    e.code, e.fatal, e.message
-                ),
-            })?;
+            )) {
+                Ok(response) => response,
+                // WIT `module-error.fatal` contract: `fatal = false` means the
+                // host logs and continues with no module-injected output, so
+                // the layer set stays exactly as it arrived. Only a fatal=true
+                // error fails the stage.
+                Err(module_err) if !module_err.fatal => {
+                    warn_non_fatal_module_error(
+                        &module.module_id,
+                        stage_id,
+                        Some(stage_export),
+                        &module_err,
+                    );
+                    return Ok(slicer_ir::FinalizationOutput::NonFatalError {
+                        message: module_err.to_string(),
+                    });
+                }
+                Err(module_err) => {
+                    return Err(slicer_ir::FinalizationError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: format!(
+                            "module error (code={}, fatal={}): {}",
+                            module_err.code, module_err.fatal, module_err.message
+                        ),
+                    });
+                }
+            };
             return crate::marshal::native::commit_native_finalization_response(
                 response, module, stage_id, layers,
             )
@@ -3652,20 +3830,39 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match postpass runner".to_string(),
                 });
             };
-            let response = entry(&crate::marshal::native::build_native_postpass_request(
+            let response = match entry(&crate::marshal::native::build_native_postpass_request(
                 stage_export,
                 &input,
                 module,
                 NativePostpassInput::Gcode(commands.clone()),
-            ))
-            .map_err(|e| slicer_ir::PostpassError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: format!(
-                    "module error (code={}, fatal={}): {}",
-                    e.code, e.fatal, e.message
-                ),
-            })?;
+            )) {
+                Ok(response) => response,
+                // WIT `module-error.fatal` contract: `fatal = false` means the
+                // host logs and continues with no module-injected output; the
+                // command stream is left exactly as it arrived. Only a
+                // fatal=true error fails the stage.
+                Err(module_err) if !module_err.fatal => {
+                    warn_non_fatal_module_error(
+                        &module.module_id,
+                        stage_id,
+                        Some(stage_export),
+                        &module_err,
+                    );
+                    return Ok(slicer_ir::PostpassOutput::NonFatalError {
+                        message: module_err.to_string(),
+                    });
+                }
+                Err(module_err) => {
+                    return Err(slicer_ir::PostpassError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: format!(
+                            "module error (code={}, fatal={}): {}",
+                            module_err.code, module_err.fatal, module_err.message
+                        ),
+                    });
+                }
+            };
             return crate::marshal::native::commit_native_postpass_response(
                 response,
                 Some(commands),
@@ -3732,20 +3929,38 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match postpass runner".to_string(),
                 });
             };
-            let response = entry(&crate::marshal::native::build_native_postpass_request(
+            let response = match entry(&crate::marshal::native::build_native_postpass_request(
                 stage_export,
                 &input,
                 module,
                 NativePostpassInput::Text(text),
-            ))
-            .map_err(|e| slicer_ir::PostpassError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: format!(
-                    "module error (code={}, fatal={}): {}",
-                    e.code, e.fatal, e.message
-                ),
-            })?;
+            )) {
+                Ok(response) => response,
+                // WIT `module-error.fatal` contract: `fatal = false` means the
+                // host logs and continues. No module-injected text replaces the
+                // incoming text. Only a fatal=true error fails the stage.
+                Err(module_err) if !module_err.fatal => {
+                    warn_non_fatal_module_error(
+                        &module.module_id,
+                        stage_id,
+                        Some(stage_export),
+                        &module_err,
+                    );
+                    return Ok(slicer_ir::PostpassOutput::NonFatalError {
+                        message: module_err.to_string(),
+                    });
+                }
+                Err(module_err) => {
+                    return Err(slicer_ir::PostpassError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: format!(
+                            "module error (code={}, fatal={}): {}",
+                            module_err.code, module_err.fatal, module_err.message
+                        ),
+                    });
+                }
+            };
             return crate::marshal::native::commit_native_postpass_response(response, None)
                 .map_err(|message| slicer_ir::PostpassError::FatalModule {
                     stage_id: stage_id.clone(),
@@ -4630,4 +4845,134 @@ fn order_lock_remap_is_noop(layers: &[LayerCollectionIR]) -> bool {
         }
     }
     true
+}
+
+// ============================================================================
+// WIT `module-error.fatal` continuation witness (finalization wasm leg)
+// ============================================================================
+
+#[cfg(test)]
+mod fatal_policy_tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use slicer_ir::{ConfigValue, ConfigView, LayerCollectionIR, MeshIR, StageId};
+
+    use super::*;
+    use crate::instance::{WasmComponent, WasmEngine};
+    use crate::pool::WasmInstancePool;
+
+    fn guest_component(engine: &WasmEngine, name: &str) -> Arc<WasmComponent> {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("test-guests")
+            .join(format!("{name}.component.wasm"));
+        let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+            panic!(
+                "read {} ({e}); run `cargo xtask build-guests`",
+                path.display()
+            )
+        });
+        Arc::new(
+            engine
+                .compile_component(&bytes)
+                .unwrap_or_else(|e| panic!("compile {}: {e}", path.display())),
+        )
+    }
+
+    fn config_with_int(key: &str, value: i64) -> ConfigView {
+        ConfigView::from_map(HashMap::from([(
+            key.to_string(),
+            ConfigValue::Int(value),
+        )]))
+    }
+
+    fn dispatch_finalization(
+        dispatcher: &WasmRuntimeDispatcher,
+        component: &Arc<WasmComponent>,
+        config: ConfigView,
+    ) -> Result<Vec<host::FinalizationBuilderPush>, DispatchError> {
+        let stage: StageId = "PostPass::LayerFinalization".to_string();
+        let mut layers = vec![LayerCollectionIR::default()];
+        dispatcher.dispatch_finalization_call(
+            &stage,
+            "com.test.sdk-finalization-fatal-policy",
+            Some(component),
+            &WasmInstancePool::placeholder(),
+            &config,
+            Arc::new(MeshIR::default()),
+            &mut layers,
+            &[],
+        )
+    }
+
+    /// Positive control: with no error key the guest injects its per-layer
+    /// witness entity. This makes the empty-push assertion below falsifiable —
+    /// an empty result means the module produced nothing, not that the guest
+    /// never ran.
+    // test-quality: real typed guest witness; the control pins that the guest
+    // actually injects output so the non-fatal "no injected output" arm means
+    // something.
+    #[test]
+    fn finalization_guest_injects_output_without_error_config() {
+        let engine = WasmEngine::new();
+        let component = guest_component(&engine, "sdk-finalization-guest");
+        let dispatcher = WasmRuntimeDispatcher::new(Arc::new(engine));
+
+        let pushes = dispatch_finalization(&dispatcher, &component, ConfigView::new())
+            .expect("control run must succeed through the typed guest");
+        assert!(
+            !pushes.is_empty(),
+            "control: the guest must inject its per-layer witness entity"
+        );
+    }
+
+    /// `common.wit`'s `module-error.fatal` doc + `slicer-sdk` `error.rs`:
+    /// `fatal = false` is "host logs and continues". The dispatch must return
+    /// Ok with no module-injected output instead of escalating the error.
+    // test-quality: pins the WIT `module-error.fatal` continuation contract at
+    // the finalization wasm dispatch site with a real typed guest witness.
+    #[test]
+    fn finalization_dispatch_continues_on_non_fatal_module_error() {
+        let engine = WasmEngine::new();
+        let component = guest_component(&engine, "sdk-finalization-guest");
+        let dispatcher = WasmRuntimeDispatcher::new(Arc::new(engine));
+
+        let pushes = dispatch_finalization(
+            &dispatcher,
+            &component,
+            config_with_int("intentional_non_fatal_error_code", 0x51),
+        )
+        .expect("fatal=false must continue the finalization stage, not fail it");
+        assert!(
+            pushes.is_empty(),
+            "continuation must not inject module output; got {pushes:?}"
+        );
+    }
+
+    /// Negative control for the witness above: the same guest on the fatal
+    /// key must still fail, so the continuation assertion cannot pass by the
+    /// typed error never being raised.
+    // test-quality: pins that the new non-fatal arm does not swallow fatal
+    // errors on the same dispatch site and the same guest.
+    #[test]
+    fn finalization_dispatch_still_fails_on_fatal_module_error() {
+        let engine = WasmEngine::new();
+        let component = guest_component(&engine, "sdk-finalization-guest");
+        let dispatcher = WasmRuntimeDispatcher::new(Arc::new(engine));
+
+        let error = dispatch_finalization(
+            &dispatcher,
+            &component,
+            config_with_int("intentional_error_code", 0x52),
+        )
+        .expect_err("fatal=true must fail the finalization stage");
+        assert!(
+            error.reason.contains("fatal=true"),
+            "fatal error must surface the typed fatal flag: {error}"
+        );
+        assert!(
+            error.reason.contains("82"),
+            "fatal error must carry the guest code 0x52 (82): {error}"
+        );
+    }
 }
