@@ -27,8 +27,8 @@ use slicer_ir::{
 };
 
 use crate::error::GCodeEmitError;
-use crate::flavor::GcodeFlavor;
 use crate::estimator::{EstimatorLimits, PrintEstimate};
+use crate::flavor::GcodeFlavor;
 use crate::serialize::{format_xyz, tolerance_for_role};
 
 /// Cached print estimate produced by `DefaultGCodeEmitter::emit_from_reconciled_layers`,
