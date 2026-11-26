@@ -65,6 +65,57 @@ pub struct ResolutionTarget {
     pub layer_top_z: Option<f64>,
 }
 
+const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
+
+/// Encode the identity of one precomputed resolution target as the key used by
+/// the host's resolved-config map.
+///
+/// The key covers `object_id`, `modifier_ids`, `paint_semantics`, and
+/// `tool_index`. `layer_top_z` is intentionally excluded: the precomputed map
+/// holds one config per non-spatial target, while a layer-range resolution is
+/// performed directly through [`resolve_scope_stack`] rather than cached under
+/// a second key.
+///
+/// Components are length-prefixed, so a delimiter inside an object id, modifier
+/// id, or custom paint semantic cannot collide with the fields around it. The
+/// leading NUL keeps target keys disjoint from ordinary object-id keys in the
+/// same map. Callers must pass `modifier_ids` in ascending priority order and
+/// `paint_semantics` in lexical order; the encoder preserves the order it
+/// receives.
+pub fn resolved_target_key(
+    object_id: &str,
+    modifier_ids: &[String],
+    paint_semantics: &[String],
+    tool_index: Option<u32>,
+) -> String {
+    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
+        return object_id.to_owned();
+    }
+    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
+    append_key_part(&mut key, object_id);
+    key.push('|');
+    for modifier_id in modifier_ids {
+        append_key_part(&mut key, modifier_id);
+        key.push(',');
+    }
+    key.push('|');
+    for semantic in paint_semantics {
+        append_key_part(&mut key, semantic);
+        key.push(',');
+    }
+    key.push('|');
+    if let Some(tool_index) = tool_index {
+        use std::fmt::Write as _;
+        let _ = write!(key, "{tool_index}");
+    }
+    key
+}
+
+fn append_key_part(key: &mut String, value: &str) {
+    use std::fmt::Write as _;
+    let _ = write!(key, "{}:{value}", value.len());
+}
+
 /// One contiguous interval of an object's composed layer-height profile.
 ///
 /// The segment covers `[z_start, z_end)` and supplies the layer height used
@@ -713,17 +764,17 @@ pub fn query_layer_height_profile(
         expansion,
     )?;
     validate_height(object_id, config.layer_height)?;
-    validate_height(object_id, config.first_layer_height)?;
+    validate_height(object_id, config.initial_layer_print_height)?;
 
     // Retained coverage: the synthetic first-layer interval first, then each
     // range's surviving portion. `coverage_high` is the end of the last
     // retained interval.
     let mut retained = vec![HeightProfileSegment {
         z_start: 0.0,
-        z_end: config.first_layer_height,
-        height: config.first_layer_height,
+        z_end: config.initial_layer_print_height,
+        height: config.initial_layer_print_height,
     }];
-    let mut coverage_high = config.first_layer_height;
+    let mut coverage_high = config.initial_layer_print_height;
 
     let mut ranges: Vec<(f64, f64, u32, f64)> = scoped
         .ranges_for(&object_id.to_owned())
@@ -918,7 +969,7 @@ pub fn query_z_grid(
             )?;
             let support_raft_layers = support_raft_layers(&config)?;
             validate_height(object_id, config.layer_height)?;
-            validate_height(object_id, config.first_layer_height)?;
+            validate_height(object_id, config.initial_layer_print_height)?;
             Ok((object_id, *object_height, config, support_raft_layers))
         })
         .collect::<Result<Vec<_>, ResolutionError>>()?;
@@ -929,7 +980,8 @@ pub fn query_z_grid(
         .iter()
         .filter(|(_, _, _, raft_layers)| *raft_layers > 0)
         .map(|(_, _, config, raft_layers)| {
-            config.first_layer_height + (f64::from(*raft_layers) - 1.0) * config.layer_height
+            config.initial_layer_print_height
+                + (f64::from(*raft_layers) - 1.0) * config.layer_height
         })
         .fold(0.0, f64::max);
 
@@ -949,7 +1001,7 @@ pub fn query_z_grid(
                 object_id: object_id.clone(),
                 object_height,
                 layer_height: config.layer_height,
-                first_layer_height: config.first_layer_height,
+                first_layer_height: config.initial_layer_print_height,
                 support_raft_layers,
                 layer_z_tops: layer_top_zs(&profile, object_height),
             })
@@ -991,5 +1043,60 @@ fn config_value_name(value: &ConfigValue) -> &'static str {
         ConfigValue::Percent(_) => "Percent",
         ConfigValue::FloatOrPercent { .. } => "FloatOrPercent",
         ConfigValue::List(_) => "List",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolved_target_key;
+
+    #[test]
+    fn target_key_encoding_is_stable() {
+        assert_eq!(
+            resolved_target_key(
+                "object-1",
+                &["m1".to_owned()],
+                &["material".to_owned()],
+                Some(2),
+            ),
+            "\0resolved-target:8:object-1|2:m1,|8:material,|2"
+        );
+    }
+
+    #[test]
+    fn target_key_without_scopes_is_the_object_id() {
+        assert_eq!(resolved_target_key("object-1", &[], &[], None), "object-1");
+    }
+
+    #[test]
+    fn target_key_distinguishes_every_dimension() {
+        let base = resolved_target_key("object-1", &[], &[], None);
+        assert_ne!(
+            base,
+            resolved_target_key("object-1", &["m1".to_owned()], &[], None)
+        );
+        assert_ne!(
+            base,
+            resolved_target_key("object-1", &[], &["material".to_owned()], None)
+        );
+        assert_ne!(base, resolved_target_key("object-1", &[], &[], Some(0)));
+    }
+
+    #[test]
+    fn target_key_preserves_component_order() {
+        assert_ne!(
+            resolved_target_key("object-1", &["a".to_owned(), "b".to_owned()], &[], None),
+            resolved_target_key("object-1", &["b".to_owned(), "a".to_owned()], &[], None),
+        );
+    }
+
+    #[test]
+    fn target_key_length_prefix_prevents_delimiter_collisions() {
+        // A naive `object|modifier` join would make these two keys equal.
+        let object_contains_delimiter =
+            resolved_target_key("object|1", &["a".to_owned()], &[], None);
+        let modifier_contains_delimiter =
+            resolved_target_key("object", &["1|a".to_owned()], &[], None);
+        assert_ne!(object_contains_delimiter, modifier_contains_delimiter);
     }
 }

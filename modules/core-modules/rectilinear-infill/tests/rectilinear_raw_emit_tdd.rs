@@ -121,9 +121,9 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 /// explicit value wins.
 fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
-        .float("infill_angle", 45.0)
-        .float("infill_speed", 60.0)
+        // Canonical-percent density; canonical angle/speed names.
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 45.0)
         .float("line_width", 0.45)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
@@ -149,9 +149,9 @@ fn baseline_config() -> ConfigViewBuilder {
 
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     baseline_config()
-        .float("infill_density", density)
-        .float("infill_angle", angle)
-        .float("infill_speed", speed)
+        .float("sparse_infill_density", density * 100.0)
+        .float("infill_direction", angle)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .build()
 }
@@ -164,9 +164,10 @@ fn make_config_with_shift(
     shift_mm: f64,
 ) -> ConfigView {
     baseline_config()
-        .float("infill_density", density)
-        .float("infill_angle", angle)
-        .float("infill_speed", speed)
+        // Canonical-percent key (wayfinder ticket 107).
+        .float("sparse_infill_density", density * 100.0)
+        .float("infill_direction", angle)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .float("infill_shift_step", shift_mm)
         .build()
@@ -566,9 +567,9 @@ fn solid_spacing_adjusted_for_solid_role() {
     // units (0.4347mm), factor 1.035 within the 1.2x cap, so 24 half-open
     // rows (0..=99981) are emitted.
     let config = baseline_config()
-        .float("infill_density", 0.18)
-        .float("infill_angle", 0.0)
-        .float("infill_speed", 50.0)
+        .float("sparse_infill_density", 18.0)
+        .float("infill_direction", 0.0)
+        .float("sparse_infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("top_surface_line_width", 0.42)
         .build();
@@ -663,8 +664,7 @@ fn solid_spacing_adjusted_for_solid_role() {
 #[test]
 fn solid_spacing_over_cap_uses_canonical_1_2_factor() {
     let config = baseline_config()
-        .float("infill_angle", 0.0)
-        .float("infill_speed", 50.0)
+        .float("infill_direction", 0.0)
         .float("line_width", 0.4)
         .float("top_surface_line_width", 1.0)
         .build();
@@ -726,9 +726,9 @@ fn solid_spacing_over_cap_uses_canonical_1_2_factor() {
 #[test]
 fn solid_surfaces_use_full_density_and_role_width() {
     let config = baseline_config()
-        .float("infill_density", 0.2)
-        .float("infill_angle", 0.0)
-        .float("infill_speed", 50.0)
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 0.0)
+        .float("sparse_infill_speed", 50.0)
         .float("line_width", 0.4)
         .float("initial_layer_line_width", 0.7)
         .float("top_surface_line_width", 0.5)

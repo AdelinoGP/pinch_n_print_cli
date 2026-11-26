@@ -531,6 +531,77 @@ fn interface_pitch_derives_from_interface_flow_over_line_width() {
     assert_eq!(fallback_negative.len(), baseline.len());
 }
 
+/// P29 (ticket 36): a non-default `support_line_width` changes the extruded
+/// width (rule 6b behaviour-change evidence).
+#[test]
+fn support_line_width_non_default_drives_extruded_width() {
+    fn paths_with_width(flow: f64, support_width: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
+        let config = ConfigView::from_map(std::collections::HashMap::from([
+            ("enable_support".to_string(), ConfigValue::Bool(true)),
+            // Required reads (fail-closed manifest declarations).
+            ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+            ("layer_height".to_string(), ConfigValue::Float(0.2)),
+            ("support_angle".to_string(), ConfigValue::Float(60.0)),
+            (
+                "support_base_pattern_spacing".to_string(),
+                ConfigValue::Float(2.5),
+            ),
+            ("support_speed".to_string(), ConfigValue::Float(50.0)),
+            ("line_width".to_string(), ConfigValue::Float(0.4)),
+            (
+                "support_line_width".to_string(),
+                ConfigValue::Float(support_width),
+            ),
+            // `support_interface_flow` is declared `percent`.
+            (
+                "support_interface_flow".to_string(),
+                ConfigValue::Percent(flow),
+            ),
+            (
+                "support_interface_spacing".to_string(),
+                ConfigValue::Float(0.4),
+            ),
+            (
+                "support_bottom_interface_spacing".to_string(),
+                ConfigValue::Float(0.4),
+            ),
+            (
+                "support_style".to_string(),
+                ConfigValue::String("default".to_string()),
+            ),
+        ]));
+        let module = TraditionalSupport::from_config(&config).unwrap();
+        let region = make_square_region(10.0, 0.3);
+        let paint = paint_with_interface_plan();
+        let mut output = SupportOutputBuilder::new();
+        module
+            .run_support(
+                0,
+                &[region],
+                &paint,
+                &mut output,
+                &mut slicer_sdk::LayerCollectionBuilder::new(),
+                &config,
+            )
+            .unwrap();
+        output.interface_paths().to_vec()
+    }
+
+    let baseline = paths_with_width(100.0, 0.4);
+    let wide = paths_with_width(100.0, 0.8);
+    assert!(!baseline.is_empty() && !wide.is_empty());
+    for (path, _) in &baseline {
+        for point in &path.points {
+            assert_eq!(point.width, 0.4);
+        }
+    }
+    for (path, _) in &wide {
+        for point in &path.points {
+            assert_eq!(point.width, 0.8);
+        }
+    }
+}
+
 #[test]
 fn nonpositive_interface_flow_falls_back_to_default_module_boundary() {
     let baseline = interface_paths(100.0);

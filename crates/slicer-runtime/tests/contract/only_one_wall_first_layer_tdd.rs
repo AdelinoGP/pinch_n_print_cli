@@ -1,8 +1,8 @@
 // only_one_wall_first_layer_tdd.rs — AC-5 TDD tests.
 //
 // AC-5: When layer_index == 0 and only_one_wall_first_layer = true, run_perimeters
-// must clamp wall count to 1 regardless of the configured wall_count.
-// At layer_index > 0 the configured wall_count (4) must be respected.
+// must clamp wall count to 1 regardless of the configured wall_loops.
+// At layer_index > 0 the configured wall_loops (4) must be respected.
 
 use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
@@ -15,7 +15,7 @@ use slicer_sdk::views::SliceRegionView;
 /// over the bound-view baseline (packet 06 5c-prime).
 fn config_4_walls(only_one_wall_first_layer: bool) -> ConfigView {
     classic_perimeters_baseline()
-        .int("wall_count", 4)
+        .int("wall_loops", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_first_layer", only_one_wall_first_layer)
         .build()
@@ -109,7 +109,7 @@ fn non_first_layer_respects_wall_count() {
 /// `is_bottom_layer`, in `process_arachne` — i.e. the first *printed* layer.
 fn config_4_walls_with_raft(raft_layers: i64) -> ConfigView {
     classic_perimeters_baseline()
-        .int("wall_count", 4)
+        .int("wall_loops", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_first_layer", true)
         .int("support_raft_layers", raft_layers)

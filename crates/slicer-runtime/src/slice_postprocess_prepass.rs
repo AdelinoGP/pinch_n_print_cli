@@ -57,7 +57,7 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use slicer_core::algos::prepass_slice::update_external_bridge_orientation;
 use slicer_core::polygon_ops::{
-    difference, intersection, offset, opening, opening_ex, union, OffsetJoinType,
+    difference, expolygon_area, intersection, offset, opening, opening_ex, union, OffsetJoinType,
 };
 use slicer_ir::{
     ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, ResolvedConfig, SliceIR,
@@ -190,6 +190,14 @@ pub fn commit_shell_classification_builtin(
         }
     }
 
+    // Too-small sparse islands become internal solid fill before anything
+    // downstream reads the sparse/solid split (canonical
+    // `LayerRegion::process_external_surfaces`'s `minimum_sparse_infill_area`
+    // block). Runs after the two shell passes so the already-solid roles are
+    // final, and before the internal-bridge gate so an island that just turned solid
+    // counts as solid support for the layer above.
+    convert_small_sparse_islands(&mut new_vec, region_map.as_ref());
+
     // Bridge classification already ran in `PrePass::Slice` against the raw
     // previous cross-section (canonical `detect_surfaces_type`'s difference).
     // This stage only re-derives the orientation from the classified areas and
@@ -237,8 +245,8 @@ pub fn commit_shell_classification_builtin(
     // below and author anchored bridge centerlines per region. Runs after the
     // shell passes (top/bottom solid fills are populated for every layer
     // above) and strictly after 234's false-site gate. Material exclusion
-    // flows through `bridge_areas`: the partition derives `sparse_infill_area`
-    // from it at Perimeters commit, so module sparse infill never covers the
+    // flows through `bridge_areas`: the partition subtracts it from the sparse
+    // zone at Perimeters commit, so module sparse infill never covers the
     // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
     // not exist yet at this stage and would be overwritten.)
     let gate_stats = gate_internal_bridge_sites(
@@ -965,12 +973,12 @@ fn build_bridge_depth_layers<'c>(
             }
             Some(slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
                 print_z: slices[lower_idx].z,
-                sparse_infill: if density < 0.999 {
+                sparse_infill: if density < 99.9 {
                     lower.infill_areas.clone()
                 } else {
                     Vec::new()
                 },
-                not_sparse_infill: if density >= 0.999 {
+                not_sparse_infill: if density >= 99.9 {
                     let mut dense = lower.infill_areas.clone();
                     dense.extend(not_sparse);
                     dense
@@ -1085,12 +1093,13 @@ fn dependent_layer_clusters(
 /// region timeline, qualifies the upper layer's `internal_solid_fill` surfaces
 /// against the committed layer below and authors the qualified internal-bridge
 /// polygons into `SlicedRegion::internal_bridge_areas`, with one bridge
-/// direction per polygon in `SlicedRegion::internal_bridge_angles_deg`. This is
-/// the single internal-bridge producer: the fill module holding the bridge
-/// claim emits each polygon at its own angle. Extends `bridge_areas` with the
-/// qualified polygons so the existing partition dataflow (`region_partition`
-/// derives `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)`
-/// at Perimeters commit) keeps module sparse infill out of the gated area.
+/// direction per polygon in `SlicedRegion::internal_bridge_angles_deg` for the
+/// same-layer InfillPostProcess arm to construct and emit. This is the single
+/// internal-bridge producer: the fill module holding the bridge claim emits
+/// each polygon at its own angle. Extends `bridge_areas` with the qualified
+/// polygons so the existing partition dataflow (`region_partition` derives
+/// `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at
+/// Perimeters commit) keeps module sparse infill out of the gated area.
 ///
 /// Qualification runs in parallel, followed by ordered commits that can read
 /// earlier layers' bridge areas; the commits run sequentially inside each
@@ -1162,8 +1171,10 @@ fn gate_internal_bridge_sites_clustered(
             region_id: region.region_id,
             variant_chain: region.variant_chain.clone(),
         };
+        // `sparse_infill_density` is the canonical percent key (default 20 =
+        // 20%); the fully-dense threshold below is expressed in percent.
         if let Some(plan) = region_map.entries.get(&exact) {
-            return region_map.config_for_raw(plan.config).infill_density;
+            return region_map.config_for_raw(plan.config).sparse_infill_density;
         }
         crate::layer_executor::config_for_region_smallest_chain(
             region_map,
@@ -1171,7 +1182,7 @@ fn gate_internal_bridge_sites_clustered(
             &region.object_id,
             region.region_id,
         )
-        .map(|config| region_map.config_for_raw(config).infill_density)
+        .map(|config| region_map.config_for_raw(config).sparse_infill_density)
         .unwrap_or(0.0)
     };
     // Lower-layer solid support is pooled across regions. Dense regions are
@@ -1183,7 +1194,7 @@ fn gate_internal_bridge_sites_clustered(
                 .entry((region.object_id.clone(), slice.global_layer_index))
                 .or_default();
             let density = density_for(region, slice.global_layer_index);
-            if density >= 0.999 {
+            if density >= 99.9 {
                 entry.extend(region.infill_areas.iter().cloned());
             } else {
                 entry.extend(region.top_solid_fill.iter().cloned());
@@ -1846,6 +1857,100 @@ fn build_region_timelines(
     timelines
 }
 
+/// One mm^2 expressed in squared coordinate units.
+///
+/// A coordinate unit is 100 nm (`docs/08_coordinate_system.md`), so 1 mm is
+/// 10_000 units and 1 mm^2 is 1e8 squared units. This is the Rust spelling of
+/// canonical's `scale_(scale_(value))` double-scale.
+const MM2_IN_SQUARED_UNITS: f64 = 1e8;
+
+/// Reclassify sparse islands at or below `minimum_sparse_infill_area` as
+/// internal solid fill.
+///
+/// Ports the `minimum_sparse_infill_area` block of canonical
+/// `LayerRegion::process_external_surfaces` (`LayerRegion.cpp`): with
+/// `sparse_infill_density > 0`, every internal (sparse) expolygon whose area is
+/// `<= scale_(scale_(minimum_sparse_infill_area))` is erased from the sparse
+/// zone and unioned into the internal-solid zone.
+///
+/// The islands land in `SlicedRegion::internal_solid_fill` — the dedicated
+/// internal-solid domain, which already exists as a polygon field (WIT-mirrored
+/// on `slice-region-view`). Two consequences of the domain, both recorded on
+/// wayfinder ticket 35:
+///
+/// 1. **The sparse zone is measured before the wall inset.** Canonical runs
+///    this inside `process_external_surfaces`, after `make_perimeters`, so its
+///    `fill_surfaces` are already inset by the walls. This port classifies
+///    shells in a prepass that runs before perimeters exist, so the zone here
+///    is the region footprint (`infill_areas`) minus the solid roles. Every
+///    island therefore measures larger than canonical would measure it, which
+///    makes the conversion strictly **conservative**: this port converts a
+///    subset of what canonical converts, never a superset.
+/// 2. **No `bottom_shell_index` is stamped.** The converted polygons carry
+///    their role through the bucket itself: the fill-stage partition
+///    (`region_partition::sync_perimeter_infill_areas_into_slice`) carves
+///    `internal_solid_fill` out of the sparse zone with precedence
+///    `bridge > bottom > top > internal > sparse`, and the `claim:top-fill`
+///    holders emit that bucket under `ExtrusionRole::InternalSolidInfill`
+///    directly — canonical's per-surface role decision, instead of the earlier
+///    shell-index stamp that made a converted island in a mixed region emit at
+///    the exposed-bottom width and speed.
+///
+/// `spiral_mode` is part of canonical's guard and has no counterpart here — it
+/// is an unimplemented queue key, so the guard reduces to the density test.
+fn convert_small_sparse_islands(slices: &mut [SliceIR], region_map: &slicer_ir::RegionMapIR) {
+    for slice in slices.iter_mut() {
+        let layer_index = slice.global_layer_index;
+        for region in &mut slice.regions {
+            let exact = RegionKey {
+                global_layer_index: layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            };
+            let resolved = if let Some(plan) = region_map.entries.get(&exact) {
+                Some(region_map.config_for_raw(plan.config))
+            } else {
+                crate::layer_executor::config_for_region_smallest_chain(
+                    region_map,
+                    layer_index,
+                    &region.object_id,
+                    region.region_id,
+                )
+                .map(|config| region_map.config_for_raw(config))
+            };
+            let Some(resolved) = resolved else {
+                continue;
+            };
+            // Canonical guard: the block is skipped entirely for a fully
+            // hollow region. `0` on the threshold disables the feature.
+            if resolved.minimum_sparse_infill_area <= 0.0 || resolved.sparse_infill_density <= 0.0 {
+                continue;
+            }
+            let min_area_units =
+                f64::from(resolved.minimum_sparse_infill_area) * MM2_IN_SQUARED_UNITS;
+
+            let mut solids = region.top_solid_fill.clone();
+            solids.extend(region.bottom_solid_fill.iter().cloned());
+            solids.extend(region.bridge_areas.iter().cloned());
+            let small: Vec<ExPolygon> = difference(&region.infill_areas, &solids)
+                .into_iter()
+                .filter(|island| expolygon_area(island) <= min_area_units)
+                .collect();
+            if small.is_empty() {
+                continue;
+            }
+
+            // The dedicated internal-solid domain. The fill-stage partition
+            // subtracts this bucket from the sparse zone (see
+            // `region_partition::sync_perimeter_infill_areas_into_slice`) and
+            // the `claim:top-fill` holders emit it as `InternalSolidInfill`,
+            // so no shell-index stamp is needed here.
+            region.internal_solid_fill = union(&region.internal_solid_fill, &small);
+        }
+    }
+}
+
 fn resolve_shell_counts(
     region_map: &slicer_ir::RegionMapIR,
     object_id: &ObjectId,
@@ -2029,7 +2134,7 @@ mod tests {
         }
         let mut region_map = RegionMapIR::default();
         let config = region_map.intern_config(slicer_ir::ResolvedConfig {
-            infill_density: 0.2,
+            sparse_infill_density: 0.2,
             line_width: 0.4,
             ..Default::default()
         });
@@ -2455,7 +2560,7 @@ mod tests {
         snapshot[6].regions[0].internal_solid_fill = vec![rect(0.0, 20.0)];
         let mut region_map = RegionMapIR::default();
         let config = region_map.intern_config(slicer_ir::ResolvedConfig {
-            infill_density: 0.2,
+            sparse_infill_density: 0.2,
             line_width: 0.4,
             ..Default::default()
         });

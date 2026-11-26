@@ -565,7 +565,7 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
     // BeadingStrategy pipeline via the host-service bridge (19 -> 20), packet 133 added
     // the real `infill-linker` guest (20 -> 21), packet 222 added the
-    // `traditional-support-planner` guest (21 -> 22), pnp-244b added the
+    // `traditional-support-planner` guest (21 -> 22), packet 246 added the
     // real `wave-overhangs` bridge-fill module (22 -> 23), and packet 240b added the
     // real `raft-default` guest (23 -> 24).
     assert_eq!(

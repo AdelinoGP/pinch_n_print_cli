@@ -67,7 +67,7 @@ fn make_region(z: f32) -> SliceRegionView {
 /// set and the assertion needs no per-wall bookkeeping.
 fn emitted_widths_for(w_mm: f32) -> Vec<f32> {
     let config = ConfigViewBuilder::new()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", w_mm as f64)
         .float("inner_wall_line_width", w_mm as f64)
         .float("layer_height", LAYER_HEIGHT_MM as f64)

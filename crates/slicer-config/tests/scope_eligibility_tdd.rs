@@ -41,7 +41,7 @@ use slicer_ir::ConfigValue;
 /// than the 26 [`SPEED_KEYS`].
 const AC1_WHOLE_PRINT_ONLY: &[&str] = &[
     // Machine / emitter keys authored on the host DSL rows.
-    "bed_shape",
+    "printable_area",
     "disable_m73",
     "gcode_xy_decimals",
     "machine_max_acceleration_extruding",
@@ -58,6 +58,8 @@ const AC1_WHOLE_PRINT_ONLY: &[&str] = &[
     "use_relative_e_distances",
     "thumbnail_path",
     "wall_generator",
+    "gcode_add_line_number",
+    "post_process",
 ];
 
 /// AC-1 tool-capable roster: a per-tool statement is meaningful, so the tool
@@ -416,7 +418,7 @@ fn admission_sets_are_derived_only_from_registry_denials() {
         );
     }
     assert!(
-        !tool_admission.contains("bed_shape") && !tool_admission.contains("thumbnail_path"),
+        !tool_admission.contains("printable_area") && !tool_admission.contains("thumbnail_path"),
         "whole-print-only keys must not be tool-admissible"
     );
 
@@ -541,7 +543,7 @@ fn allowed_scope_values_resolve_normally() {
 
 // ── AC-N1 ──────────────────────────────────────────────────────────────────
 
-/// AC-N1: a denied pair is rejected atomically — `bed_shape` at object scope
+/// AC-N1: a denied pair is rejected atomically — `printable_area` at object scope
 /// and `nozzle_diameter` at modifier scope return `ScopeDenied` naming the
 /// exact pair, and the same deltas without the denied key still resolve.
 #[test]
@@ -562,25 +564,28 @@ fn denied_scope_is_rejected_atomically() {
         &scoped([(
             object_scope.clone(),
             delta([
-                ("infill_density", ConfigValue::Float(0.9)),
-                ("bed_shape", ConfigValue::String("0,0,250,250".to_owned())),
+                ("sparse_infill_density", ConfigValue::Float(0.9)),
+                (
+                    "printable_area",
+                    ConfigValue::String("0,0,250,250".to_owned()),
+                ),
             ]),
         )]),
         &object_target,
         &expansion(),
     )
-    .expect_err("bed_shape must be rejected at object scope");
+    .expect_err("printable_area must be rejected at object scope");
     assert_eq!(
         error,
         ResolutionError::ScopeDenied {
-            key: "bed_shape".to_owned(),
+            key: "printable_area".to_owned(),
             scope: object_scope.clone(),
         },
         "the error must name the exact denied pair"
     );
     let rendered = error.to_string();
     assert!(
-        rendered.contains("bed_shape") && rendered.contains("object"),
+        rendered.contains("printable_area") && rendered.contains("object"),
         "display must name the key and scope, got {rendered:?}"
     );
 
@@ -590,13 +595,13 @@ fn denied_scope_is_rejected_atomically() {
         &registry,
         &scoped([(
             object_scope,
-            delta([("infill_density", ConfigValue::Float(0.9))]),
+            delta([("sparse_infill_density", ConfigValue::Float(0.9))]),
         )]),
         &object_target,
         &expansion(),
     )
     .expect("the same delta without the denied key must resolve");
-    assert_eq!(allowed.infill_density, 0.9);
+    assert_eq!(allowed.sparse_infill_density, 0.9);
 
     let error = resolve_scope_stack(
         &registry,
@@ -789,10 +794,12 @@ fn layer_granular_declarers() -> BTreeMap<String, Vec<(String, String)>> {
             .and_then(|stage| stage.get("id"))
             .and_then(|id| id.as_str())
             .map_or_else(|| "".to_owned(), |id| id.to_owned());
-        // A `Layer::*` stage id marks layer granularity; ids that merely
-        // *contain* "layer" (e.g. `PostPass::LayerFinalization`) are other
+        // A `Layer::*` stage id marks layer granularity, and so does
+        // `PostPass::LayerFinalization` — wipe-tower runs once per layer and
+        // consumes its tool-scoped keys (`retract_length`) at that
+        // granularity. Ids that merely *contain* "layer" elsewhere are other
         // stages and must not count as layer declarers.
-        if !stage_id.starts_with("Layer") {
+        if !(stage_id.starts_with("Layer") || stage_id == "PostPass::LayerFinalization") {
             continue;
         }
         layer_modules += 1;
@@ -846,8 +853,14 @@ fn derive_expected_denials(
         let per_tool_consumer = host_scope == Some(SCOPE_FILAMENT);
         let whole_print_preset =
             host_scope == Some(SCOPE_PRINT) || host_scope == Some(SCOPE_PRINTER);
-        let whole_print_only =
-            is_speed || (whole_print_preset && !layer_declared && !per_tool_consumer);
+        // AC-1's authored whole-print-only roster is authoritative for keys
+        // that a per-layer finalization module also declares (`printable_area`
+        // is read once per print by wipe-tower, not per layer). Without this
+        // carve-out the PostPass layer clause below would misclassify it.
+        let authored_whole_print_only = AC1_WHOLE_PRINT_ONLY.contains(&key.as_str());
+        let whole_print_only = is_speed
+            || authored_whole_print_only
+            || (whole_print_preset && !layer_declared && !per_tool_consumer);
         let policy = if whole_print_only {
             WHOLE_PRINT_ONLY_SCOPES
         } else {

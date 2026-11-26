@@ -1,7 +1,7 @@
 //! Packet `config-scope-resolution_09_layer-range-scope` — AC-2, AC-N1, AC-N2.
 //!
 //! A minimal hand-authored registry carries the ordinary keys the assertions
-//! type (`layer_height`, `first_layer_height`, `infill_density`), the selector
+//! type (`layer_height`, `initial_layer_print_height`, `sparse_infill_density`), the selector
 //! `wall_generator`, and the machine key `bed_shape`. Every denial comes from
 //! the registry's own `denied_scopes` read through `admission_set`; there is no
 //! key roster in this file.
@@ -50,8 +50,8 @@ fn range_registry() -> ConfigSchemaRegistry {
             schema: ConfigSchema {
                 entries: BTreeMap::from([
                     ("layer_height".to_owned(), float_field()),
-                    ("first_layer_height".to_owned(), float_field()),
-                    ("infill_density".to_owned(), float_field()),
+                    ("initial_layer_print_height".to_owned(), float_field()),
+                    ("sparse_infill_density".to_owned(), float_field()),
                     (
                         "wall_generator".to_owned(),
                         selector_field("string", WHOLE_PRINT_ONLY_SCOPES),
@@ -105,10 +105,10 @@ fn world_z_half_open_range_is_typed_and_indexed_per_object() {
                 4,
                 0.4,
                 0.8,
-                &[("layer_height", "0.1"), ("infill_density", "0.35")],
+                &[("layer_height", "0.1"), ("sparse_infill_density", "0.35")],
             ),
-            range_input("obj-b", 2, 0.9, 1.1, &[("infill_density", "0.45")]),
-            range_input("obj-b", 0, 0.2, 0.6, &[("infill_density", "0.25")]),
+            range_input("obj-b", 2, 0.9, 1.1, &[("sparse_infill_density", "0.45")]),
+            range_input("obj-b", 0, 0.2, 0.6, &[("sparse_infill_density", "0.25")]),
         ])
         .expect("admitted typed layer ranges should load");
     let outcome = ingestor.finish();
@@ -131,7 +131,7 @@ fn world_z_half_open_range_is_typed_and_indexed_per_object() {
         Some(&ConfigValue::Float(0.1))
     );
     assert_eq!(
-        range.delta.values.get("infill_density"),
+        range.delta.values.get("sparse_infill_density"),
         Some(&ConfigValue::Float(0.35))
     );
 
@@ -189,15 +189,15 @@ fn conflicting_non_layer_height_overlap_is_atomic_load_error() {
     let mut rejected = ConfigIngestor::new(&registry);
     let error = rejected
         .ingest_layer_ranges(&[
-            range_input("obj-a", 0, 0.2, 0.6, &[("infill_density", "0.30")]),
-            range_input("obj-a", 3, 0.4, 0.8, &[("infill_density", "0.35")]),
+            range_input("obj-a", 0, 0.2, 0.6, &[("sparse_infill_density", "0.30")]),
+            range_input("obj-a", 3, 0.4, 0.8, &[("sparse_infill_density", "0.35")]),
         ])
         .expect_err("unequal values over a non-empty overlap must be a load error");
     assert_eq!(
         error,
         LayerRangeLoadError::ConflictingOverlap {
             object_id: object_id.clone(),
-            key: "infill_density".to_owned(),
+            key: "sparse_infill_density".to_owned(),
             first_range: 0,
             second_range: 1,
         }
@@ -214,8 +214,8 @@ fn conflicting_non_layer_height_overlap_is_atomic_load_error() {
     let mut equal = ConfigIngestor::new(&registry);
     equal
         .ingest_layer_ranges(&[
-            range_input("obj-a", 0, 0.2, 0.6, &[("infill_density", "0.35")]),
-            range_input("obj-a", 3, 0.4, 0.8, &[("infill_density", "0.35")]),
+            range_input("obj-a", 0, 0.2, 0.6, &[("sparse_infill_density", "0.35")]),
+            range_input("obj-a", 3, 0.4, 0.8, &[("sparse_infill_density", "0.35")]),
         ])
         .expect("equal values over an overlap are accepted");
     assert_eq!(equal.finish().scoped.ranges_for(&object_id).len(), 2);
@@ -248,12 +248,12 @@ fn conflicting_non_layer_height_overlap_is_atomic_load_error() {
             0,
             0.2,
             0.6,
-            &[("infill_density", "0.30")],
+            &[("sparse_infill_density", "0.30")],
         )])
         .expect("baseline range commits");
     let failed = committed.ingest_layer_ranges(&[
-        range_input("obj-a", 3, 0.4, 0.8, &[("infill_density", "0.35")]),
-        range_input("obj-a", 0, 0.2, 0.6, &[("infill_density", "0.30")]),
+        range_input("obj-a", 3, 0.4, 0.8, &[("sparse_infill_density", "0.35")]),
+        range_input("obj-a", 0, 0.2, 0.6, &[("sparse_infill_density", "0.30")]),
     ]);
     assert!(
         matches!(failed, Err(LayerRangeLoadError::ConflictingOverlap { .. })),
@@ -289,7 +289,7 @@ fn selector_or_denied_key_in_layer_range_is_load_error() {
     let error = selector
         .ingest_layer_ranges(&[
             range_input("obj-a", 0, 0.4, 0.8, &[("wall_generator", "arachne")]),
-            range_input("obj-a", 0, 0.4, 0.8, &[("infill_density", "0.35")]),
+            range_input("obj-a", 0, 0.4, 0.8, &[("sparse_infill_density", "0.35")]),
         ])
         .expect_err("a selector statement at layer-range scope must be denied");
     assert_eq!(
@@ -436,7 +436,10 @@ fn scoped_height_range(registry: &ConfigSchemaRegistry, min_z: f64, max_z: f64) 
     ingestor
         .ingest_flat(&HashMap::from([
             ("layer_height".to_owned(), ConfigValue::Float(0.2)),
-            ("first_layer_height".to_owned(), ConfigValue::Float(0.2)),
+            (
+                "initial_layer_print_height".to_owned(),
+                ConfigValue::Float(0.2),
+            ),
         ]))
         .expect("base heights are admitted");
     ingestor
@@ -600,7 +603,10 @@ fn earlier_starting_layer_height_range_retains_overlap_and_gap_fills() {
     let mut ingestor = ConfigIngestor::new(&registry);
     let mut globals = HashMap::new();
     globals.insert("layer_height".to_owned(), ConfigValue::Float(0.20));
-    globals.insert("first_layer_height".to_owned(), ConfigValue::Float(0.20));
+    globals.insert(
+        "initial_layer_print_height".to_owned(),
+        ConfigValue::Float(0.20),
+    );
     ingestor
         .ingest_flat(&globals)
         .expect("global base heights are admitted");
@@ -728,7 +734,10 @@ fn range_boundary_does_not_truncate_the_object_top_layer() {
     let mut ingestor = ConfigIngestor::new(&registry);
     let mut globals = HashMap::new();
     globals.insert("layer_height".to_owned(), ConfigValue::Float(0.20));
-    globals.insert("first_layer_height".to_owned(), ConfigValue::Float(0.20));
+    globals.insert(
+        "initial_layer_print_height".to_owned(),
+        ConfigValue::Float(0.20),
+    );
     ingestor
         .ingest_flat(&globals)
         .expect("global base heights are admitted");
@@ -810,7 +819,7 @@ fn transported_top_at_a_range_bound_keeps_the_half_open_rule() {
             0,
             0.4,
             0.7,
-            &[("infill_density", "0.35")],
+            &[("sparse_infill_density", "0.35")],
         )])
         .expect("the layer range is admitted");
     let scoped = ingestor.finish().scoped;
@@ -859,7 +868,7 @@ fn transported_top_at_a_range_bound_keeps_the_half_open_rule() {
             0,
             0.4,
             1.0,
-            &[("infill_density", "0.5")],
+            &[("sparse_infill_density", "0.5")],
         )])
         .expect("the power-of-two range is admitted");
     let power_of_two = power_of_two.finish().scoped;
@@ -884,7 +893,7 @@ fn transported_top_at_a_range_bound_keeps_the_half_open_rule() {
     };
     world.deltas.insert(
         ConfigScope::Object("obj-a".to_owned()),
-        delta([("infill_density", ConfigValue::Float(0.20))]),
+        delta([("sparse_infill_density", ConfigValue::Float(0.20))]),
     );
     let density_at = |layer_top_z: f64| {
         resolve_scope_stack(
@@ -898,7 +907,7 @@ fn transported_top_at_a_range_bound_keeps_the_half_open_rule() {
             &expansion(),
         )
         .expect("the transported-bound target must resolve")
-        .infill_density
+        .sparse_infill_density
     };
     assert_eq!(
         density_at(transported_max),
@@ -932,7 +941,7 @@ fn non_positive_layer_height_in_a_range_is_a_load_error() {
                 0.8,
                 &[
                     ("layer_height", &format!("{unusable}")),
-                    ("infill_density", "0.35"),
+                    ("sparse_infill_density", "0.35"),
                 ],
             )])
             .expect_err("an unusable layer_height must reject the whole range");
@@ -986,7 +995,7 @@ fn catch_up_layer_inherits_range_covering_its_top_z_at_reserved_precedence() {
             0,
             0.4,
             0.8,
-            &[("infill_density", "0.35")],
+            &[("sparse_infill_density", "0.35")],
         )])
         .expect("the layer range is admitted");
     let ranges = ingestor.finish().scoped;
@@ -1001,7 +1010,7 @@ fn catch_up_layer_inherits_range_covering_its_top_z_at_reserved_precedence() {
     };
     object_only.deltas.insert(
         ConfigScope::Object("obj-a".to_owned()),
-        delta([("infill_density", ConfigValue::Float(0.20))]),
+        delta([("sparse_infill_density", ConfigValue::Float(0.20))]),
     );
 
     let mut with_modifier = object_only.clone();
@@ -1010,13 +1019,13 @@ fn catch_up_layer_inherits_range_covering_its_top_z_at_reserved_precedence() {
             object_id: "obj-a".to_owned(),
             modifier_id: "priority-10".to_owned(),
         },
-        delta([("infill_density", ConfigValue::Float(0.45))]),
+        delta([("sparse_infill_density", ConfigValue::Float(0.45))]),
     );
 
     let resolve = |scoped: &ScopedConfig, target: ResolutionTarget| {
         resolve_scope_stack(&registry, scoped, &target, &expansion())
             .expect("literal precedence case must resolve")
-            .infill_density
+            .sparse_infill_density
     };
     let covering = |layer_top_z: Option<f64>, modifier_ids: Vec<String>| ResolutionTarget {
         object_id: "obj-a".to_owned(),
@@ -1071,11 +1080,11 @@ fn catch_up_layer_inherits_range_covering_its_top_z_at_reserved_precedence() {
     };
     object_without_ranges.deltas.insert(
         ConfigScope::Object("obj-a".to_owned()),
-        delta([("infill_density", ConfigValue::Float(0.15))]),
+        delta([("sparse_infill_density", ConfigValue::Float(0.15))]),
     );
     assert_ne!(
         0.15_f32,
-        <slicer_ir::ResolvedConfig as Default>::default().infill_density,
+        <slicer_ir::ResolvedConfig as Default>::default().sparse_infill_density,
         "the control value must differ from the typed default, or this case could \
          pass with the range simply never applying"
     );
@@ -1087,7 +1096,7 @@ fn catch_up_layer_inherits_range_covering_its_top_z_at_reserved_precedence() {
     // Object removed too: the typed default is exposed, never a range value.
     assert_eq!(
         resolve(&ScopedConfig::default(), covering(Some(0.65), Vec::new())),
-        0.2,
+        <slicer_ir::ResolvedConfig as Default>::default().sparse_infill_density,
         "with no scopes at all the typed default is exposed"
     );
 }
@@ -1119,8 +1128,8 @@ fn profile_rejects_invalid_heights_and_top_zs_are_pure() {
     for (key, invalid) in [
         ("layer_height", 0.0),
         ("layer_height", -0.5),
-        ("first_layer_height", 0.0),
-        ("first_layer_height", -1.0),
+        ("initial_layer_print_height", 0.0),
+        ("initial_layer_print_height", -1.0),
     ] {
         let mut ingestor = ConfigIngestor::new(&registry);
         let mut globals = HashMap::new();

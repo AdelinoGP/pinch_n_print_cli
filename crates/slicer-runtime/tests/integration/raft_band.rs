@@ -45,7 +45,7 @@ fn plan_with_raft_layers(raft_layers: i64) -> Vec<LayerProposal> {
     let mut map: HashMap<String, ConfigValue> = HashMap::new();
     map.insert("layer_height".into(), ConfigValue::Float(LAYER_HEIGHT));
     map.insert(
-        "first_layer_height".into(),
+        "initial_layer_print_height".into(),
         ConfigValue::Float(FIRST_LAYER_HEIGHT),
     );
     map.insert(

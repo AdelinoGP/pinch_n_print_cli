@@ -12,19 +12,20 @@
 //! * the effective wall inset is `W = donor.infill_areas ∩ region.polygons`,
 //!   never the donor's whole geometry;
 //! * a nonempty `W` labels every cell by the documented precedence
-//!   `bridge > bottom > top > sparse` and asserts an exact disjoint cover of
-//!   `W`;
-//! * an empty `W` is conditional: with donor walls all four roles are empty,
+//!   `bridge > bottom > top > internal > sparse` and asserts an exact disjoint
+//!   cover of `W` (`internal` is `internal_solid_fill`, the converted
+//!   sparse-island bucket);
+//! * an empty `W` is conditional: with donor walls all five roles are empty,
 //!   without donor walls the bridge is preserved, the top is the original top
-//!   minus that bridge, and bottom/sparse are empty — no role is claimed to be
-//!   a subset of the empty `W`;
-//! * a region with no donor is byte-identical to its pre-call value and emits
-//!   the production warning naming object/region (and parent for a modifier
-//!   child);
-//! * carriers outside the four canonical roles (`infill_areas`,
-//!   `internal_solid_fill`, aligned internal-bridge fields, `raft_fill`,
-//!   metadata) are byte-identical, because no raw modifier footprint is staged
-//!   in the property;
+//!   minus that bridge, and bottom/internal/sparse are empty — no role is
+//!   claimed to be a subset of the empty `W`;
+//! * a region with no donor keeps its four exposed/sparse roles and every other
+//!   carrier byte-identical, has only the shell-band marker carved from
+//!   `internal_solid_fill` (`internal − top`), and emits the production warning
+//!   naming object/region (and parent for a modifier child);
+//! * carriers outside the five canonical roles (`infill_areas`, aligned
+//!   internal-bridge fields, `raft_fill`, metadata) are byte-identical, because
+//!   no raw modifier footprint is staged in the property;
 //! * a modifier child whose bridge is already inside `W` must keep its bridge
 //!   `Vec<ExPolygon>` byte-for-byte (the production source-preservation
 //!   branch); every other bridge comparison is semantic.
@@ -979,6 +980,7 @@ struct ExpectedRoles {
     bridge: CellSet,
     bottom: CellSet,
     top: CellSet,
+    internal: CellSet,
     sparse: CellSet,
     wall_inset: CellSet,
     matched: bool,
@@ -994,10 +996,13 @@ fn expected_roles(
     let universe = grid.cell_count();
     let original = |polygons: &[ExPolygon]| cells_of(grid, polygons);
     let Some(donor) = donor else {
+        // The skip arms carve only the PrePass shell-band marker (a subset of
+        // the top) out of the internal bucket.
         return Ok(ExpectedRoles {
             bridge: original(&input.bridge_areas)?,
             bottom: original(&input.bottom_solid_fill)?,
             top: original(&input.top_solid_fill)?,
+            internal: original(&input.internal_solid_fill)?.sub(&original(&input.top_solid_fill)?),
             sparse: original(&input.sparse_infill_area)?,
             wall_inset: CellSet::empty(universe),
             matched: false,
@@ -1016,6 +1021,7 @@ fn expected_roles(
                 bridge: CellSet::empty(universe),
                 bottom: CellSet::empty(universe),
                 top: CellSet::empty(universe),
+                internal: CellSet::empty(universe),
                 sparse: CellSet::empty(universe),
                 wall_inset,
                 matched: true,
@@ -1024,13 +1030,15 @@ fn expected_roles(
             });
         }
         // No-wall fallback: preserve the bridge, top minus that bridge, and
-        // leave bottom/sparse empty. These roles are NOT subsets of the empty W.
+        // leave bottom/internal/sparse empty. These roles are NOT subsets of
+        // the empty W.
         let bridge = original(&input.bridge_areas)?;
         let top = original(&input.top_solid_fill)?.sub(&bridge);
         return Ok(ExpectedRoles {
             bridge,
             bottom: CellSet::empty(universe),
             top,
+            internal: CellSet::empty(universe),
             sparse: CellSet::empty(universe),
             wall_inset,
             matched: true,
@@ -1054,11 +1062,21 @@ fn expected_roles(
         .and(&wall_inset)
         .sub(&bridge)
         .sub(&bottom);
-    let sparse = wall_inset.sub(&bridge).sub(&bottom).sub(&top);
+    let internal = original(&input.internal_solid_fill)?
+        .and(&wall_inset)
+        .sub(&bridge)
+        .sub(&bottom)
+        .sub(&top);
+    let sparse = wall_inset
+        .sub(&bridge)
+        .sub(&bottom)
+        .sub(&top)
+        .sub(&internal);
     Ok(ExpectedRoles {
         bridge,
         bottom,
         top,
+        internal,
         sparse,
         wall_inset,
         matched: true,
@@ -1081,6 +1099,11 @@ fn compare_roles(
             &expected.bottom,
         ),
         ("top_solid_fill", &observed.top_solid_fill, &expected.top),
+        (
+            "internal_solid_fill",
+            &observed.internal_solid_fill,
+            &expected.internal,
+        ),
         (
             "sparse_infill_area",
             &observed.sparse_infill_area,
@@ -1282,11 +1305,23 @@ fn check_scene_inner(scene: &PartitionScene, limits: &PartitionLimits) -> Result
         let expected = expected_roles(&grid, input, donor)?;
 
         if !expected.matched {
-            if observed_region != input {
+            // Byte-identical apart from the internal bucket's shell-band carve,
+            // which is compared semantically.
+            let mut residue = observed_region.clone();
+            residue.internal_solid_fill = input.internal_solid_fill.clone();
+            if &residue != input {
                 return Err(format!(
-                    "{label}: a missing donor must leave the region byte-identical, observed {observed_region:?}, committed {input:?}"
+                    "{label}: a missing donor must leave the region byte-identical apart from \
+                     the internal-solid carve, observed {observed_region:?}, committed {input:?}"
                 ));
             }
+            compare_region_to_cells(
+                &observed_region.internal_solid_fill,
+                &expected.internal,
+                &grid,
+                &format!("{label} internal_solid_fill (missing donor)"),
+            )
+            .map_err(|error| error.to_string())?;
             let mut fragments = vec![
                 format!("object_id='{}'", input.object_id),
                 format!("region_id='{}'", input.region_id),
@@ -1310,16 +1345,17 @@ fn check_scene_inner(scene: &PartitionScene, limits: &PartitionLimits) -> Result
         }
         compare_roles(&grid, observed_region, &expected, &label)?;
 
-        // Everything outside the four canonical roles stays byte-identical: no
+        // Everything outside the five canonical roles stays byte-identical: no
         // raw modifier footprint is staged, so no later split may partition it.
         let mut residue = observed_region.clone();
         residue.bridge_areas = input.bridge_areas.clone();
         residue.bottom_solid_fill = input.bottom_solid_fill.clone();
         residue.top_solid_fill = input.top_solid_fill.clone();
+        residue.internal_solid_fill = input.internal_solid_fill.clone();
         residue.sparse_infill_area = input.sparse_infill_area.clone();
         if &residue != input {
             return Err(format!(
-                "{label}: role sync touched a field outside the four canonical fill roles: \
+                "{label}: role sync touched a field outside the five canonical fill roles: \
                  observed {residue:?}, committed {input:?}"
             ));
         }
@@ -1327,12 +1363,14 @@ fn check_scene_inner(scene: &PartitionScene, limits: &PartitionLimits) -> Result
         let actual_bridge = cells_of(&grid, &observed_region.bridge_areas)?;
         let actual_bottom = cells_of(&grid, &observed_region.bottom_solid_fill)?;
         let actual_top = cells_of(&grid, &observed_region.top_solid_fill)?;
+        let actual_internal = cells_of(&grid, &observed_region.internal_solid_fill)?;
         let actual_sparse = cells_of(&grid, &observed_region.sparse_infill_area)?;
         if !expected.wall_inset.is_empty() {
-            let parts: [(&str, &CellSet); 4] = [
+            let parts: [(&str, &CellSet); 5] = [
                 ("bridge_areas", &actual_bridge),
                 ("bottom_solid_fill", &actual_bottom),
                 ("top_solid_fill", &actual_top),
+                ("internal_solid_fill", &actual_internal),
                 ("sparse_infill_area", &actual_sparse),
             ];
             assert_disjoint_union(&parts, &expected.wall_inset, grid.cell_count())

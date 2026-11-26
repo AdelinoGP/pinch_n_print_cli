@@ -283,3 +283,89 @@ fn elapsed_time_tracks_command_boundaries() {
     assert_eq!(elapsed[1], 0.0);
     assert!(elapsed[2] > 0.0);
 }
+
+// ============================================================================
+// Test 6: silent_mode selects the stealth variant (wayfinder ticket 117)
+// ============================================================================
+
+fn silent_test_config(silent: bool) -> ResolvedConfig {
+    use slicer_ir::ConfigValue;
+    let mut cfg = ResolvedConfig::default();
+    // Distinct normal/stealth pairs on single-field seams (no min() coupling).
+    cfg.apply_cli_key(
+        "machine_max_speed_z",
+        &ConfigValue::List(vec![ConfigValue::Float(12.0), ConfigValue::Float(6.0)]),
+    )
+    .expect("pair list must be accepted");
+    cfg.apply_cli_key(
+        "machine_max_acceleration_extruding",
+        &ConfigValue::List(vec![ConfigValue::Float(1500.0), ConfigValue::Float(750.0)]),
+    )
+    .expect("pair list must be accepted");
+    // The time test below drives travel moves (no extrusion), which the
+    // estimator caps with the *travel* acceleration — so it needs its own
+    // distinct pair, or both estimates coincide.
+    cfg.apply_cli_key(
+        "machine_max_acceleration_travel",
+        &ConfigValue::List(vec![ConfigValue::Float(1200.0), ConfigValue::Float(600.0)]),
+    )
+    .expect("pair list must be accepted");
+    cfg.apply_cli_key(
+        "machine_max_jerk_e",
+        &ConfigValue::List(vec![ConfigValue::Float(2.5), ConfigValue::Float(1.0)]),
+    )
+    .expect("pair list must be accepted");
+    cfg.apply_cli_key("silent_mode", &ConfigValue::Bool(silent))
+        .expect("silent_mode must be accepted");
+    cfg
+}
+
+#[test]
+fn silent_mode_false_uses_normal_variant() {
+    let limits = EstimatorLimits::from_config(&silent_test_config(false));
+    assert_eq!(limits.max_speed_z, 12.0);
+    assert_eq!(limits.max_acceleration, 1500.0);
+    assert_eq!(limits.max_acceleration_travel, 1200.0);
+    assert_eq!(limits.jerk_e, 2.5);
+}
+
+#[test]
+fn silent_mode_true_uses_stealth_variant() {
+    let limits = EstimatorLimits::from_config(&silent_test_config(true));
+    assert_eq!(limits.max_speed_z, 6.0);
+    assert_eq!(limits.max_acceleration, 750.0);
+    assert_eq!(limits.max_acceleration_travel, 600.0);
+    assert_eq!(limits.jerk_e, 1.0);
+}
+
+#[test]
+fn silent_mode_without_configured_limits_keeps_fallbacks() {
+    use slicer_ir::ConfigValue;
+    let mut cfg = ResolvedConfig::default();
+    cfg.apply_cli_key("silent_mode", &ConfigValue::Bool(true))
+        .expect("silent_mode must be accepted");
+    // Absent keys stay None, so stealth selection has nothing to select and
+    // every field falls back to the estimator default.
+    assert_eq!(
+        EstimatorLimits::from_config(&cfg),
+        EstimatorLimits::default()
+    );
+}
+
+#[test]
+fn silent_mode_changes_estimated_time_at_non_default_values() {
+    // End-to-end through the real seam: the same move stream estimates slower
+    // under stealth limits than under normal limits.
+    let ir = ir_with(vec![
+        mv(0.0, 0.0, None, Some(3000.0)),
+        mv(100.0, 0.0, None, None),
+    ]);
+    let normal = EstimatorLimits::from_config(&silent_test_config(false));
+    let stealth = EstimatorLimits::from_config(&silent_test_config(true));
+    let t_normal = estimate_print(&ir, &normal, &BTreeMap::new()).total_time_s;
+    let t_stealth = estimate_print(&ir, &stealth, &BTreeMap::new()).total_time_s;
+    assert!(
+        t_stealth > t_normal,
+        "stealth limits must estimate slower: stealth={t_stealth} normal={t_normal}"
+    );
+}

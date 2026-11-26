@@ -34,7 +34,7 @@
 //!
 //! # Inert canonical settings
 //!
-//! The canonical fork reads `spacing_mode` and `seam_mode` into its parameter
+//! The canonical fork reads `spacing_mode` and `seam_position` into its parameter
 //! block but never acts on them. They are deliberately not ported. (There is
 //! no `min_angle` field in canonical `CommonParams`; the similarly named
 //! `corner_angle_threshold` and `min_length_mm` are both genuinely used.)
@@ -127,7 +127,7 @@ pub(crate) struct WaveParams {
     /// regularization and the anchoring expansion all key off this value.
     pub(crate) base_spacing: f32,
     /// Perimeter count of the enclosing region (anchor sizing).
-    pub(crate) wall_count: u32,
+    pub(crate) wall_loops: u32,
 }
 
 /// Why the generator could not produce waves for a component.
@@ -1131,7 +1131,7 @@ pub(crate) fn generate(
     let base_spacing_mm = params.base_spacing.max(EPSILON_MM);
     let seed_expansion_mm = (base_spacing_mm / 10.0).max(EPSILON_MM);
     let anchors_size_mm =
-        EXTERNAL_INFILL_MARGIN_MM.min(base_spacing_mm * (params.wall_count as f32 + 1.0));
+        EXTERNAL_INFILL_MARGIN_MM.min(base_spacing_mm * (params.wall_loops as f32 + 1.0));
     let regularization_mm = (base_spacing_mm / 2.0).max(EPSILON_MM);
     let zig_zag_connector_limit =
         units(wave_spacing_mm.max(flow_width_mm) + params.perimeter_overlap);

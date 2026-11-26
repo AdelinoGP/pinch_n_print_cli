@@ -339,12 +339,12 @@ the previously resolved value remains unchanged (no implicit reset).
 
 Worked example (deterministic):
 
-- Global `infill_density = 0.20`
-- Object config `infill_density = 0.25`
-- Modifier A (`priority=20`) sets `infill_density = 0.30`
-- Modifier B (`priority=10`) sets `infill_density = 0.15`
+- Global `sparse_infill_density = 20` (percent)
+- Object config `sparse_infill_density = 25`
+- Modifier A (`priority=20`) sets `sparse_infill_density = 30`
+- Modifier B (`priority=10`) sets `sparse_infill_density = 15`
 - Effective result: B (priority 10) applies first, then A (priority 20)
-  wins: `infill_density = 0.30`.
+  wins: `sparse_infill_density = 30`.
 
 For equal modifier priorities, the resolver's stable input order breaks the
 tie; equal priorities are not themselves an error.
@@ -402,11 +402,10 @@ The complete admitted object-level key list is:
 - Float keys: `layer_height`, `brim_width`, `support_threshold_angle`,
   `support_top_z_distance`.
 - String keys: `seam_position`, `sparse_infill_density`,
-  `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`,
-  `support_base_pattern`.
+  `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`.
 
-The 18 Packet 172 additions are the six ordinary integer keys, two rebasing
-integer keys, four float keys, and six string keys above. Orca's
+The 17 admitted Packet 172 additions are the six ordinary integer keys, two
+rebasing integer keys, four float keys, and five string keys above. Orca's
 `support_filament` and `support_interface_filament` values are 1-indexed and
 are rebased to 0-indexed values at load time; raw `0` remains `0`. The existing
 `extruder` selector follows the same rebase convention. For
@@ -601,7 +600,7 @@ fields bind to — including host-only keys and namespaced module keys — see
 Field-shape rules that the macro invocation does not state, and that a reader
 must know:
 
-- **`layer_height` and `first_layer_height` are `f64`, deliberately — not
+- **`layer_height` and `initial_layer_print_height` are `f64`, deliberately — not
   `f32`.** They feed the layer-Z formula (`z = n * layer_height`). An `f32`
   round-trip re-taints the value and drifts onto an adjacent float at roughly
   every 10th layer, which misses STL vertices stored as `f32(mm_value)` and
@@ -839,7 +838,7 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
 - `paint_config:<semantic>:<key>` — per-paint-semantic override. Applied during `PrePass::RegionMapping` when the region's polygons overlap a painted region for the corresponding `PaintSemantic`. Built-in `PaintSemantic` variants serialize as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` serializes the inner string `s` verbatim (e.g. `paint_config:ironing:line_width`). Added in Packet 51.
 - `tool_config:<tool_index>:<key>` — per-tool/extruder override keyed by the integer `tool_index`, resolved by `resolve_per_tool_configs`. A clean additive axis enabled by the region_id↔tool split (`PrintEntity.tool_index` is now a first-class selector). Consumed in **two** places, because a tool can be known at two different points:
   1. **Painted/material tools — at `RegionMapping`** (`region_mapping.rs`): the variant-chain cross-product splits a painted region into one `RegionPlan` per `("material", ToolIndex(n))` chain, and the `tool_config:<n>:<key>` overlay is applied to that chain at **highest precedence** (see below). This delivers per-tool **geometry** (`line_width`, etc.) for painted/MMU tools **without any pipeline reordering** — the tool is already known from the paint. (Verified end-to-end: `algo_region_mapping_tdd::region_mapping_applies_per_tool_config_overlay_to_painted_tool` → `classic_perimeters_tdd::per_region_line_width_sets_emitted_wall_width`.)
-  2. **Every tool — at G-code emit** (`emit.rs`): emit-time settings (e.g. `retract_length`) are overlaid by the entity's resolved `tool_index`, the one place *every* entity's tool is known.
+  2. **Every tool — at G-code emit** (`crates/slicer-gcode/src/emit.rs`, `retract_length_for_tool`): emit-time settings (e.g. the wipe-tower-owned `retract_length`) are overlaid by the entity's resolved `tool_index`, the one place *every* entity's tool is known.
 
   **Still out of scope:** per-tool *geometry* for **non-painted** tools (spatial / modifier-extruder / `DEFAULT_TOOL` fallback), whose tool is resolved *after* perimeter generation in `assemble_ordered_entities` (`crates/slicer-runtime/src/layer_executor.rs`); that would require moving tool resolution before the perimeter stages (a pipeline-ordering change). OrcaSlicer itself has no per-filament line-width — its per-tool *width* variation comes from the per-extruder `nozzle_diameter` vector (a base, selected by the region's extruder index) when width is a percentage; our explicit `tool_config:<n>:line_width` is a superset.
 
@@ -932,7 +931,7 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 
 `SlicedRegion.internal_solid_fill: Vec<ExPolygon>` is a `#[serde(default)]` dense-interior polygon carrier authored by shell classification. `SlicedRegion.internal_bridge_areas: Vec<ExPolygon>` is a `#[serde(default)]` qualification carrier authored by the host's internal-bridge gate and mirrored into module views; `SlicedRegion.internal_bridge_angles_deg: Vec<f32>` (`#[serde(default)]`, schema 4.10.0) is index-aligned with it. All three are additive, region-owned, and preserved through region partition/restore (the two internal-bridge carriers are split and restored polygon by polygon, never unioned, so the pairing survives).
 
-### Post-`Layer::Perimeters` invariant: four canonical fill polygons
+### Post-`Layer::Perimeters` invariant: five canonical fill polygons
 
 After the host runs `sync_perimeter_infill_areas_into_slice` at
 `Layer::Perimeters` commit (see
@@ -940,31 +939,35 @@ After the host runs `sync_perimeter_infill_areas_into_slice` at
 `W = PerimeterIR.regions[i].infill_areas ∩ SlicedRegion.polygons` — the
 effective wall inset, not the donor's whole object geometry:
 
-1. **Nonempty `W`:** `bridge_areas`, `bottom_solid_fill`, `top_solid_fill`, and
-   `sparse_infill_area` are pairwise disjoint subsets of `W`, and their union is
-   `W`, under the strict precedence `bridge > bottom > top > sparse` (OrcaSlicer
-   `PrintObject::prepare_infill` parity). An unsupported span is classified in
-   `PrePass::Slice` against the raw previous cross-section (canonical
-   `detect_surfaces_type`); the `ShellClassification` stage does not subtract a
-   second lower layer.
+1. **Nonempty `W`:** `bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
+   `internal_solid_fill`, and `sparse_infill_area` are pairwise disjoint subsets
+   of `W`, and their union is `W`, under the strict precedence
+   `bridge > bottom > top > internal > sparse` (OrcaSlicer
+   `PrintObject::prepare_infill` parity; the internal bucket carries the
+   converted sparse islands of `minimum_sparse_infill_area` — the PrePass
+   shell-band marker content carves to empty here because it is a subset of
+   `top_solid_fill`). An unsupported span is classified in `PrePass::Slice`
+   against the raw previous cross-section (canonical `detect_surfaces_type`);
+   the `ShellClassification` stage does not subtract a second lower layer.
 2. **Empty `W` with nonempty `PerimeterRegion.walls`:** the walls consumed the
    cross-section: an empty wall inset yields no canonical bridge or top surface,
-   and all four canonical fill roles are empty. Canonical
+   and all five canonical fill roles are empty. Canonical
    `LayerRegion::slices_to_fill_surfaces_clipped` builds each typed surface as
    slice ∩ the perimeters' fill area, so an empty fill area produces no
    bridge/top surface there.
 3. **Empty `W` with no walls:** the original `bridge_areas` is preserved,
    `top_solid_fill` becomes the original top minus bridge, and
-   `bottom_solid_fill` / `sparse_infill_area` are empty. This branch makes NO
-   subset claim against the empty `W` — it is not the case that "all roles are
-   subsets".
+   `bottom_solid_fill` / `internal_solid_fill` / `sparse_infill_area` are empty.
+   This branch makes NO subset claim against the empty `W` — it is not the case
+   that "all roles are subsets".
 4. **Missing donor** for an ordinary, virtual or modifier region is NOT fatal:
-   the four roles stay at their `PrePass` values and a `log::warn!` names the
-   object and source region; a modifier child's warning also names the parent
-   region. The stage-ordering fatals are a missing staged `SliceIR` or
-   `PerimeterIR` (`LayerStageError::FatalModule`, stage `Layer::Perimeters`,
-   module `host:region_partition`); the missing-perimeter path re-stages the
-   taken slice. A rejected modifier split is also fatal, but it restores the
+   the roles stay at their `PrePass` values (minus the shell-band marker carve
+   from `internal_solid_fill`) and a `log::warn!` names the object and source
+   region; a modifier child's warning also names the parent region. The
+   stage-ordering fatals are a missing staged `SliceIR` or `PerimeterIR`
+   (`LayerStageError::FatalModule`, stage `Layer::Perimeters`, module
+   `host:region_partition`); the missing-perimeter path re-stages the taken
+   slice. A rejected modifier split is also fatal, but it restores the
    entry-state slice first (see item 6).
 5. Donor joins are exact on `(object_id, source region_id, ordered
    variant_chain)`; modifier children decode only their parent region id for the
@@ -982,7 +985,9 @@ provenance are in `docs/testing/proptest-runtime-evidence.md`.
 
 Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
-emits over exactly one of these polygons with zero polygon math. Exception:
+emits over exactly one of these polygons with zero polygon math; the
+internal-solid bucket is emitted by its `claim:top-fill` holder as
+`ExtrusionRole::InternalSolidInfill`. Exception:
 order-locked paths (ADR-0063) are self-clipping and may extend into
 neighboring fill domains; the linker differences untagged fill of the same
 region by their swept footprint instead of clipping them.
@@ -1076,7 +1081,7 @@ from its declared config schema (`type = "int"`, default `0`). Raft-default
 populates `raft_fill` before model-layer output; raft entities emit before model
 layers, and model-layer scheduling is shifted above the raft band where
 applicable. No-raft behavior remains unchanged. Raft-band Z values are computed
-in `f64` from `support_raft_layers`, `first_layer_height`, and `layer_height`,
+in `f64` from `support_raft_layers`, `initial_layer_print_height`, and `layer_height`,
 with exactly one terminal cast to `f32`, preserving parity with
 `generate_object_layers`.
 
@@ -1091,7 +1096,6 @@ and `is_initial_layer`, the no-predecessor `layer_height_mm` guard, and local
 The post-240b producer/rendering state is authoritative. Support-branch/raft-plane
 interleave on non-band routing is an accepted, human-waived residual deviation;
 see the companion row in `docs/DEVIATION_LOG.md`.
-
 
 ### Modifier sub-regions
 
@@ -1509,7 +1513,7 @@ supplies the plan's full source identity, and `TerritoryClipper`
 (`crates/slicer-wasm-host/src/support_territory.rs`) enforces source-specific
 territory ownership by full source key. Object-wide collision geometry is not
 permission for pair-only ownership or config lookup.
-The `support_top_z_distance_mm` and `support_layer_height_mm` fields carry
+The `support_top_z_distance` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.
 

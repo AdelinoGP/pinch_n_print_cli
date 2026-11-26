@@ -754,6 +754,7 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         sparse_infill_area: Vec::new(),
         top_solid_fill: Vec::new(),
         bottom_solid_fill: Vec::new(),
+        internal_solid_fill: Vec::new(),
         bridge_areas: Vec::new(),
         raft_fill: Vec::new(),
         tool_index: 0,

@@ -33,12 +33,13 @@ unit    = "mm"
 display = "Resolution"
 description = "Slicing-time contour simplification — Douglas-Peucker tolerance applied to the region contour and to each hole before wall generation (mm). OrcaSlicer `ExPolygon::simplify_p` at `surface_simplify_resolution`, called immediately before the wall pass. Canonical clamps values below 0.001 mm to 0.001 mm (`DynamicPrintConfig::normalize_fdm`), so zero means the 1 um floor, not \"off\"."
 group   = "Quality"
-[config.schema.wall_count]
+
+[config.schema.wall_loops]
 type    = "int"
-default = 3
+default = 2
 min     = 1
 max     = 10
-display = "Wall Count"
+display = "Wall Loops"
 group   = "Walls"
 
 [config.schema.extra_perimeters]
@@ -131,7 +132,7 @@ group   = "Walls"
 
 [config.schema.detect_thin_wall]
 type    = "bool"
-default = true
+default = false
 display = "Detect thin walls via medial-axis cascade"
 group   = "Walls"
 
@@ -230,12 +231,12 @@ max     = 2.0
 display = "Smaller perimeter line width (narrow-island override, mm)"
 group   = "Walls"
 
-[config.schema.smaller_perimeter_threshold_mm]
+[config.schema.small_perimeter_threshold]
 type    = "float"
-default = 0.8
+default = 0.0
 min     = 0.0
 max     = 10.0
-display = "Narrow-island width threshold (mm)"
+display = "Small perimeters threshold (mm)"
 group   = "Walls"
 
 [config.schema.narrow_loop_length_threshold_mm]

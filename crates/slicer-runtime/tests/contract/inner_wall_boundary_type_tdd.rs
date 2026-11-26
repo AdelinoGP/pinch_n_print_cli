@@ -23,7 +23,7 @@ use slicer_sdk::views::SliceRegionView;
 /// baseline (packet 06 5c-prime).
 fn config_2_walls() -> ConfigView {
     classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .build()
 }
@@ -81,7 +81,7 @@ fn inner_wall_has_material_boundary_with_multi_tool_region() {
     let inner_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index > 0).collect();
     assert!(
         !inner_walls.is_empty(),
-        "wall_count=2 must produce at least one inner wall (perimeter_index > 0)"
+        "wall_loops=2 must produce at least one inner wall (perimeter_index > 0)"
     );
 
     // Every inner wall must have WallBoundaryType::MaterialBoundary (NOT Interior).

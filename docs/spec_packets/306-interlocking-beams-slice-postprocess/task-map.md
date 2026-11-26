@@ -1,0 +1,30 @@
+# Task Map: 306-interlocking-beams-slice-postprocess
+
+This packet has no `docs/07_implementation_status.md` task IDs — it is a queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap". The crosswalk below maps the map's **queue keys** to packet steps instead, and records the two explicit mapping needs that require this file: the packet absorbs a second queue entry (P90 / wayfinder ticket 97), and it splits one canonical function set across two seams.
+
+| Queue key (map row) | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `interlocking_beam` (P89) | `Step 4` (rename + declaration), `Step 2` (lattice gate), `Step 8` (module emit gate) | `docs/15_config_keys_reference.md` | `crates/slicer-ir/src/resolved_config.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, `crates/slicer-core/src/algos/interlocking/mod.rs`, `modules/core-modules/interlocking-beams/src/lib.rs` | `InterlockingGenerator.cpp`, `MultiMaterialSegmentation.cpp`, `PrintConfig.cpp` | `S` + `M` + `M` | The only one of the six already live, under the PnP-invented name `mmu_segmented_region_interlocking_beam`; Step 4 retires that spelling and Steps 2/8 add its missing first read site |
+| `interlocking_beam_width` (P89) | `Step 2` (cell XY size), `Step 8` (microstructure split) | `docs/08_coordinate_system.md` | `crates/slicer-core/src/algos/interlocking/`, `modules/core-modules/interlocking-beams/src/lib.rs` | `InterlockingGenerator.cpp`, `PrintConfig.cpp` | `M` | Read on both sides of the seam: it sizes the voxel cell in the prepass and splits the cell in the module |
+| `interlocking_beam_layer_count` (P89) | `Step 2` (cell Z size), `Step 8` (phase select) | `docs/08_coordinate_system.md` | same as above | `InterlockingGenerator.cpp`, `PrintConfig.cpp` | `M` | AC-11 pins the module's `(layer / blc) % 2` phase alternation |
+| `interlocking_depth` (P90) | `Step 2` | `docs/08_coordinate_system.md` | `crates/slicer-core/src/algos/interlocking/{voxel.rs,mod.rs}` | `InterlockingGenerator.cpp`, `VoxelUtils.cpp`, `PrintConfig.cpp` | `M` | **The reason P89 and P90 cannot be separate packets** — canonical's P89 enabling gate reads this P90 key. Analysis-side only |
+| `interlocking_orientation` (P90) | `Step 2` (walk rotation), `Step 8` (apply/unapply) | `docs/08_coordinate_system.md` | `crates/slicer-core/src/algos/interlocking/mod.rs`, `modules/core-modules/interlocking-beams/src/lib.rs` | `InterlockingGenerator.cpp`, `PrintConfig.cpp` | `M` | No rotation helper exists in `polygon_ops`; both sides author one, and AC-13 asserts the apply/unapply pair does not drift |
+| `interlocking_boundary_avoidance` (P90) | `Step 2` (air-cell erase), `Step 9` (thin areas) | `docs/08_coordinate_system.md` | `crates/slicer-core/src/algos/interlocking/mod.rs`, `modules/core-modules/interlocking-beams/src/lib.rs` | `InterlockingGenerator.cpp`, `PrintConfig.cpp` | `M` | Selects a branch on **both** sides: the air dilation in the prepass and `handle_thin_areas` in the module |
+| — (the IR, not a key) | `Step 3` | `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md` | `crates/slicer-ir/src/`, `crates/slicer-schema/wit/`, `crates/slicer-wasm-host/src/binding.rs` | — | `M` | `InterlockingLatticeIR` — the widest step. The price of keeping the application half in a module |
+| — (the seam, not a key) | `Steps 5–7` | `docs/04_host_scheduler.md`, `docs/01_system_architecture.md` | `crates/slicer-scheduler/src/execution_plan.rs`, `crates/slicer-runtime/src/builtins/interlocking_lattice_producer.rs`, `crates/slicer-runtime/src/prepass.rs`, `crates/slicer-runtime/src/layer_executor.rs` | `PrintObjectSlice.cpp` | `S` + `M` + `S` | Holds ticket 04's owner. Step 5 also proves the narrow-write coexistence with packet 303 (AC-N6) |
+| — (evidence, not a key) | `Steps 10–12` | `docs/DEVIATION_LOG.md`, `docs/adr/`, `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md`, `docs/01_system_architecture.md`, `docs/15_config_keys_reference.md` | `crates/slicer-runtime/tests/executor/*_tdd.rs` | — | `M` + `S` + `S` | End-to-end proof on `resources/cube_4color.3mf` through real guest dispatch, then the ADR and two deviation rows, then the doc edits |
+
+Costs are copied from `implementation-plan.md` §Per-Step Budget Roll-Up. Aggregate is `M`; no row is L, so no split is required before activation.
+
+## Absorbed queue entry
+
+Wayfinder ticket 97 — "Author packet P90 — Multimaterial / Multimaterial advanced (2/2) — new: interlocking" — is **dissolved into this packet**, not superseded: it is a map ticket, not a packet directory, so nothing under `docs/spec_packets/` changes status. Its three keys appear in the table above under Steps 2, 8 and 9. The dissolution is recorded in ticket 96's resolution and in the map's Decisions-so-far; ticket 97 itself is closed with a pointer here. The ticket-31 (P24) precedent covers this shape: a queue entry whose keys turn out to belong to another entry's decision point is folded rather than authored.
+
+## Why the six keys straddle two seams
+
+Four of the six are read on **both** sides of the prepass/module boundary, which is unusual enough to state plainly. That is not duplication — it is the consequence of splitting one canonical function along its own analysis/application line:
+
+- The **prepass** needs `beam_width` and `beam_layer_count` to size the voxel cell, `depth` for the interface dilation kernel, `orientation` for the walk rotation, and `boundary_avoidance` for the air dilation.
+- The **module** needs `beam_width` and `beam_layer_count` again to stamp the microstructure into that same cell geometry, `orientation` to unapply the rotation, and `boundary_avoidance` to decide whether `handle_thin_areas` runs.
+
+Both sides must therefore see the same values. They do: the keys are `ResolvedConfig` fields (host side) **and** `[config.schema]` rows in the module manifest (guest side), which `ConfigView::from_declared` requires — a module cannot read a key its own manifest does not declare, and an undeclared key silently loses to the guest's `unwrap_or` fallback rather than erroring.

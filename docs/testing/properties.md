@@ -901,9 +901,9 @@ Unequal hashes are **never** required for unequal values, and no digest is persi
 Two clearly labelled input modes per generated item:
 
 1. **Finite compatible owner fixtures** built from `ResolvedConfig::default()` with explicit
-   positive `layer_height`, `first_layer_height` and `line_width`, plus a varied
+   positive `layer_height`, `initial_layer_print_height` and `line_width`, plus a varied
    `outer_wall_speed`, `initial_layer_line_width` (percent or absolute),
-   `arachne_min_feature_size` (present/absent), `bed_shape` length, `fill_authored_coloring`
+   `arachne_min_feature_size` (present/absent), `printable_area` length, `fill_authored_coloring`
    length and nested `extensions` shape. These are compatible structural fixtures, not a
    replacement for the full resolver.
 2. **Raw representation-contract fixtures** with signed zeros, infinities and distinct/same NaN
@@ -946,13 +946,13 @@ The generated axes are a deliberate subset, not an exhaustive roster. Dispositio
 
 | Field family | Examples | This property | Deterministic coverage |
 |---|---|---|---|
-| fixed `f64` | `layer_height`, `first_layer_height`, `line_width` | varied (finite and raw-bit) | `resolved_config_defaults_tdd` |
+| fixed `f64` | `layer_height`, `initial_layer_print_height`, `line_width` | varied (finite and raw-bit) | `resolved_config_defaults_tdd` |
 | fixed `f32` | `outer_wall_speed` | varied (finite and raw-bit) | `resolved_config_defaults_tdd` |
 | `ResolvedFloatOrPercent` | `initial_layer_line_width` | varied (percent and absolute) | `resolved_config_defaults_tdd` |
 | optional `f32` | `arachne_min_feature_size` | varied (present/absent/raw) | `config_map_parity_tests` in `--lib` |
-| `Vec<f64>` / `Vec<String>` | `bed_shape`, `fill_authored_coloring` | varied length and content | `config_map_parity_tests` |
+| `Vec<f64>` / `Vec<String>` | `printable_area`, `fill_authored_coloring` | varied length and content | `config_map_parity_tests` |
 | `BTreeMap` extensions | `extensions` | varied depth/breadth/content | `config_map_parity_tests::resolution_extension_reaches_the_config_map_and_participates_in_eq`, `filament_max_volumetric_speed_tests::extension_value_participates_in_equality_and_hash` |
-| `u32` / `String` | `wall_count`, `top_fill_holder` | varied through `apply_cli_key` | `resolved_config_defaults_tdd` |
+| `u32` / `String` | `wall_loops`, `top_fill_holder` | varied through `apply_cli_key` | `resolved_config_defaults_tdd` |
 | `bool` and enumerated plain fields | `support_enabled`, `wall_generator`, `infill_type`, `support_type` | **not varied here** | read by the handwritten `PartialEq`; covered structurally, not by this property |
 | serialization-only `carrier` field | `flat_bridge_closing_join` | **not varied here** | it exists only to keep the Postcard field order; `flat_bridge_closing_join_is_a_serialization_only_carrier` pins that it is absent from `to_config_map`/`typed_field_keys` and still round-trips |
 | remaining `f32`/`u32`/`Option` support, machine-limit and MMU keys | `support_*`, `machine_max_*`, `mmu_*` | **not varied here** | `machine_limit_config_tests`, `config_map_parity_tests` |
@@ -2159,8 +2159,8 @@ Registry record: `id = "H-RUNTIME-PARTITION"`, `package = "slicer-runtime"`,
 
 ### Stable property ID
 
-`H-RUNTIME-PARTITION` — conditional `bridge > bottom > top > sparse` fill-role precedence over the
-wall inset, exact full-source donor joins, and nonfatal missing-donor preservation.
+`H-RUNTIME-PARTITION` — conditional `bridge > bottom > top > internal > sparse` fill-role precedence
+over the wall inset, exact full-source donor joins, and nonfatal missing-donor preservation.
 
 ### Owner
 
@@ -2181,15 +2181,17 @@ Package `slicer-runtime`; library target `slicer_runtime`, submodule
 ### Contract
 
 The partition runs over `W = donor.infill_areas ∩ slice_region.polygons` with the conditional
-precedence `bridge > bottom > top > sparse`. When `W` is nonempty, the four output roles are
-pairwise disjoint and their union equals `W`. When `W` is empty and the region has walls, all four
-roles are empty. When `W` is empty and the region has no walls, the original bridge is preserved,
-top becomes the original top minus bridge, bottom and sparse are empty, and this branch makes no
-subset claim against the empty `W`. The conditional empty-W/no-wall fallback versus the
+precedence `bridge > bottom > top > internal > sparse` (`internal` is `internal_solid_fill`, the
+converted sparse-island bucket). When `W` is nonempty, the five output roles are pairwise disjoint
+and their union equals `W`. When `W` is empty and the region has walls, all five roles are empty.
+When `W` is empty and the region has no walls, the original bridge is preserved, top becomes the
+original top minus bridge, bottom, internal and sparse are empty, and this branch makes no subset
+claim against the empty `W`. The conditional empty-W/no-wall fallback versus the
 nonempty-inset clipping rule is the actual policy; neither is generalized into a universal
 identity.
 
-A missing donor is not fatal: the region's roles are unchanged and a warning names the object and
+A missing donor is not fatal: the region's roles are unchanged except that the PrePass shell-band
+marker is carved from `internal_solid_fill` (`internal − top`), and a warning names the object and
 region, with the modifier variant also naming the parent. Missing `SliceIR` or missing
 `PerimeterIR` is `LayerStageError::FatalModule` with stage `Layer::Perimeters`, module
 `host:region_partition` and message fragments `no staged SliceIR` / `no staged PerimeterIR`; the
@@ -4323,8 +4325,10 @@ pairs appear in it. Cardinality per parent is `∏ (1 + K_i)` and the empty chai
 once per parent. `RegionKey` equality includes the ordered vector.
 
 Each entry's config is the compatibility authority: the parent's base config, then the declared
-paint-config overlays in **lexical semantic namespace order** (wholesale replacement, lexically
-last present wins), then the tool overlay last. Chain order does not drive overlay order. The
+paint-config overlays in **lexical semantic namespace order**, each applied relative to its
+`ResolvedConfig::default()` origin (wayfinder ticket 126: only fields an overlay sets away from the
+default replace the base, so base-only settings survive; the lexically last overlay wins every
+shared field), then the tool overlay last. Chain order does not drive overlay order. The
 interner holds exactly the distinct expected configs, once each.
 
 ### Domain
@@ -4733,7 +4737,7 @@ scheduled region with **no** committed source is a present key with an empty
 polygon vector and the empty chain, which is not the same as an absent key. The
 intermediate-model pass adds the same geometry under the `u32::MAX` sentinel for
 every layer within `support_top_z_distance` of that object's column top. The
-IR-wide `support_layer_height_mm` / `support_top_z_distance_mm` come from the
+IR-wide `support_layer_height_mm` / `support_top_z_distance` come from the
 first active region of the plan.
 
 ### Domain
@@ -6634,11 +6638,12 @@ Rows are `min_y + n * line_spacing` while below `max_y`, with no half-spacing of
 the kernel gathers crossings from the contour and every hole ring with a half-open lower-inclusive
 rule, rounds each X to the nearest canonical unit, sorts, pairs even-odd, and skips a pair whose
 endpoints coincide. Each surviving pair becomes one `Ironing` path with the supplied Z, the
-configured `line_width`, the configured `ironing_flow_rate` as `flow_factor`, `dist_to_top_mm = 0.0`
+configured `line_width`, the configured `support_ironing_flow` percent divided by 100 as
+`flow_factor`, `dist_to_top_mm = 0.0`
 and `None` overhang and lock fields. The kernel does not compute `speed_factor`; the caller passes
-`ironing_speed / 50` and it is propagated verbatim. Nonpositive spacing and degenerate geometry may
+`support_ironing_speed / 50` and it is propagated verbatim. Nonpositive spacing and degenerate geometry may
 return empty. This is a metadata-propagation contract: it does not claim the manifest default's
-numeric `ironing_flow_rate` is an independently verified physical percentage.
+numeric `support_ironing_flow` is an independently verified physical percentage.
 
 ### Domain
 

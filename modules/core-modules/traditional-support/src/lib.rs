@@ -130,6 +130,14 @@ impl LayerModule for TraditionalSupport {
         // existing declarers), so absence is a contract violation, not a
         // fallback case.
         let nozzle_diameter = config.require_float("nozzle_diameter")?;
+        // Canonical auto rule (`Flow::support_material_flow`, `Flow.cpp`): a
+        // non-positive `support_line_width` falls back to `line_width`, and a
+        // non-positive `line_width` (Orca's auto `0`) to the nozzle diameter.
+        let line_width = match line_width {
+            w if w > 0.0 => w,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => 0.4,
+        };
         let line_width = config
             .get_abs_value("support_line_width", nozzle_diameter)
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
@@ -137,7 +145,7 @@ impl LayerModule for TraditionalSupport {
                 if width > 0.0 {
                     width as f32
                 } else {
-                    1.125 * nozzle_diameter as f32
+                    line_width
                 }
             })
             .filter(|width| *width > 0.0)
@@ -776,7 +784,7 @@ mod tests {
     /// host seeds all of these at their manifest defaults, so unit fixtures
     /// seed the same values — exactly the pre-B4 in-code fallbacks, keeping
     /// the assertion constants below unchanged.
-    fn seeded_config() -> ConfigView {
+    fn seeded_fields() -> std::collections::HashMap<String, ConfigValue> {
         let mut map = std::collections::HashMap::new();
         map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
         map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
@@ -804,7 +812,11 @@ mod tests {
             "support_style".to_string(),
             ConfigValue::String("default".to_string()),
         );
-        ConfigView::from_map(map)
+        map
+    }
+
+    fn seeded_config() -> ConfigView {
+        ConfigView::from_map(seeded_fields())
     }
 
     #[test]
@@ -816,6 +828,41 @@ mod tests {
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.top_interface_spacing_mm - 0.4).abs() < 0.001);
         assert!((module.bottom_interface_spacing_mm - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn support_line_width_explicit_and_auto_forms() {
+        // A non-default value drives the extrusion width directly.
+        let mut fields = seeded_fields();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.8));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.8).abs() < 0.001);
+        // Canonical auto (`Flow::support_material_flow`): explicit zero falls
+        // back to `line_width`.
+        let mut fields = seeded_fields();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.5).abs() < 0.001);
+        // Zero line width (Orca's auto `0`) resolves on to the nozzle diameter.
+        let mut fields = seeded_fields();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
+    }
+
+    /// The `pitches_mm` width guard stays live for directly-constructed
+    /// structs: `from_config` can no longer produce a non-positive width
+    /// (auto resolves to `line_width`, then the nozzle), but the arithmetic
+    /// below still rejects one.
+    #[test]
+    fn pitches_mm_rejects_nonpositive_width() {
+        let config = seeded_config();
+        let mut module = TraditionalSupport::from_config(&config).unwrap();
+        module.line_width = 0.0;
+        assert!(module.pitches_mm(0.2).is_err());
     }
 
     /// F-7: the interface pitch is the configured gap **plus** the interface

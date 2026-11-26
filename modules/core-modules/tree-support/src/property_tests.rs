@@ -1841,7 +1841,7 @@ impl RenderCase {
 }
 
 /// Build the module and call the kernel the way each mode is defined: a
-/// positive count goes through `from_config` and `self.wall_count` (the
+/// positive count goes through `from_config` and `self.wall_loops` (the
 /// production path; extra skeleton walls are zero here), zero is passed to
 /// the private kernel directly because `from_config` clamps it to one.
 fn run_render(case: &RenderCase) -> Result<Vec<ExtrusionPath3D>, String> {
@@ -1858,13 +1858,13 @@ fn run_render(case: &RenderCase) -> Result<Vec<ExtrusionPath3D>, String> {
     let wall_count = if case.walls == 0 {
         0
     } else {
-        if module.wall_count != case.walls {
+        if module.wall_loops != case.walls {
             return Err(format!(
                 "from_config produced wall_count {} for a configured {}",
-                module.wall_count, case.walls
+                module.wall_loops, case.walls
             ));
         }
-        module.wall_count
+        module.wall_loops
     };
     Ok(module.render_polygon_with_wall_count(
         &case.expoly(),
@@ -2898,8 +2898,8 @@ fn tree_renderer_controls() {
 
     // `from_config` clamps the configured wall count: zero never reaches the
     // kernel from config, which is why the zero-wall mode calls it directly.
-    assert_eq!(module_for(0.5, 45.0, 0).wall_count, 1);
-    assert_eq!(module_for(0.5, 45.0, 3).wall_count, 3);
+    assert_eq!(module_for(0.5, 45.0, 0).wall_loops, 1);
+    assert_eq!(module_for(0.5, 45.0, 3).wall_loops, 3);
 
     // Render bound-construction rejection matrix.
     let valid = render_probe_bound_map();

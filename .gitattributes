@@ -1,3 +1,15 @@
+# Rust sources are pinned to LF. Several regression guards read a `src/*.rs`
+# file and pin multi-line `\n` substrings (e.g.
+# `live_module_loading_tdd::main_production_entry_path_loads_real_modules_and_calls_live_helpers`,
+# `config_view_binding_tdd`); with `core.autocrlf=true` a checkout would write
+# CRLF and turn those guards into false reds. Scoped to code directories so the
+# byte-preserved evidence sets below (one of which contains a CRLF `.rs`) keep
+# their `-text` handling.
+/crates/**/*.rs text eol=lf
+/modules/**/*.rs text eol=lf
+/vendor/**/*.rs text eol=lf
+/xtask/**/*.rs text eol=lf
+
 # These captured evidence sets contain hash-pinned manifests and raw logs.
 # Preserve their bytes on add/checkout instead of normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t38-adoption-campaign/** -text whitespace=cr-at-eol

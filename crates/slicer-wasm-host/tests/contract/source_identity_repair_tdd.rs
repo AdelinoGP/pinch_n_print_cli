@@ -86,7 +86,7 @@ fn resolved(width: f64) -> ResolvedConfig {
         ("sparse_infill_density", 20.0),
         ("bridge_flow", 1.0),
         ("smaller_perimeter_line_width", 0.25),
-        ("smaller_perimeter_threshold_mm", 0.8),
+        ("small_perimeter_threshold", 0.8),
         ("narrow_loop_length_threshold_mm", 10.0),
         ("min_width_top_surface", 0.0),
         ("support_angle", 0.0),
@@ -94,7 +94,6 @@ fn resolved(width: f64) -> ResolvedConfig {
         ("support_base_pattern_spacing", 2.0),
         ("support_interface_spacing", 0.2),
         ("support_bottom_interface_spacing", 0.2),
-        ("infill_density", 0.2),
         ("initial_layer_line_width", 0.0),
         ("top_surface_line_width", 0.0),
         ("internal_solid_infill_line_width", 0.0),
@@ -109,8 +108,7 @@ fn resolved(width: f64) -> ResolvedConfig {
         ("sparse_infill_speed", 60.0),
         ("internal_bridge_angle", 0.0),
         ("infill_shift_step", 0.0),
-        ("infill_angle", 45.0),
-        ("infill_speed", 60.0),
+        ("infill_direction", 45.0),
     ] {
         extensions.insert(key.into(), ConfigValue::Float(value));
     }
@@ -131,7 +129,7 @@ fn resolved(width: f64) -> ResolvedConfig {
         extensions.insert(key.into(), ConfigValue::Bool(false));
     }
     extensions.insert("thick_internal_bridges".into(), ConfigValue::Bool(true));
-    extensions.insert("wall_count".into(), ConfigValue::Int(2));
+    extensions.insert("wall_loops".into(), ConfigValue::Int(2));
     extensions.insert("extra_perimeters".into(), ConfigValue::Int(0));
     extensions.insert("support_raft_layers".into(), ConfigValue::Int(0));
     extensions.insert(
@@ -161,7 +159,7 @@ fn historical_invocation_config() -> Arc<ConfigView> {
     // Same invocation baseline as AC-1, independent of the model configs.
     let mut values = std::collections::HashMap::new();
     for (key, value) in [
-        ("infill_density", 0.2),
+        ("sparse_infill_density", 20.0),
         ("line_width", 0.8),
         ("resolution", 0.01),
         ("bridge_line_width", 0.0),
@@ -180,8 +178,7 @@ fn historical_invocation_config() -> Arc<ConfigView> {
         ("sparse_infill_speed", 60.0),
         ("internal_bridge_angle", 0.0),
         ("infill_shift_step", 0.0),
-        ("infill_angle", 45.0),
-        ("infill_speed", 60.0),
+        ("infill_direction", 45.0),
     ] {
         values.insert(key.into(), ConfigValue::Float(value));
     }
@@ -1796,7 +1793,7 @@ fn historical_width_witness() {
     for (tool, width) in [(1, 0.4), (2, 0.6)] {
         let cfg = ResolvedConfig {
             line_width: width,
-            infill_density: 0.2,
+            sparse_infill_density: 20.0,
             sparse_fill_holder: "rectilinear-infill".into(),
             top_fill_holder: "com.test.other".into(),
             bottom_fill_holder: "com.test.other".into(),

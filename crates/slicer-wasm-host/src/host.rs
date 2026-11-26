@@ -251,6 +251,9 @@ pub struct PerimeterRegionData {
     pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bottom-solid fill polygons (see `sparse_infill_area`).
     pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Partitioned internal-solid fill polygons (converted sparse islands; see
+    /// `sparse_infill_area`).
+    pub internal_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bridge polygons (see `sparse_infill_area`).
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Raft-substrate fill polygons mirrored from the matching `SliceIR`
@@ -3168,6 +3171,7 @@ mod region_origin_tests {
                     sparse_infill_area: Vec::new(),
                     top_solid_fill: Vec::new(),
                     bottom_solid_fill: Vec::new(),
+                    internal_solid_fill: Vec::new(),
                     bridge_areas: Vec::new(),
                     raft_fill: Vec::new(),
                     tool_index: 0,
@@ -3322,6 +3326,9 @@ impl ct::HostConfigView for HostExecutionContext {
                 value,
                 is_percent: false,
             } => Some(normalize_subnormal_boundary(*value)),
+            // Also mirrors it: a JSON integer is a valid float spelling and
+            // must not vanish at the WIT boundary (ticket 131).
+            ConfigValueStorage::Int(i) => Some(*i as f64),
             _ => None,
         }))
     }
@@ -3778,6 +3785,15 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("PerimeterIR.bottom-solid-fill"));
         Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
+    }
+    fn internal_solid_fill(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.internal-solid-fill"));
+        Ok(self.table.get(&self_)?.internal_solid_fill.clone())
     }
     fn bridge_areas(
         &mut self,
@@ -5826,7 +5842,7 @@ mod tests {
             HostExecutionContextBuilder::new("com.test.percent-roundtrip", 0.0, 0.2).build();
         let mut fields = HashMap::new();
         fields.insert(
-            "infill_density".to_string(),
+            "sparse_infill_density".to_string(),
             ConfigValueStorage::Percent(25.0),
         );
         let resource = ctx
@@ -5835,7 +5851,7 @@ mod tests {
             .expect("push config-view resource");
 
         let value = ctx
-            .get(resource, "infill_density".to_string())
+            .get(resource, "sparse_infill_density".to_string())
             .expect("get call succeeds")
             .expect("value present for known key");
         match value {

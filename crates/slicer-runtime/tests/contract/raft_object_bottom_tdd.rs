@@ -87,7 +87,7 @@ fn raft_aware_params(threshold_angle_deg: f32, layer_id: u32) -> SupportContactP
 /// observable in the emitted geometry.
 fn classic_infill_areas_at(layer_index: u32) -> Vec<Vec<ExPolygon>> {
     let config: ConfigView = classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .int("support_raft_layers", RAFT_LAYERS as i64)
         // Distinct on purpose: the selected key changes the infill inset.
@@ -126,7 +126,6 @@ fn object_bottom_predicates_are_raft_aware() {
         &below,
         &[],
         &SupportContactParams {
-            support_sharp_tails: true,
             ..raft_aware_params(45.0, RAFT_LAYERS)
         },
     );
@@ -143,7 +142,6 @@ fn object_bottom_predicates_are_raft_aware() {
             &below,
             &[],
             &SupportContactParams {
-                support_sharp_tails: true,
                 ..raft_aware_params(45.0, raft_index)
             },
         );

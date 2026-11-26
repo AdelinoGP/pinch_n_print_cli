@@ -58,7 +58,7 @@ fn first_outer_wall_start(gcode: &str) -> (f32, f32) {
 fn painted_seam_fixture_reaches_emitted_outer_wall() {
     let mut config = HashMap::new();
     config.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String("aligned".to_string()),
     );
     let gcode = slice_fixture("resources/painted_seams.3mf", config);

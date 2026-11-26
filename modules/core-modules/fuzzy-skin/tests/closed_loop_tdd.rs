@@ -62,10 +62,16 @@ fn region_with(wall: WallLoop) -> PerimeterRegionView {
     tmp
 }
 
-fn config_apply_to_all(thickness_mm: f32, point_distance_mm: f32) -> ConfigView {
+fn config_apply_to_all(
+    fuzzy_skin_thickness_mm: f32,
+    fuzzy_skin_point_distance_mm: f32,
+) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("thickness", thickness_mm as f64)
-        .float("point_distance", point_distance_mm as f64)
+        .float("fuzzy_skin_thickness", fuzzy_skin_thickness_mm as f64)
+        .float(
+            "fuzzy_skin_point_distance",
+            fuzzy_skin_point_distance_mm as f64,
+        )
         .bool("apply_to_all", true)
         .build()
 }

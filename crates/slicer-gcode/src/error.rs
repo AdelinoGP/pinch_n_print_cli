@@ -14,7 +14,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum GCodeEmitError {
     /// A `ToolChange` was emitted without a surrounding wipe/purge while
-    /// `wipe_tower_enabled` is true. Maps to
+    /// `enable_prime_tower` is true. Maps to
     /// `PostpassError::MissingToolchangePurge` at the runtime seam.
     #[error(
         "missing toolchange purge: layer {layer_index} tool_change[{tool_change_index}] \

@@ -338,7 +338,7 @@ pub fn verify_observation(
 
     // Uniform IR-wide fields.
     if geometry.support_layer_height_mm != case.targets_mm[0]
-        || geometry.support_top_z_distance_mm != case.top_distance_mm
+        || geometry.support_top_z_distance != case.top_distance_mm
     {
         return Err(String::from(
             "the IR-wide settings must come from the first region",

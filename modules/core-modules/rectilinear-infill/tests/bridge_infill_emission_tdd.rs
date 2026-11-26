@@ -7,7 +7,7 @@
 //!
 //! Coordinate system: 1 unit = 100 nm (10⁻⁴ mm) per docs/08_coordinate_system.md.
 
-use slicer_ir::{ExtrusionRole, Point2, Polygon};
+use slicer_ir::{ConfigView, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::test_prelude::*;
@@ -34,9 +34,8 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 /// explicit value wins.
 fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
-        .float("infill_angle", 45.0)
-        .float("infill_speed", 60.0)
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 45.0)
         .float("line_width", 0.45)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
@@ -209,7 +208,6 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
 #[test]
 fn bridge_fill_uses_bridge_width_and_full_density() {
     let config = baseline_config()
-        .float("infill_density", 0.2)
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.8)
         .float("bridge_flow", 0.7)
@@ -256,7 +254,7 @@ fn bridge_fill_uses_bridge_width_and_full_density() {
         bridge_paths
             .iter()
             .all(|path| (path.speed_factor - 1.0).abs() < 1e-5),
-        "bridge fill must use bridge_speed rather than infill_speed"
+        "bridge fill must use bridge_speed rather than sparse_infill_speed"
     );
     assert!(
         bridge_paths
@@ -288,7 +286,7 @@ fn internal_bridge_uses_internal_role_settings() {
         .effective_layer_height(0.2)
         .z(1.0)
         .is_bridge(true)
-        .is_internal_bridge(true)
+        .internal_bridge_areas(vec![bridge.clone()])
         .bridge_areas(vec![bridge])
         .bridge_orientation_deg(0.0)
         .build();
@@ -507,6 +505,120 @@ fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
     assert_eq!(
         bridge_count, 0,
         "NEG-2: expected zero BridgeInfill paths when bridge_areas is empty, got {bridge_count}"
+    );
+}
+
+/// Run the module over a single 10×10 mm bridge region and return the bridge
+/// paths it emitted, using the caller's config.
+///
+/// `internal` makes the region's bridge polygon a member of
+/// `internal_bridge_areas`, which is what steers `internal_bridge_density` /
+/// `thick_internal_bridges` against their external twins inside `run_infill`.
+fn bridge_paths_for(config: &ConfigView, internal: bool) -> Vec<slicer_ir::ExtrusionPath3D> {
+    let bridge = rect_expoly_mm(0, 0, 10, 10);
+    let internal_areas = if internal {
+        vec![bridge.clone()]
+    } else {
+        Vec::new()
+    };
+    let mut region = SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(bridge.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .is_bridge(true)
+        .bridge_areas(vec![bridge])
+        .internal_bridge_areas(internal_areas)
+        .bridge_orientation_deg(0.0)
+        .build();
+    region.set_held_claims(vec!["claim:bridge-fill".into()]);
+
+    let module = RectilinearInfill::from_config(config).unwrap();
+    let mut output = InfillOutputBuilder::new();
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, config)
+        .unwrap();
+
+    let role = if internal {
+        ExtrusionRole::InternalBridgeInfill
+    } else {
+        ExtrusionRole::BridgeInfill
+    };
+    output
+        .solid_paths()
+        .iter()
+        .filter(|path| path.role == role)
+        .cloned()
+        .collect()
+}
+
+/// Canonical `Fill::make_fills` overrides an external bridge's fill density
+/// with `bridge_density` (`params.density = bridge_density.get_abs_value(1.0)`),
+/// and the filler divides line spacing by that density. Halving the key must
+/// therefore roughly halve the number of external bridge lines.
+#[test]
+fn bridge_density_spaces_external_bridge_lines() {
+    let full = baseline_config()
+        .float("line_width", 0.4)
+        .float("bridge_line_width", 0.4)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("bridge_density", 1.0)
+        .build();
+    let half = baseline_config()
+        .float("line_width", 0.4)
+        .float("bridge_line_width", 0.4)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("bridge_density", 0.5)
+        .build();
+
+    let full_paths = bridge_paths_for(&full, false).len();
+    let half_paths = bridge_paths_for(&half, false).len();
+
+    assert!(
+        full_paths > 4,
+        "100% bridge density must emit a solid bridge, got {full_paths} paths"
+    );
+    let ratio = half_paths as f32 / full_paths as f32;
+    assert!(
+        (0.4..=0.65).contains(&ratio),
+        "50% bridge_density must roughly halve the bridge line count: \
+         {half_paths} of {full_paths} (ratio {ratio})"
+    );
+}
+
+/// Canonical `Fill::make_fills` picks the bridging flow for an internal bridge
+/// from `thick_internal_bridges` (`is_thick_bridge` → `layerm.bridging_flow`),
+/// so the key changes bridge line *spacing*: the thick path uses the round
+/// thread's diameter plus `BRIDGE_EXTRA_SPACING`, the thin path uses the
+/// flattened extrusion's spacing, which is narrower. Fewer lines must therefore
+/// be emitted with the key on than with it off, at identical density.
+#[test]
+fn thick_internal_bridges_widens_internal_bridge_spacing() {
+    let make = |thick: bool| {
+        baseline_config()
+            .float("line_width", 0.4)
+            .float("bridge_line_width", 0.4)
+            .float("internal_bridge_flow", 1.0)
+            .float("internal_bridge_density", 1.0)
+            .bool("thick_internal_bridges", thick)
+            .build()
+    };
+
+    let thick_paths = bridge_paths_for(&make(true), true).len();
+    let thin_paths = bridge_paths_for(&make(false), true).len();
+
+    assert!(
+        thin_paths > 0 && thick_paths > 0,
+        "both settings must still fill the bridge: thick {thick_paths}, thin {thin_paths}"
+    );
+    assert!(
+        thick_paths < thin_paths,
+        "thick_internal_bridges must widen bridge spacing (fewer lines): \
+         thick {thick_paths} vs thin {thin_paths}"
     );
 }
 

@@ -1,12 +1,14 @@
 # Asset — Packet list for the FFF gap queue (ticket 05)
 
 Derived from ticket 04's per-key tier assignment by applying the grouping rule
-below. **91 packets, 358 keys** (Tier A 117, Tier B 226, Tier C 15 — plus 2
+below. **91 packets, 360 keys** (Tier A 114, Tier B 231, Tier C 15 — plus 2
 fog-blocked Tier A keys and 47 Tier D keys, deferred). Packet order is the
 queue order: **tier-major (A, B, C), then owning module, then Orca UI section**.
 (Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A];
 amended by ticket 99: P01 +`fan_max_speed`/`fan_min_speed` [B]. P01 and P14
-become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C.)
+become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C. Amended by
+ticket 25: P18 becomes mixed A/B and sheds `silent_mode` (returned to the
+queue) — packet counts are now 17 A, 68 B, 6 C.)
 
 ## The grouping rule (all rulings confirmed with the human, ticket 05 session)
 
@@ -50,9 +52,9 @@ become mixed A/B packets — packet counts are now 18 A, 67 B, 6 C.)
 | Packet | keys | split |
 |---|---|---|
 | P02/P03 — Prime tower (A) | 26 | 13+13: interface/tower-feature keys, then purge/geometry keys |
-| P36/P37 — Retraction (B) | 20 | 10+10: lift/toolchange/restart keys, then wipe/travel/cut keys |
+| P36/P37 — Retraction (B) | 19 | 8+11: lift/toolchange/restart keys, then wipe/travel/cut keys incl. `retract_before_wipe` from P36 (`long_retractions_when_ec` returned to the queue by ticket 43) |
 | P52/P53 — Seam (B) | 16 | 8+8: scarf/slope keys, then slope-variant/wipe keys |
-| P54/P55 — Walls and surfaces (B) | 17 | 9+9: flow-ratio keys, then compensation/travel keys |
+| P54/P55 — Walls and surfaces (B) | 17 | 8+7+1: flow-ratio keys + adopted gate, then compensation/remaining-ratio keys, then the returned travel key (re-sized by tickets 61+62: `is_infill_first` + `max_travel_detour_distance` + `reduce_crossing_wall` returned to the queue, `set_other_flow_ratios` adopted P55→P54) |
 | P89/P90 — interlocking (C) | 6 | 3+3: beam definition, then structure & boundary |
 
 Split boundaries are proposals; the authoring ticket may adjust the boundary by
@@ -137,13 +139,22 @@ consumer via `reduce_fan_stop_start_freq`. P01 becomes a mixed A/B packet.)
 (narrowed)" to a genuine gap — widens the shared `ironing_enabled` bool to
 Orca's 4-mode enum.)
 
-### P15 — Support / Support ironing — support-surface-ironing (2 keys, Tier A)
+### P15 — Support / Support ironing — support-surface-ironing (1 key, Tier A)
 
-`support_ironing_pattern`, `support_ironing`
+`support_ironing`
 
 (Amended by ticket 07: `support_ironing` reclassified from "already
 implemented (narrowed)" to a genuine gap — an independent bool so support
 ironing no longer rides the shared `ironing_enabled`.)
+
+(Amended by ticket 22, at authoring: **`support_ironing_pattern` is removed
+from this packet and returned to the queue as unimplemented.** It is an
+algorithm-selecting enum over `InfillPattern`, so Authoring rule 4 / grilling
+Q3(a) make it holder-only — never a declared input key — and this port has no
+support-ironing claim seam and no concentric filler. P15 is a 1-key change;
+the single-key implementation was applied directly under ticket 22. The
+holder seam remains a separate follow-up with packet
+`260b-support-interface-fill-claim-holders`.)
 
 ### P16 — Quality / Wall generator — Arachne — arachne-perimeters (1 keys, Tier A)
 
@@ -153,17 +164,75 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `staggered_inner_seams`
 
-### P18 — Printer / Machine / Power / recovery — emitter (4 keys, Tier A)
+### P18 — Printer / Machine / Power / recovery — emitter (3 keys — 1 Tier A plumbing + 2 Tier B logic)
 
-`disable_m73`, `emit_machine_limits_to_gcode`, `enable_power_loss_recovery`, `silent_mode`
+`disable_m73`, `emit_machine_limits_to_gcode`, `enable_power_loss_recovery`
 
-### P19 — Printer / Machine / Print volume — emitter (3 keys, Tier A)
+(Amended by ticket 25, at authoring: **`silent_mode` is removed from this packet
+and returned to the queue as unimplemented.** Canonical reads every
+`machine_max_*` key as a stride-2 normal/stealth variant pair and `silent_mode`
+selects the variant; PnP's scalar `Option<f32>` machine-limit fields have no
+variant dimension, so the key cannot drive anything — a per-variant
+machine-limit model (P47 family) is the missing feature, filed as ticket 117.
+`emit_machine_limits_to_gcode` and `enable_power_loss_recovery` are re-tiered
+A → B: both build new emitter logic (canonical `GCode::print_machine_envelope`
+and `GCodeWriter::enable_power_loss_recovery`). P18 becomes a mixed A/B packet;
+packet counts are now 17 A, 68 B, 6 C.)
 
-`extruder_printable_area`, `extruder_printable_height`, `printable_height`
+**`silent_mode` landed directly via [ticket 117](./117-silent-mode-per-variant-machine-limit-model.md)
+(2026-09-11, no packet):** the per-variant model it was returned for now
+exists — the ten `machine_max_*` fields are `Option<MachineLimitPair>`
+keeping both stride-2 entries, and `silent_mode` (canonical default `false`)
+selects the stealth entry in `EstimatorLimits::from_config`. P18's packet
+stays 3 keys; this key closes alongside it.
 
-### P20 — Printer / Machine / Printer identity — emitter (2 keys, Tier A)
+### P19 — Printer / Machine / Print volume — emitter (1 key implemented, 2 returned)
 
-`printer_model`, `printer_structure`
+`printable_height` — **implemented directly** (no packet) by ticket 26 on
+2026-09-03, under the map's "Packets are for complex implementation only" rule.
+It now drives a build-volume height rejection (`validate_printable_height`,
+`crates/slicer-model-io/src/loader.rs`) and is emitted from the resolved config
+rather than from `ORCA_CONFIG_PADDING`. Default deviates from canonical at
+250.0 mm (DEVIATION_LOG).
+
+`extruder_printable_area`, `extruder_printable_height` — **returned to the queue
+as unimplemented** by ticket 26 under Authoring rule 1. Both are per-extruder
+vectors defaulting to empty/`{0}` and are inert on a single-extruder printer;
+their only behaviour-changing canonical paths are multi-extruder wipe-tower ones
+(`Print::get_extruder_shared_printable_polygon` feeding
+`WipeTower::set_shared_print_bed`, and `WipeTower::is_valid_last_layer`), so the
+emitter is the wrong owner. Their real home is the wipe-tower packet tickets
+(28–31). Everything else canonical does with them is diagnostics or GUI, and
+several of those functions have no caller at all.
+
+### P20 — Printer / Machine / Printer identity — emitter (2 keys closed, no packet)
+
+Closed by ticket 27 through **direct implementation**, no packet.
+
+`printer_structure` — **implemented directly**. Declared as an enum
+(`undefine`/`corexy`/`i3`/`hbot`/`delta`) on **`machine-gcode-emit`**, not on the
+emitter: the tier table's `crates/slicer-gcode` owner was wrong, because the key's
+only non-GUI canonical behaviour is the time-lapse injection gate in
+`GCode::process_layer` (`need_insert_timelapse_gcode_for_traditional`), and this
+port's `time_lapse_gcode` injection site belongs to that module. It now suppresses
+time-lapse injection on non-i3 single-tool prints. Three recorded divergences in
+`DEV-168` (the `undefine` default does not suppress; the `!spiral_vase` clause is
+unwirable here; `is_multi_extruder` stands in as "the print performs a
+toolchange").
+
+`printer_model` — **already covered, no code change**. A user-set `printer_model`
+already reaches the emitter's live decision point: `serialize_config_block`
+(`crates/slicer-gcode/src/serialize.rs`) synthesizes `Generic PNP Printer` only
+when `raw_config` lacks the key, so a supplied value wins through the
+`emit_config_kv` dedup path. Both arms are pinned by
+`config_block_synthesizes_non_bbl_printer_model` and
+`config_block_fork_keys_never_shadowed`
+(`crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`),
+and the contract is documented in `docs/02_ir_schemas.md`. Canonical's remaining
+pipeline reads of the key are vendor-proprietary branches —
+`is_bambu_x2d_printer` (`GCode.cpp`), `GCodeProcessor::s_IsBBLPrinter`, and the
+Elegoo M6211 time estimate (`ElegooGCodeProcessorHelper.cpp`) — which fall in
+ticket 03's Bambu-proprietary / vendor-hardware out-of-scope class.
 
 ## Tier B — 65 packets
 
@@ -171,13 +240,58 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `cooling_tube_length`, `cooling_tube_retraction`, `extra_loading_move`, `high_current_on_filament_swap`, `parking_pos_retraction`
 
+**Blocked and re-filed (ticket 28, 2026-09-03).** Not authorable: all five keys
+are live only in `WipeTower2`'s Type2 SEMM unload/load choreography, fused with
+Tier D per-filament ramming values, and gated on `single_extruder_multi_material`
++ `enable_filament_ramming` — neither of which exists in this tree. A packet
+today would be 100% declaration-only (Authoring rule 1). Re-filed as ticket 119,
+which also adopts `extruder_printable_area` / `extruder_printable_height`
+(returned to the queue by ticket 26); both are blocked on ticket 118.
+
 ### P22 — Multimaterial / Filament for Features — wipe-tower (1 keys, Tier B)
 
 `wipe_tower_filament`
 
-### P23 — Multimaterial / Flush options — wipe-tower (2 keys, Tier B)
+**Dissolved (ticket 29, 2026-09-03).** P22 is not a packet boundary. The key
+selects which filament prints the tower's *finish extrusions* (shell, brim,
+sparse infill), and this port's tower is **purge-only** — so the key has no
+subject, and wiring it to the purge's tool would invert its meaning. Ticket 29's
+census found the same absent body under packet 255's ten with-gap keys and P02's
+framework / brim-width / infill-gap / flat-ironing keys; the user ruled the body
+**in scope at full canonical parity**. `wipe_tower_filament` folds into ticket
+122 (prime tower body parity) and is not authored separately.
 
-`flush_multiplier`, `flush_volumes_matrix`
+### P23 — Multimaterial / Flush options — wipe-tower (2 keys closed, no packet)
+
+Closed by ticket 30 through **direct implementation**, no packet. The "Tier B new
+logic" sizing did not survive contact with the tree: `WipeTower::generate_purge_paths`
+already converted a purge volume into the scan-line box depth and the prime entity's
+extruded length — the same arithmetic canonical's `get_wipe_depth` does — and simply
+ignored which tool change it was serving. The work was a per-pair lookup in front of
+an existing consumer.
+
+`flush_volumes_matrix` — **implemented directly**. A flat row-major `N*N` float list
+indexed `[from_tool][to_tool]`, matching canonical `WipeTower2::extract_wipe_volumes`.
+`WipeTower::purge_volume_for` selects the entry for each tool change; a non-square
+length is rejected rather than truncated. Unset, it falls back to the flat
+`prime_volume`, so no existing print's g-code changes.
+
+`flush_multiplier` — **implemented directly**. Scales matrix entries only, never the
+fallback. Canonical default `0.3` lives in code, not the manifest, because a plain
+`float` manifest default never reaches a module (only `percent` /
+`float_or_percent` schema defaults are threaded into `ResolvedConfig`).
+
+Four recorded divergences in `DEV-169`: the fallback (canonical zeroes the matrix
+unless `purge_in_prime_tower && single_extruder_multi_material`, neither of which
+exists here — both are P02); the multiplier not scaling the fallback; one scalar
+multiplier rather than canonical's per-extruder `coFloats` (blocked on ticket 118's
+per-tool config mechanism); and no `filament_minimal_purge_on_wipe_tower` clamp
+(Tier D per-filament config, not in this tree). `flush_multiplier_fast` and
+`prime_volume_mode` are canonical's fast-purge branch and are not in this queue.
+
+Verified by `cargo test -p wipe-tower` (7 new tests) plus narrow no-regression runs
+on `gcode_toolchange_wrapping`, the runtime `contract` wipe-tower parity test, and
+`finalization_live`.
 
 ### P24 — Others / Special mode — wipe-tower (1 keys, Tier B)
 
@@ -215,49 +329,144 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `extruder_colour`, `extruder_offset`, `extruder_type`, `master_extruder_id`, `physical_extruder_map`, `printer_extruder_id`, `printer_extruder_variant`
 
-### P33 — Extruder / Nozzle / MMU Hardware — emitter (2 keys, Tier B)
+**Re-sized by ticket 39 (2026-09-05): not authorable as a standalone packet.**
+`extruder_colour` is already covered (CONFIG_BLOCK/HEADER alias to
+`filament_colour`, canonical's only pipeline read). The other six are
+per-extruder-vector or absent-feature keys (extruder offsets, bowden/direct
+grouping, master-extruder filament grouping, physical tool map, variant-array
+shape) and are **re-filed as
+[ticket 136](136-author-packet-p32-per-extruder-keys-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the six is 136, not 39.
 
-`grab_length`, `start_end_points`
+### P33 — Extruder / Nozzle / MMU Hardware — emitter (1 key, Tier B)
+
+`grab_length` — **live** (ticket 40, direct implementation): declared on
+`wipe-tower.toml`, consumed by `WipeTower::purge_volume_for` (purge reduced by
+`grab_length × 2.4`, clamped at 0); scalar-vs-per-extruder divergence in
+DEV-170.
+
+`start_end_points` — **returned to the queue as unimplemented** by ticket 40:
+canonical's `get_path_of_change_filament` needs `bed_exclude_area` (packet
+256, not implemented) + object bounding boxes at a seam reaching the
+`change_filament_gcode` substitution. Re-file when packet 256 lands.
 
 ### P34 — Extruder / Nozzle / Nozzle — emitter (4 keys, Tier B)
 
 `nozzle_hrc`, `nozzle_type`, `nozzle_volume`, `required_nozzle_HRC`
 
+**Re-sized by ticket 41 (2026-09-05): not authorable as a standalone packet.**
+All four keys have zero occurrences in the tree and all canonical read sites
+are in `GCodeProcessor` (the HRC trio feeds the non-fatal
+`NOZZLE_HRC_CHECKER` post-export warning; `nozzle_volume` feeds only
+Elegoo-`M6211` flush attribution) — the tier table's `crates/slicer-gcode`
+emitter owner is wrong for this tree, which has no warning-list seam, no
+Elegoo seam, and no per-tool vector ingestion. They are **re-filed as
+[ticket 137](137-author-packet-p34-nozzle-keys-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the four is 137, not 41.
+
 ### P35 — Extruder / Nozzle / Pressure advance — emitter (6 keys, Tier B)
 
 `adaptive_pressure_advance`, `adaptive_pressure_advance_bridges`, `adaptive_pressure_advance_model`, `adaptive_pressure_advance_overhangs`, `enable_pressure_advance`, `pressure_advance`
 
-### P36 — Extruder / Nozzle / Retraction (1/2) — emitter (10 keys, Tier B)
+**Split by ticket 42 (2026-09-05): 2 keys live by direct implementation,
+4 returned as unimplemented.** `enable_pressure_advance` + `pressure_advance`
+are wired in the host emitter (start prefix + post-toolchange lines,
+flavor-specific via `GcodeFlavor::set_pressure_advance`, per-tool via the
+`tool_config:<idx>:` axis). The four `adaptive_*` keys need the
+AdaptivePAProcessor-style per-feature prediction and are returned to the queue
+with that missing feature named (tier-table rows annotated); no packet number
+taken for them, no new ticket — the future claim packets them.
 
-`deretraction_speed`, `long_retractions_when_cut`, `long_retractions_when_ec`, `retract_before_wipe`, `retract_length_toolchange`, `retract_lift_above`, `retract_lift_below`, `retract_lift_enforce`, `retract_restart_extra`, `retract_restart_extra_toolchange`
+### P36 — Extruder / Nozzle / Retraction (1/2) — emitter (8 keys, Tier B; packet 276)
 
-### P37 — Extruder / Nozzle / Retraction (2/2) — emitter (10 keys, Tier B)
+`deretraction_speed`, `long_retractions_when_cut`, `retract_length_toolchange`, `retract_lift_above`, `retract_lift_below`, `retract_lift_enforce`, `retract_restart_extra`, `retract_restart_extra_toolchange`
 
-`retract_when_changing_layer`, `retraction_distances_when_cut`, `retraction_distances_when_ec`, `retraction_minimum_travel`, `travel_slope`, `use_firmware_retraction`, `wipe`, `wipe_distance`, `z_hop_types`, `z_offset`
+(`retract_before_wipe` shed to P37 and `long_retractions_when_ec` returned to the queue by ticket 43.)
 
-### P38 — Filament / Bed temperature — emitter (2 keys, Tier B)
+### P37 — Extruder / Nozzle / Retraction (2/2) — emitter (11 keys, Tier B; packet 277)
+
+`retract_before_wipe`, `retract_when_changing_layer`, `retraction_distances_when_cut`, `retraction_distances_when_ec`, `retraction_minimum_travel`, `travel_slope`, `use_firmware_retraction`, `wipe`, `wipe_distance`, `z_hop_types`, `z_offset`
+
+### P38 — Filament / Bed temperature — emitter (2 keys, Tier B; +P78 gate → 3 keys on ticket 138)
 
 `bed_temperature_formula`, `curr_bed_type`
 
-### P39 — Multimaterial / Filament for Features — emitter (3 keys, Tier B)
+**Re-sized by ticket 45 (2026-09-06): not authorable as a standalone packet.**
+Both keys are selectors over absent data — the formula over per-filament
+`bed_temperature` vectors, the bed type over six Tier D plate-temperature
+vector pairs (all zero-occurrence) — so a packet today would be 100%
+declaration-only (rule 1). **Re-filed as
+[ticket 138](138-author-packet-p38-bed-temperature-selection-refiled.md),
+blocked on ticket 125** (the per-tool config model ruling, itself gated on
+126). **Ticket 85 (2026-09-10) folded P78's `support_multi_bed_types` into 138**
+(the gate over `curr_bed_type`'s subject — 138 now carries 3 keys). The authoring ticket for all three keys is 138, not 45/85.
 
-`solid_infill_filament`, `sparse_infill_filament`, `wall_filament`
+### P39 — Multimaterial / Filament for Features — emitter (6 keys, Tier B)
+
+`sparse_infill_filament_id`, `internal_solid_filament_id`, `top_surface_filament_id`, `bottom_surface_filament_id`, `inner_wall_filament_id`, `outer_wall_filament_id`
+
+**Re-sized and closed by direct implementation in ticket 46 (2026-09-06): no
+packet.** The 3 queued legacy names are load-time aliases in the oracle
+(`PrintConfig.cpp` `handle_legacy`) for the live `*_filament_id` family
+(coInt, 0 = Default/inherit); the other 3 family members were never queued
+(absent from source, queue, and tree — queue 407 → 410). All 6 are live in
+runtime entity assembly; the port's tier-table owner (`crates/slicer-gcode`)
+was wrong (ticket-27 hazard — the emitter only emits the `tool_index` the
+runtime resolves).
 
 ### P40 — Multimaterial / Flush options — emitter (2 keys, Tier B)
 
 `filament_flush_temp`, `filament_flush_volumetric_speed`
 
+**Closed by direct implementation in ticket 47 (2026-09-06): no packet.**
+Claim-time re-sizing under the packets-are-for-complex-work rule: both keys
+are placeholder-only in canonical (every `GCode.cpp` read publishes the
+derived `flush_temperatures` / `flush_volumetric_speeds` placeholders for
+custom G-code — no geometry, no IR/WIT, no new module), and this tree's
+substitution seam already exists in `machine-gcode-emit` (generic sweep
+publishes every declared int/float; int/float render canonically, so no
+key-specific arm was needed — unlike 276's word-form-bool guarantee). The
+work was two scalar-global `ResolvedConfig` fields + two manifest rows + six
+tests. Owner re-derived `crates/slicer-gcode` → `machine-gcode-emit`
+(ticket-27 hazard). `DEV-171` records scalar-vs-vector, the missing Tier D
+fallback, and the raw-vs-plural name divergence.
+
 ### P41 — Multimaterial / Multimaterial advanced — emitter (1 keys, Tier B)
 
 `support_object_skip_flush`
+
+**Returned to the queue by ticket 48 (2026-09-06): not authorable as a
+standalone packet.** Both canonical reads are riders on the exclude-object
+seam (`m_enable_exclude_object` + `M624` label codes — P44 / ticket 51
+scope, still open); wiring the bool alone would be declaration-only
+(rule 1). Sequences after (or folds into) P44 when ticket 51 lands
+(6→7 keys stays under the B ceiling 12).
 
 ### P42 — Multimaterial / Ooze prevention — emitter (4 keys, Tier B)
 
 `ooze_prevention`, `preheat_steps`, `preheat_time`, `standby_temperature_delta`
 
-### P43 — Multimaterial / Prime tower — emitter (2 keys, Tier B)
+**Re-sized by ticket 49 (2026-09-06): not authorable as a standalone packet.**
+All four keys are zero-occurrence as behaviour (the one `ORCA_CONFIG_PADDING`
+row is not evidence, rule 2). The ooze pair needs per-filament nozzle-temp
+vectors the host cannot see (Tier D); the preheat pair needs a
+`GCodeProcessor`-style backtrace injector with no port seam. They are
+**re-filed as
+[ticket 139](139-author-packet-p42-ooze-prevention-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the four is 139, not 49.
 
-`manual_filament_change`, `single_extruder_multi_material_priming`
+### P43 — Multimaterial / Prime tower — emitter (1 key live, 1 returned; Tier B)
+
+`manual_filament_change` — **live** (ticket 50, direct implementation):
+`ResolvedConfig` bool + serializer tag line + module first-injection skip.
+
+`single_extruder_multi_material_priming` — **returned to the queue as
+unimplemented** by ticket 50: all canonical reads are Type2 priming-tower
+flows with no port subject (purge-only tower); sequences after ticket 122
+(prime tower body parity). P43 now covers 1 key.
 
 ### P44 — Others / G-code output — emitter (6 keys, Tier B)
 
@@ -287,9 +496,13 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `internal_bridge_flow`
 
-### P51 — Quality / Precision — emitter (1 keys, Tier B)
+**Closed without packet (ticket 57):** key already live in both bridge-fill
+holders via ticket 34; owner corrected to infill modules. No packet number
+consumed.
 
-`enable_arc_fitting`
+### P51 — Quality / Precision — emitter (2 keys, Tier B)
+
+`enable_arc_fitting`, `resolution` (the latter re-adjudicated from the rename pool in ticket 105 — canonical's generation-time global simplification is a missing decision point; packet grounding decides whether it lands emit-side or in a generation stage)
 
 ### P52 — Quality / Seam (1/2) — emitter (8 keys, Tier B)
 
@@ -299,65 +512,127 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `seam_slope_entire_loop`, `seam_slope_inner_walls`, `seam_slope_min_length`, `seam_slope_start_height`, `seam_slope_steps`, `seam_slope_type`, `wipe_before_external_loop`, `wipe_on_loops`
 
-### P54 — Quality / Walls and surfaces (1/2) — emitter (9 keys, Tier B)
+### P54 — Quality / Walls and surfaces (1/2) — emitter (8 keys, Tier B; packet 287)
 
-`bottom_solid_infill_flow_ratio`, `first_layer_flow_ratio`, `gap_fill_flow_ratio`, `inner_wall_flow_ratio`, `internal_solid_infill_flow_ratio`, `is_infill_first`, `max_travel_detour_distance`, `outer_wall_flow_ratio`, `overhang_flow_ratio`
+`bottom_solid_infill_flow_ratio`, `first_layer_flow_ratio`, `gap_fill_flow_ratio`, `inner_wall_flow_ratio`, `internal_solid_infill_flow_ratio`, `outer_wall_flow_ratio`, `overhang_flow_ratio`, `set_other_flow_ratios` (adopted from P55 by ticket 61)
 
-### P55 — Quality / Walls and surfaces (2/2) — emitter (9 keys, Tier B)
+**Re-sized by ticket 61 (2026-09-07): 7 ratios + adopted gate in, two keys returned, packet 287 authored.** `is_infill_first` (ordering lives in runtime orchestration, not emission) and `max_travel_detour_distance` (no avoidance planner to clamp) are returned to the queue as unimplemented with missing features named (no new ticket — a future claim packets them). `set_other_flow_ratios` adopted P55→P54 as a split-boundary adjustment (the gate arms this family's ratios). P54 9→8; no queue-count change.
 
-`print_flow_ratio`, `reduce_crossing_wall`, `set_other_flow_ratios`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
+### P55 — Quality / Walls and surfaces (2/2) — emitter (7 keys in, 1 returned; Tier B; packet 288)
 
-### P56 — Speed / Acceleration — emitter (11 keys, Tier B)
+`print_flow_ratio`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
+
+**Re-sized by ticket 62 (2026-09-07): 5 ratios + small-area pair in, one key returned, packet 288 authored.** `reduce_crossing_wall` (perimeter-avoiding travel enable) is returned to the queue as unimplemented with the missing planner named (no avoidance planner in tree — ticket-61 detour precedent; no new ticket). `set_other_flow_ratios` shed to P54 by ticket 61 — 9→8 there; P55 8→7+1 with a backward FORWARD-DEP on draft packet 287's gate (referenced, never redeclared). No queue-count change.
+
+### P56 — Speed / Acceleration — emitter (11 keys, Tier B; packet 289)
 
 `accel_to_decel_enable`, `accel_to_decel_factor`, `bridge_acceleration`, `default_acceleration`, `initial_layer_acceleration`, `inner_wall_acceleration`, `internal_solid_infill_acceleration`, `outer_wall_acceleration`, `sparse_infill_acceleration`, `top_surface_acceleration`, `travel_acceleration`
 
-### P57 — Speed / Advanced (Speed) — emitter (3 keys, Tier B)
+**Authored by ticket 63 (2026-09-07): all 11 keys in, none shed, packet 289.** Tier B held, owner `crates/slicer-gcode` stands (all canonical reads emission-time; unwired `set_acceleration`/`set_travel_acceleration` reused, never forked); scalar-global is a recorded simplification (DEV-181(b) — canonical declares nine keys per-nozzle vector, model stays with ticket 125).
+
+### P57 — Speed / Advanced (Speed) — emitter (3 keys, Tier B; packet 290)
 
 `extrusion_rate_smoothing_external_perimeter_only`, `max_volumetric_extrusion_rate_slope`, `max_volumetric_extrusion_rate_slope_segment_length`
 
-### P58 — Speed / Initial layer speed — emitter (1 keys, Tier B)
+**Authored by ticket 64 (2026-09-07): all 3 keys in, none shed, packet 290.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (estimator.rs does time-math only — the stage is a post-entity-loop retime over `GCodeIR` moves); canonical scalarity IS held (all three scalar in `GCodeConfig` — no ticket-125 vector arm, unlike packets 276/277/279–289); defaults ARE identity (slope `0` = stage does not exist, AC-2 pins it).
+
+### P58 — Speed / Initial layer speed — emitter (1 keys, Tier B; packet 291)
 
 `slow_down_layers`
 
-### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B)
+**Authored by ticket 65 (2026-09-07): 1 key in, none shed, packet 291.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (feedrate.rs is the speed table only — the arm is a per-entity blend in emit.rs over that table); canonical scalarity IS held (coInt scalar — no ticket-125 vector arm); defaults ARE identity (`0`/`1` inert by the `> 1` gate, AC-2 pins it).
+
+### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B; packet 292)
 
 `default_jerk`, `default_junction_deviation`, `infill_jerk`, `initial_layer_jerk`, `inner_wall_jerk`, `outer_wall_jerk`, `top_surface_jerk`, `travel_jerk`
 
-### P60 — Speed / Other layers speed — emitter (2 keys, Tier B)
+**Authored by ticket 66 (2026-09-08): 8 keys in, none shed, packet 292.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (estimator.rs does time-math only — the stage is a per-entity jerk-selection stage in emit.rs reusing the existing `set_jerk_xy` / Marlin2-only `set_junction_deviation` arms); canonical scalarity NOT held (all eight `coFloats` per-nozzle vectors — DEV-184(b) scalar-global with first-wins ingest, ticket-125 future); defaults ARE identity (`default_jerk` 0 master gate, AC-2 pins byte-identical — inverse of 289's emitting default).
+
+### P60 — Speed / Other layers speed — emitter (2 keys, Tier B; packet 293)
 
 `internal_solid_infill_speed`, `small_perimeter_speed`
 
-### P61 — Support / Support ironing — emitter (1 keys, Tier B)
+**Authored by ticket 67 (2026-09-08): 2 keys in, none shed, packet 293.** Tier B held, owner `crates/slicer-gcode` stands (all canonical reads emission-side in `GCode` speed selection / `extrude_loop`; machine-gcode-emit sweep is the wrong seam; rectilinear parse is dead input, not a decision point); canonical scalarity NOT held (both per-nozzle vectors — DEV-185(b) scalar-global, ticket-125 future); defaults ARE near-identity (internal-solid 100 == shadowed sparse 100, threshold 0 silences the gate — AC-2 pins F-identical + exactly +1 twin config line).
+
+### P61 — Support / Support ironing — emitter (1 key folded, Tier B)
 
 `support_air_filtration`
+
+**Folded into draft packet 253 by ticket 68 (2026-09-08, ticket-35 precedent): not authored separately.** The key is an operator on exactly the header/footer exhaust emission packet 253 builds (canonical's outer `if (m_config.support_air_filtration.value)` wraps both `M106 P3` writes in `GCode::_do_export`); owner corrected `crates/slicer-gcode` → `machine-gcode-emit` (all canonical reads header/footer-side). Packet 253 gains one declaration + one AC-8 arm + one negative (AC-N1b); no packet number taken, no queue-count change.
 
 ### P62 — Cooling / Notes — tool-ordering (1 keys, Tier B)
 
 `max_layer_height`
 
+**Re-sized by ticket 69 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (`coFloats` vector, `0` = auto → `0.75 ×
+nozzle_diameter[i]`) but every consumer rides a missing subsystem — tower
+partitions (sequences after ticket 122's body), skirt intermediate marking,
+slicing min/max envelope — and the port has no per-extruder vector model
+(ticket 125). **Re-filed as
+[ticket 141](141-author-packet-p62-max-layer-height-tool-ordering-refiled.md),
+blocked on 122 + 125.** The authoring ticket for the key is 141, not 69.
+
 ### P63 — Extruder / Nozzle / Extruder geometry / mapping — tool-ordering (1 keys, Tier B)
 
 `extruder_ams_count`
+
+**Re-sized by ticket 70 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (machine-inventory `coStrings`, default `{}`) but
+its only slicing consumers feed the absent filament-grouping scorer (same
+subject as ticket 136's `master_extruder_id`), and the port has no
+per-extruder vector model (ticket 125). **Re-filed as
+[ticket 142](142-author-packet-p63-extruder-ams-count-refiled.md), blocked on
+06 + 125** (consider folding with 136 at claim time — same subject, same
+blocker). The authoring ticket for the key is 142, not 70.
 
 ### P64 — Extruder / Nozzle / Nozzle — tool-ordering (1 keys, Tier B)
 
 `nozzle_volume_type`
 
-### P65 — Multimaterial / Flush options — tool-ordering (3 keys, Tier B)
+**Re-sized by ticket 71 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (per-extruder `coEnums`, default `nvtStandard`)
+but every live slicing consumer feeds the absent multi-nozzle filament-grouping
+engine (`build_nozzle_groups` / `build_default_nozzle_list` nozzle list +
+`add_volume_type_limits` unprintable marking — same subject as ticket 136's
+`master_extruder_id` and ticket 142's `extruder_ams_count`), and the port has
+no per-extruder vector model (ticket 125). **Re-filed as
+[ticket 143](143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md), blocked on
+06 + 125** (consider folding with 136 and/or 142 at claim time — same subject,
+same blocker; the sibling `default_nozzle_volume_type` ruled out of scope by
+ticket 89 / P82 — preset-management, not grouping). The authoring
+ticket for the key is 143, not 71.
+
+### P65 — Multimaterial / Flush options — tool-ordering (3 keys, Tier B; packet 294)
 
 `flush_into_infill`, `flush_into_objects`, `flush_into_support`
 
-### P66 — Quality / Layer height — tool-ordering (3 keys, Tier B)
+**Authored by ticket 72 (2026-09-08): 3 keys in, none shed, packet 294.** Tier B held, owner corrected `tool-ordering` → `wipe-tower` (ordering ignores config and owns sequence only; the purge decision point is wipe-tower's — ticket-27/39/40 precedent); canonical per-object shape NOT held (DEV-186(a) scalar-global, object-config axis is the named future, explicitly not ticket 125); filament-assignment vetoes named non-borrow (DEV-186(b)); bridge roles never count (DEV-186(c)); order untouched (DEV-186(d)).
+
+### P66 — Quality / Layer height — tool-ordering (3 keys, Tier B; packet 295)
 
 `first_layer_print_sequence`, `other_layers_print_sequence`, `other_layers_print_sequence_nums`
 
-### P67 — Support / Support filament — tool-ordering (1 keys, Tier B)
+**Authored by ticket 73 (2026-09-08): 3 keys in, none shed, packet 295.** Tier B held, owner corrected `tool-ordering` → `crates/slicer-gcode` emission stage (no `ToolOrdering` module exists here; per-layer tool order is owned by host emission — ticket-27/39/40 precedent); canonical `coInts` shape NOT held (DEV-187(a) float-list + rounding, explicitly not ticket 125's axis); grouping-record ranges NOT held (DEV-187(b)); area-ordered first-layer base NOT held (DEV-187(c)); bounds enforced (DEV-187(d)); locked entities pinned (ADR-0062 conformance); defaults inert.
+
+### P67 — Support / Support filament — tool-ordering (1 key, Tier B)
 
 `support_interface_not_for_body`
+
+**Closed by ticket 74 (2026-09-08): direct implementation, no packet.** Tier B re-sized to direct at claim time — the decision point already exists (ticket-38 `SupportToolSelection` runtime seam); owner corrected `tool-ordering` → `slicer-runtime` entity assembly (no `ToolOrdering` module exists — ticket-27/39/40 precedent). No packet number taken.
 
 ### P68 — Cooling / Notes — layer-planner (1 keys, Tier B)
 
 `min_layer_height`
+
+**Re-sized by ticket 75 (2026-09-09): not authorable as a standalone packet.**
+The key is live in canonical (per-nozzle `coFloats`, default `{0.07}`) but its
+only live consumer is the variable-layer-height envelope the port lacks
+(uniform planner, no per-extruder vector model — the max-side sibling of ticket
+69/141, minus the tower consumer). **Re-filed as
+[ticket 144](144-author-packet-p68-min-layer-height-refiled.md), blocked on
+06 + 125** (fold candidate with 141 at claim time — same envelope). The
+authoring ticket for the key is 144, not 75.
 
 ### P69 — Others / Special mode — layer-planner (2 keys, Tier B)
 
@@ -367,15 +642,27 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `precise_z_height`
 
+**Re-sized by ticket 77 (2026-09-09): not authorable as a standalone packet.**
+The key is live in canonical (coBool, default false, per-object) but its
+last-5-layer redistribution clamps every adjusted height to the min/max
+envelope the port lacks (uniform planner, no min/max keys — the clamp bounds
+are the feature's core semantic, so no substitute clamp). **Re-filed as
+[ticket 145](145-author-packet-p70-precise-z-height-refiled.md), blocked on
+141 + 144.** The authoring ticket for the key is 145, not 77.
+
 ### P71 — Quality / Overhangs — slice-prepass (3 keys, Tier B)
 
 `make_overhang_printable`, `make_overhang_printable_angle`, `make_overhang_printable_hole_size`
 
-### P72 — Support / Tree supports — tree-support (8 keys, Tier B)
+### P72 — Support / Tree supports — tree-support (8 keys, Tier B; packet 298)
+
+**Authored by ticket 79 (2026-09-09): all 8 keys in, none shed, packet 298.** Tier B held, owners stand (planner `PrePass::SupportGeometry` + renderer `Layer::Support`); the six organic params are organic-engine-only reads (DEV-156 substitution preserved) and the two brim keys' classic reader was never built locally. Explicit-organic gate (DEV-189 scoping divergence — default/grid/snug-on-tree keep classic params); canonical scalarity held (no ticket-125 arm); no range rejection (saturate); `Print.cpp` validations ride 124; no padding edits. No queue-count change.
 
 `tree_support_angle_slow`, `tree_support_auto_brim`, `tree_support_branch_angle_organic`, `tree_support_branch_diameter_organic`, `tree_support_branch_distance_organic`, `tree_support_brim_width`, `tree_support_tip_diameter`, `tree_support_top_rate`
 
-### P73 — Strength / Advanced (Strength) — object-level planning (4 keys, Tier B)
+### P73 — Strength / Advanced (Strength) — object-level planning (4 keys, Tier B; packet 299)
+
+**Authored by ticket 80 (2026-09-09): all 4 keys in, none shed, packet 299.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (vertical shells, extra-solid layers, sparse grouping) plus the rectilinear sparse emitter (grouped-height arm, walls keep original height). Canonical default `ensure_all` makes vertical shells newly active at default (one intended output change, AC-pinned). Summed height rides a net-new `SlicedRegion.combined_infill_height` field + view accessor; DEV-190 (no `stInternalVoid` tri-typing; `interface_shells` gate is P76's; reslice-invalidation rides 124). No queue-count change.
 
 `ensure_vertical_shell_thickness`, `extra_solid_infills`, `infill_combination`, `infill_combination_max_layer_height`
 
@@ -383,47 +670,69 @@ ironing no longer rides the shared `ironing_enabled`.)
 
 `bottom_shell_thickness`, `top_shell_thickness`
 
-### P75 — Quality / Bridging — bridge-over-infill (3 keys, Tier B)
+### P75 — Quality / Bridging — bridge-over-infill (3 keys, Tier B; already live, no packet)
+
+**Closed by ticket 82 (2026-09-09): all 3 keys live, none shed, no packet.** The feature landed off-map as bridge-parity packets 233/234/234a (`implemented`); the decision points are the host seam (prepass `gate_internal_bridge_sites` qualification + `InfillPostProcess` anchored construction), not a guest module. `dont_filter_internal_bridges` (bool false = `ibfDisabled`) drives the multiplier 3/1 + partial-gate bypass; `internal_bridge_angle` (0.0 = automatic, [0,180]) drives the `determine_bridging_angle` override arm; `enable_extra_bridge_layer` (bool false = `eblDisabled`) drives the carrier-free duplicate pass. No queue-count change.
 
 `dont_filter_internal_bridges`, `enable_extra_bridge_layer`, `internal_bridge_angle`
 
-### P76 — Multimaterial / Multimaterial advanced — classic-perimeters (1 keys, Tier B)
+### P76 — Multimaterial / Multimaterial advanced — classic-perimeters (1 keys, Tier B; packet 301)
+
+**Authored by ticket 83 (2026-09-09): the 1 key in, none shed, packet 301.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (Pass-1 neighbour-source gate: same-timeline at `true`, collective all-timelines union at the canonical `false` default). Defaults are identity on single-body prints (one timeline: union equals own polys, AC-pinned); the `to_config_map` arm shadows the frozen padding twin, whose true spelling rides 132. DEV-192 (spiral-conjunct + vertical-merge + perimeter-mask + reslice non-borrows). No queue-count change.
 
 `interface_shells`
 
-### P77 — Quality / Bridging — classic-perimeters (2 keys, Tier B)
+### P77 — Quality / Bridging — classic-perimeters (2 keys, Tier B; packet 302)
+
+**Authored by ticket 84 (2026-09-10): the 2 keys in, none shed, packet 302.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (post-detection `bridge_orientation_deg` overwrite at `bridge_angle > 0`, the live `internal_bridge_angle` arm's exact semantics; hole-bearing unsupported-span authoring into `bridge_areas` — whole spans in `sacrificiallayer`, rims only in `partiallybridge`). Defaults are identity (`0` = automatic = pre-packet shape; `none` = off = pre-packet shape, AC-pinned); unknown enum spellings fall back to `none` (the `flat_bridge_closing_join` precedent); neither key has a padding twin (honest absence, rides 132). DEV-193 (relative-angle + align-offset + slice-union + reslice non-borrows). No queue-count change.
 
 `bridge_angle`, `counterbore_hole_bridging`
 
 ### P78 — Filament / Bed temperature — print-orchestration (1 keys, Tier B)
 
+**Folded by ticket 85 (2026-09-10) into [ticket 138](138-author-packet-p38-bed-temperature-selection-refiled.md)** (now P38+P78, 3 keys): `support_multi_bed_types` is the gate over 138's subject (`curr_bed_type` plate selection) — a standalone packet would be declaration-only (rule 1). The authoring ticket for the key is 138, not 85.
+
 `support_multi_bed_types`
 
 ### P79 — Printer / Machine / Print volume — print-orchestration (3 keys, Tier B)
 
+**Dissolved by ticket 86 (2026-09-10); all three keys folded into [ticket 124](124-author-packet-sequential-printing-and-toolhead-clearance.md)** (the ticket-32 note's instruction, confirmed — no "why not"): the keys' only slicing meaning is the sequential validator 124 owns (mode + `nozzle_height` already carried there), so a standalone packet would be declaration-only (rule 1). The TimelapsePosPicker rod/radius reads are a separable non-borrow (no picker seam in this tree). The authoring ticket for the keys is 124, not 86. No queue-count change.
+
 `extruder_clearance_height_to_lid`, `extruder_clearance_height_to_rod`, `extruder_clearance_radius`
 
-### P80 — Quality / Walls and surfaces — print-orchestration (1 keys, Tier B)
+### P80 — Quality / Walls and surfaces — print-orchestration (1 key, Tier B)
+
+**Dissolved by ticket 87 (2026-09-10); the single key folded into [ticket 124](124-author-packet-sequential-printing-and-toolhead-clearance.md)** (the ticket-32 note's instruction shape, confirmed — no "why not"): canonical's `extruder` assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config` + `normalize_fdm`, `PrintObject.cpp` — ticket 46's runtime seam already resolves those here), so a standalone packet would be 100% declaration-only (rule 1). The per-object identity the assignment needs is 124's sequential-printing feature. The authoring ticket for the key is 124, not 87. No queue-count change.
 
 `extruder`
 
 ### P81 — Extruder / Nozzle / Extruder geometry / mapping — config-resolution (5 keys, Tier B)
 
+**Re-filed by ticket 88 (2026-09-10) as [ticket 146](146-author-packet-p81-variant-identity-refiled.md), blocked on 125** (the ticket-28/39 shape): all five are per-extruder / per-filament-variant / per-process-variant vector keys whose live consumers (`get_filament_config_indx` / `get_nozzle_config_index` / `update_filament_self_index_cache`, `Print.cpp`) resolve a vector slot onto a printer inventory this port does not have; zero tree occurrences; a packet today would be 100% declaration-only (rule 1). The authoring ticket for the keys is 146, not 88. No queue-count change.
+
 `extruder_variant_list`, `filament_extruder_variant`, `filament_self_index`, `print_extruder_id`, `print_extruder_variant`
 
 ### P82 — Extruder / Nozzle / Nozzle — config-resolution (1 keys, Tier B)
+
+**Dissolved by ticket 89 (2026-09-10) as out of scope — preset-management, not slicing config** (the ticket-04 `default_bed_type` precedent under Authoring rule 3): `default_nozzle_volume_type` is the printer-profile side of the default/current pair and every canonical read is `PresetBundle` seeding / GUI-plate volume-map composition, with zero slicing-pipeline decision points. The authoring ticket for nothing — no re-file. Queue target 410 → 409.
 
 `default_nozzle_volume_type`
 
 ### P83 — Multimaterial / Filament for Features — config-resolution (2 keys, Tier B)
 
+**Re-filed by ticket 90 (2026-09-10) as [ticket 147](147-author-packet-p83-filament-map-refiled.md), blocked on 125** (the ticket-28/39 shape): both keys are the grouping engine's input (the map) and dispatch selector (the mode), and every live slicing consumer resolves a filament slot onto a per-extruder / nozzle inventory this port does not have (scalar `nozzle_diameter`, no nozzle list, no grouping scorer, no result table); zero tree occurrences; a packet today would be 100% declaration-only (rule 1). The authoring ticket for the keys is 147, not 90. No queue-count change.
+
 `filament_map`, `filament_map_mode`
 
 ### P84 — Others / G-code output — host-export (1 keys, Tier B)
 
+**Closed by [ticket 91](91-author-packet-p84-others-g-code-output-host-export.md) (2026-09-10) by direct implementation — no packet** (re-sized at claim time: one host key + a line-prefix rewrite, no new module/IR/WIT/seam). `gcode_add_line_number` is a `[host_runtime]` key read at the `crates/slicer-runtime` export seam and applied as the last export step to `SliceOutcome::gcode_text` (every line of the whole artifact prefixed `N<line> ` from 1); default `false` = byte-identical. Tier-B owner confirmed as written. No queue-count change.
+
 `gcode_add_line_number`
 
 ### P85 — Others / Post-processing Scripts — host-export (1 keys, Tier B)
+
+**Closed by [ticket 92](92-author-packet-p85-others-post-processing-scripts-host-export.md) (2026-09-10) by direct implementation — no packet** (re-sized at claim time: one host key + a shell-out at the export seam, no new module/IR/WIT/seam). `post_process` is a `[host_runtime]` `string-list` key read at the `crates/slicer-runtime` export seam; the configured commands run against the `<output>.pp` working copy and the rewritten text is folded back into `SliceOutcome::gcode_text`, before `gcode_add_line_number` (canonical order). Tier-B owner confirmed as written. Model-supplied values are refused (DEV-206 (a)). No queue-count change.
 
 `post_process`
 
@@ -450,5 +759,7 @@ ironing no longer rides the shared `ironing_enabled`.)
 `interlocking_boundary_avoidance`, `interlocking_depth`, `interlocking_orientation`
 
 ### P91 — Multimaterial / Multimaterial advanced — mmu-segmented-region (new module, 2 keys, Tier C)
+
+**Dissolved by ticket 98 (2026-09-10) — both keys were already live; no packet, no module.** They are `cli`-bound `ResolvedConfig` fields driving the host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`), this tree's port of canonical `cut_segmented_layers` (`MultiMaterialSegmentation.cpp`), with e2e coverage at non-default values in `crates/slicer-runtime/tests/executor/cube_4color_phase5_tdd.rs` (AC-5/AC-6/AC-7). They landed in `b18c00b3` (2026-06-13) and read `live=no` in ticket 01's asset only because its probe does not scrape `ResolvedConfig` `cli` declarations (ticket 149). Ticket 04's Tier-C rows contradicted its own "ResolvedConfig-only keys" special ruling and are corrected to A. The Tier-A residue — declaration — was implemented directly in ticket 98's session, in `docs/config/host-keys.toml` `[resolved_config]` (host built-in, so **not** a module manifest). A parity defect in the shipped pass — Phase 5 deletes the eroded area instead of returning it to BASE, where canonical falls back to the parent `LayerRegion` — is filed as [ticket 150](150-phase5-width-limit-drops-area-instead-of-returning-it-to-base.md). No re-file for the keys. Queue target 409 → 407.
 
 `mmu_segmented_region_interlocking_depth`, `mmu_segmented_region_max_width`

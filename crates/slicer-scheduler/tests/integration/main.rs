@@ -6,6 +6,7 @@
 #![allow(missing_docs)]
 
 mod capability_derived_anchor_closure;
+mod claim_holder_validation_tdd;
 
 #[test]
 fn capability_derived_anchor_closure() {

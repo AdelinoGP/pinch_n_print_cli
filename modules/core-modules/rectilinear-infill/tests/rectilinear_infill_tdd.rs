@@ -29,9 +29,8 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 /// explicit value wins.
 fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
-        .float("infill_angle", 45.0)
-        .float("infill_speed", 60.0)
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 45.0)
         .float("line_width", 0.45)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
@@ -57,9 +56,11 @@ fn baseline_config() -> ConfigViewBuilder {
 
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     baseline_config()
-        .float("infill_density", density)
-        .float("infill_angle", angle)
-        .float("infill_speed", speed)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
+        .float("infill_direction", angle)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         .build()
 }
@@ -337,8 +338,8 @@ fn speed_factor_from_config() {
     }
 }
 
-/// Test 9: per-region `infill_density` override (packet 131 / TASK-256) is
-/// read through `slicer_sdk::config_resolution` and overrides the
+/// Test 9: per-region `sparse_infill_density` override (packet 131 / TASK-256)
+/// is read through `slicer_sdk::config_resolution` and overrides the
 /// module-global default set in `from_config`.
 ///
 /// Module-global density 0.2 (line_width=0.4 → spacing 2mm → ~5 lines on a
@@ -368,10 +369,13 @@ fn per_region_density_overrides_module_global() {
         count_a
     );
 
-    // Region B: per-region infill_density = 0.4. Spacing = 0.4/0.4 = 1mm.
+    // Region B: per-region sparse_infill_density = 40 (40%). Spacing = 0.4/0.4 = 1mm.
     let mut region_b = make_square_region(10.0, 0.3);
     let mut fields = HashMap::new();
-    fields.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.4));
+    fields.insert(
+        "sparse_infill_density".into(),
+        slicer_ir::ConfigValue::Float(40.0),
+    );
     region_b.set_config(ConfigView::from_map(fields));
 
     let mut output_b = InfillOutputBuilder::new();

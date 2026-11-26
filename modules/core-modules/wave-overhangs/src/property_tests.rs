@@ -683,7 +683,7 @@ fn params_from(
         flow_width: units_to_mm(width_units),
         flow_ratio: (ratio_millis as f32) / 1000.0,
         base_spacing: SEAM_BASE_SPACING_MM,
-        wall_count: SEAM_WALL_COUNT,
+        wall_loops: SEAM_WALL_COUNT,
     }
 }
 
@@ -1015,7 +1015,7 @@ fn revalidate_case(case: &WaveCase, limits: &WaveLimits) -> Result<(RectMm, f64,
         || case.params.min_length != 0.0
         || case.params.min_new_area != SEAM_MIN_NEW_AREA_MM2
         || case.params.base_spacing != SEAM_BASE_SPACING_MM
-        || case.params.wall_count != SEAM_WALL_COUNT
+        || case.params.wall_loops != SEAM_WALL_COUNT
     {
         return Err("a fixed fixture parameter changed".to_owned());
     }

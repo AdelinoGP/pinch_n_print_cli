@@ -1,9 +1,9 @@
 //! TDD tests for aligned seam modes (TASK-274, packet 168).
 //!
 //! AC-1: `"aligned"` and `"aligned_back"` parse in `from_config` and
-//! round-trip through `seam_mode()`.
+//! round-trip through `seam_position()`.
 //! AC-N1: explicitly-unknown strings are still rejected with the exact
-//! `unknown seam_mode: <value>` message.
+//! `unknown seam_position: <value>` message.
 
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 fn config_with_mode(mode: &str) -> ConfigView {
     let mut map = HashMap::new();
     map.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String(mode.to_string()),
     );
     ConfigView::from_map(map)
@@ -32,22 +32,22 @@ fn config_with_mode(mode: &str) -> ConfigView {
 fn aligned_mode_parses() {
     let module =
         SeamPlacer::from_config(&config_with_mode("aligned")).expect("\"aligned\" must parse");
-    assert_eq!(module.seam_mode(), "aligned");
+    assert_eq!(module.seam_position(), "aligned");
 
     let module = SeamPlacer::from_config(&config_with_mode("aligned_back"))
         .expect("\"aligned_back\" must parse");
-    assert_eq!(module.seam_mode(), "aligned_back");
+    assert_eq!(module.seam_position(), "aligned_back");
 }
 
 #[test]
 fn unknown_mode_still_rejected() {
     let err = match SeamPlacer::from_config(&config_with_mode("diagonal")) {
-        Ok(_) => panic!("unknown seam_mode must be rejected"),
+        Ok(_) => panic!("unknown seam_position must be rejected"),
         Err(err) => err,
     };
     let msg = format!("{err:?}");
     assert!(
-        msg.contains("unknown seam_mode: diagonal"),
+        msg.contains("unknown seam_position: diagonal"),
         "error must contain exact message, got: {msg}"
     );
 }

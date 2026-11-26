@@ -58,7 +58,7 @@ fn three_tool_polygon_fragments_into_three_regions() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
@@ -136,7 +136,7 @@ fn inner_wall_respects_material_boundary() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
@@ -184,7 +184,7 @@ fn inner_wall_respects_material_boundary() {
         .collect();
     assert!(
         !inner_walls.is_empty(),
-        "wall_count=3 must produce inner walls to partition"
+        "wall_loops=3 must produce inner walls to partition"
     );
 
     // (a) Inner walls straddling the transition are flagged as a MaterialBoundary.
@@ -238,7 +238,7 @@ fn degenerate_polygon_no_panic() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
@@ -282,11 +282,11 @@ fn degenerate_polygon_no_panic() {
         )
         .expect("degenerate region must be skipped gracefully, not error out");
 
-    let wall_count = output.wall_loops().len();
+    let wall_loops = output.wall_loops().len();
     assert_eq!(
-        wall_count,
+        wall_loops,
         0,
-        "degenerate (0- and 2-vertex) polygons must emit zero walls, got {wall_count}: {:?}",
+        "degenerate (0- and 2-vertex) polygons must emit zero walls, got {wall_loops}: {:?}",
         output
             .wall_loops()
             .iter()
@@ -312,7 +312,7 @@ fn hole_with_thin_wall_emits_thin_wall() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .float("nozzle_diameter", 0.4)
@@ -414,7 +414,7 @@ fn gap_fill_in_overhang_region() {
         // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
         // reads need the full classic surface; this closure's own keys override it.
         crate::common::classic_perimeters_baseline()
-            .int("wall_count", 1)
+            .int("wall_loops", 1)
             .float("outer_wall_line_width", 0.4)
             .float("inner_wall_line_width", 0.4)
             .float("gap_infill_speed", 30.0)
@@ -501,7 +501,7 @@ fn gap_fill_in_overhang_region() {
         .count();
     assert_eq!(
         lobe_off, 1,
-        "without the overhang bonus the wide lobe keeps base wall_count=1; got {lobe_off}"
+        "without the overhang bonus the wide lobe keeps base wall_loops=1; got {lobe_off}"
     );
     assert_eq!(
         lobe_on, 2,
@@ -517,7 +517,7 @@ fn gap_fill_in_overhang_region() {
 /// A region flagged as an exposed top surface (`top_shell_index == Some(0)`)
 /// must have that classification propagate into perimeter generation: under
 /// `only_one_wall_top` the top region collapses to a single wall, while an
-/// otherwise-identical non-top region keeps the full `wall_count`. (This module
+/// otherwise-identical non-top region keeps the full `wall_loops`. (This module
 /// carries no per-vertex "top" flag; the observable propagation of the
 /// top-surface classification is this wall-count collapse.)
 #[test]
@@ -525,7 +525,7 @@ fn top_flagged_region_propagates_flag() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_top", true)
@@ -578,7 +578,7 @@ fn top_flagged_region_propagates_flag() {
     );
     assert_eq!(
         non_top_walls, 3,
-        "non-top region must keep the full wall_count=3; got {non_top_walls}"
+        "non-top region must keep the full wall_loops=3; got {non_top_walls}"
     );
 }
 
@@ -588,13 +588,13 @@ fn top_flagged_region_propagates_flag() {
 
 /// `only_one_wall_first_layer` overrides the perimeter count on the first layer
 /// (index 0) only: layer 0's output collapses to a single wall while an
-/// interior layer keeps the default `wall_count`.
+/// interior layer keeps the default `wall_loops`.
 #[test]
 fn first_layer_override_applies() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_first_layer", true)
@@ -646,6 +646,6 @@ fn first_layer_override_applies() {
     );
     assert_eq!(
         interior_layer_walls, 2,
-        "interior layer must use the default wall_count=2; got {interior_layer_walls}"
+        "interior layer must use the default wall_loops=2; got {interior_layer_walls}"
     );
 }

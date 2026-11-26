@@ -485,7 +485,25 @@ fn observations_have(population: &[Observation], key: &str, raw: &str) -> bool {
 }
 
 fn values_match(expected: Option<&ConfigValue>, delivered: Option<&ConfigValue>) -> bool {
-    matches!((expected, delivered), (Some(left), Some(right)) if left == right)
+    match (expected, delivered) {
+        (Some(left), Some(right)) => {
+            if left == right {
+                return true;
+            }
+            // Several resolved-config fields are `f32` (the registry reports
+            // them as `float`). The delivered view carries the `f32` value
+            // widened back to `f64`, so the hand-derived `f64` literal differs
+            // in the low bits (`0.2` -> `0.20000000298023224`). Accept the
+            // exact `f32` widening of the authored value; every other variant
+            // still compares exactly.
+            matches!(
+                (left, right),
+                (ConfigValue::Float(expected), ConfigValue::Float(delivered))
+                    if f64::from(*expected as f32) == *delivered
+            )
+        }
+        _ => false,
+    }
 }
 
 #[test]

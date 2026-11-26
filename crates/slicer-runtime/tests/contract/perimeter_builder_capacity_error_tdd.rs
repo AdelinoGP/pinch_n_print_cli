@@ -28,7 +28,7 @@ fn square_region(z: f32) -> SliceRegionView {
 
 fn config_with_wall_count(n: i64) -> ConfigView {
     classic_perimeters_baseline()
-        .int("wall_count", n)
+        .int("wall_loops", n)
         // Already-expanded base width (bound-view shape): the percent-typed
         // overlap keys resolve against the role width derived from it.
         .float("line_width", 0.4)
@@ -41,7 +41,7 @@ fn config_with_wall_count(n: i64) -> ConfigView {
 /// per-invocation `wall_count` from the call-site config, so this value is
 /// only what satisfies the fail-closed `require_int` read.
 fn base_module_config() -> ConfigView {
-    classic_perimeters_baseline().int("wall_count", 3).build()
+    classic_perimeters_baseline().int("wall_loops", 3).build()
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn capacity_one_wall_loop_accepts_one_rejects_second() {
 
     let region = square_region(0.2);
 
-    // wall_count=1: one wall fits within capacity=1
+    // wall_loops=1: one wall fits within capacity=1
     let config1 = config_with_wall_count(1);
     let mut output1 = PerimeterOutputBuilder::with_capacity(Some(1), None, None, None);
     let result1 = module.run_perimeters(
@@ -93,10 +93,10 @@ fn capacity_one_wall_loop_accepts_one_rejects_second() {
     );
     assert!(
         result1.is_ok(),
-        "capacity=1 with wall_count=1 should succeed"
+        "capacity=1 with wall_loops=1 should succeed"
     );
 
-    // wall_count=2: second wall exceeds capacity=1
+    // wall_loops=2: second wall exceeds capacity=1
     let config2 = config_with_wall_count(2);
     let mut output2 = PerimeterOutputBuilder::with_capacity(Some(1), None, None, None);
     let result2 = module.run_perimeters(
@@ -108,7 +108,7 @@ fn capacity_one_wall_loop_accepts_one_rejects_second() {
     );
     assert!(
         result2.is_err(),
-        "capacity=1 with wall_count=2 should reject the second wall"
+        "capacity=1 with wall_loops=2 should reject the second wall"
     );
     let err = result2.unwrap_err();
     assert!(
@@ -156,7 +156,7 @@ fn capacity_zero_seam_candidates_rejects_push() {
     let region = square_region(0.2);
     let config = config_with_wall_count(1);
 
-    // wall_count=1 succeeds, but seam_candidates capacity=0 rejects.
+    // wall_loops=1 succeeds, but seam_candidates capacity=0 rejects.
     let mut output = PerimeterOutputBuilder::with_capacity(None, None, Some(0), None);
     let result = module.run_perimeters(
         0,

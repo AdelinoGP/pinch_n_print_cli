@@ -192,6 +192,11 @@ fn synthesize_population(registry: &ConfigSchemaRegistry) -> serde_json::Value {
         let wire = wire_value_for(entry);
         object.insert(canonical.to_owned(), wire_to_json(&entry.field_type, &wire));
     }
+    // `post_process` is an execution hook, not an authored value: the
+    // synthesized `""` default would decode as one empty command and the run
+    // would try to execute it. Author the empty script list so the key is
+    // still populated (recognized) without side effects.
+    object.insert("post_process".to_owned(), serde_json::json!([]));
     serde_json::Value::Object(object)
 }
 

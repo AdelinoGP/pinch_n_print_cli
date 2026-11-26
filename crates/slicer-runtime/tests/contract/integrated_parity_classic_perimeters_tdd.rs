@@ -86,7 +86,7 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
     // always holds the module's contract-required reads at manifest defaults.
     let config = Arc::new(
         classic_perimeters_baseline()
-            .int("wall_count", 3)
+            .int("wall_loops", 3)
             .float("line_width", 0.4)
             .build(),
     );
@@ -105,7 +105,7 @@ fn integrated_parity_classic_perimeters_native_matches_wasm() {
     let mut region_map = slicer_ir::RegionMapIR::default();
     let mut resolved = slicer_ir::ResolvedConfig {
         line_width: 0.4,
-        wall_count: 3,
+        wall_loops: 3,
         ..Default::default()
     };
     for (key, value) in config.iter_entries() {

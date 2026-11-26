@@ -1107,7 +1107,7 @@ pub fn verify_driver() -> Result<(), String> {
 
     let mut config = slicer_ir::ResolvedConfig {
         sparse_fill_holder: "lightning-infill".to_owned(),
-        infill_density: 0.15,
+        sparse_infill_density: 15.0,
         layer_height: 0.2,
         line_width: 0.4,
         ..slicer_ir::ResolvedConfig::default()
@@ -1205,7 +1205,7 @@ pub fn driver_positive_witness() -> Result<(), String> {
     let slices = driver_slice(&layers, "obj_0", 3, &[]);
     let config = slicer_ir::ResolvedConfig {
         sparse_fill_holder: "lightning-infill".to_owned(),
-        infill_density: 0.15,
+        sparse_infill_density: 15.0,
         layer_height: 0.2,
         line_width: 0.4,
         ..slicer_ir::ResolvedConfig::default()

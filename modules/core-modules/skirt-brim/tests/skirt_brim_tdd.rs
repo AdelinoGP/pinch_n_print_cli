@@ -480,7 +480,10 @@ fn brim_quantises_on_the_canonical_flow_spacing() {
     fields.insert("brim_object_gap".to_string(), ConfigValue::Float(0.1));
     fields.insert("min_skirt_length".to_string(), ConfigValue::Float(0.0));
     fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    fields.insert("first_layer_height".to_string(), ConfigValue::Float(0.2));
+    fields.insert(
+        "initial_layer_print_height".to_string(),
+        ConfigValue::Float(0.2),
+    );
     let cfg = ConfigView::from_map(fields);
 
     let sb = SkirtBrim::from_config(&cfg).unwrap();

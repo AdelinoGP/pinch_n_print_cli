@@ -185,10 +185,8 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
     output.interface_paths().to_vec()
 }
 
-/// Test 1: `from_config` at the manifest defaults resolves the auto support
-/// line width (1.125 × 0.4 nozzle) and disabled support. Every key the
-/// module reads is declared in the manifest, so the fixture seeds the same
-/// defaults the registry does.
+/// Test 1: from_config with empty config uses defaults (canonical auto:
+/// absent `support_line_width` falls back to `line_width`, 0.4 here).
 #[test]
 fn from_config_defaults() {
     let config = config_with(&[
@@ -206,7 +204,7 @@ fn from_config_defaults() {
     ]);
     let module = TreeSupport::from_config(&config).unwrap();
     assert!(!module.enabled());
-    assert!((module.line_width() - 0.45).abs() < 0.001);
+    assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
 /// Test 2: from_config reads custom config values.
@@ -383,6 +381,73 @@ fn interface_pitch_derives_from_interface_flow_over_line_width() {
     assert!(doubled.len() < baseline.len());
     assert_eq!(fallback_zero.len(), baseline.len());
     assert_eq!(fallback_negative.len(), baseline.len());
+}
+
+/// P29 (ticket 36): a non-default `support_line_width` changes the extruded
+/// width (rule 6b behaviour-change evidence); auto `0` falls back to
+/// `line_width` per canonical `Flow::support_material_flow`.
+#[test]
+fn support_line_width_non_default_drives_extruded_width() {
+    fn paths_with_width(flow: f64, support_width: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
+        let config = ConfigView::from_map(std::collections::HashMap::from([
+            ("enable_support".to_string(), ConfigValue::Bool(true)),
+            // Fail-closed manifest declarations.
+            ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+            ("layer_height".to_string(), ConfigValue::Float(0.2)),
+            (
+                "support_base_pattern_spacing".to_string(),
+                ConfigValue::Float(2.5),
+            ),
+            (
+                "support_interface_spacing".to_string(),
+                ConfigValue::Float(0.4),
+            ),
+            (
+                "support_bottom_interface_spacing".to_string(),
+                ConfigValue::Float(0.4),
+            ),
+            ("tree_support_wall_count".to_string(), ConfigValue::Int(1)),
+            ("support_speed".to_string(), ConfigValue::Float(50.0)),
+            (
+                "support_line_width".to_string(),
+                ConfigValue::Float(support_width),
+            ),
+            // `support_interface_flow` is declared `percent`.
+            (
+                "support_interface_flow".to_string(),
+                ConfigValue::Percent(flow),
+            ),
+        ]));
+        let module = TreeSupport::from_config(&config).unwrap();
+        let region = make_square_region(10.0, 0.3);
+        let paint = paint_with_interface_plan();
+        let mut output = SupportOutputBuilder::new();
+        module
+            .run_support(
+                0,
+                &[region],
+                &paint,
+                &mut output,
+                &mut slicer_sdk::LayerCollectionBuilder::new(),
+                &config,
+            )
+            .unwrap();
+        output.interface_paths().to_vec()
+    }
+
+    let baseline = paths_with_width(100.0, 0.4);
+    let wide = paths_with_width(100.0, 0.8);
+    assert!(!baseline.is_empty() && !wide.is_empty());
+    for (path, _) in &baseline {
+        for point in &path.points {
+            assert_eq!(point.width, 0.4);
+        }
+    }
+    for (path, _) in &wide {
+        for point in &path.points {
+            assert_eq!(point.width, 0.8);
+        }
+    }
 }
 
 #[test]

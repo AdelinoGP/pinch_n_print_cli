@@ -112,7 +112,6 @@ group   = "Wave Overhangs"
 type    = "float"
 default = 25.0
 min     = 1.0
-max     = 300.0
 display = "Bridge Speed"
 group   = "Bridging"
 # ADR-0069: the feedrate table is built once per whole print, so no sub-print
@@ -139,7 +138,7 @@ group   = "Bridging"
 type    = "float_or_percent"
 default = "100%"
 min     = 10.0
-max     = 120.0
+max     = 125.0
 display = "Bridge Density"
 group   = "Bridging"
 
@@ -147,6 +146,28 @@ group   = "Bridging"
 type    = "bool"
 default = false
 display = "Thick Bridges"
+group   = "Bridging"
+
+[config.schema.internal_bridge_density]
+type    = "float_or_percent"
+default = "100%"
+min     = 10.0
+max     = 125.0
+display = "Internal Bridge Density"
+group   = "Bridging"
+
+[config.schema.internal_bridge_flow]
+type    = "float"
+default = 1.0
+min     = 0.0
+max     = 2.0
+display = "Internal Bridge Flow"
+group   = "Bridging"
+
+[config.schema.thick_internal_bridges]
+type    = "bool"
+default = true
+display = "Thick Internal Bridges"
 group   = "Bridging"
 
 [config.schema.nozzle_diameter]
@@ -160,12 +181,12 @@ group   = "Printer"
 # ADR-0069: tool-capable — statable at tool scope, denied at every narrower scope.
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
-[config.schema.wall_count]
+[config.schema.wall_loops]
 type    = "int"
-default = 3
+default = 2
 min     = 1
 max     = 10
-display = "Wall Count"
+display = "Wall Loops"
 group   = "Walls"
 
 [config.schema.layer_height]

@@ -127,7 +127,7 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         "initial_layer_line_width".to_string(),
         slicer_ir::ConfigValue::Float(0.0),
     );
-    fields.insert("wall_count".to_string(), slicer_ir::ConfigValue::Int(3));
+    fields.insert("wall_loops".to_string(), slicer_ir::ConfigValue::Int(3));
     fields.insert(
         "extra_perimeters".to_string(),
         slicer_ir::ConfigValue::Int(0),

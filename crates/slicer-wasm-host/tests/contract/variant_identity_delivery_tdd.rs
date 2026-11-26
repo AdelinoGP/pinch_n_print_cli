@@ -65,7 +65,7 @@ fn ordered_fixture_with_missing_holder(
     for (tool, width) in variants {
         let config = map.intern_config(ResolvedConfig {
             line_width: width,
-            infill_density: 0.2,
+            sparse_infill_density: 20.0,
             sparse_fill_holder: if missing_holder && tool == 2 {
                 "com.test.missing"
             } else if missing_holder || !fill_roles || tool == 2 {
@@ -147,7 +147,7 @@ fn module_config() -> Arc<ConfigView> {
     // module baseline; exact per-variant config must override its line width.
     let mut map = HashMap::new();
     for (key, value) in [
-        ("infill_density", 0.2),
+        ("sparse_infill_density", 20.0),
         ("line_width", 0.8),
         ("bridge_line_width", 0.0),
         ("initial_layer_line_width", 0.0),
@@ -165,8 +165,7 @@ fn module_config() -> Arc<ConfigView> {
         ("sparse_infill_speed", 60.0),
         ("internal_bridge_angle", 0.0),
         ("infill_shift_step", 0.0),
-        ("infill_angle", 45.0),
-        ("infill_speed", 60.0),
+        ("infill_direction", 45.0),
     ] {
         map.insert(key.into(), ConfigValue::Float(value));
     }

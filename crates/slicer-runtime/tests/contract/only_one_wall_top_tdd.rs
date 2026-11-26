@@ -2,11 +2,11 @@
 //
 // AC-4: When a SliceRegionView has top_shell_index == Some(0) and config
 // only_one_wall_top = true, run_perimeters must emit exactly 1 outer wall
-// (loop_type = Outer) and zero inner walls regardless of wall_count.
-// With only_one_wall_top = false the configured wall_count (4) is respected.
+// (loop_type = Outer) and zero inner walls regardless of wall_loops.
+// With only_one_wall_top = false the configured wall_loops (4) is respected.
 //
 // AC-N2 (non_top_layer_case): When top_shell_index == None and
-// only_one_wall_top = true, wall_count must remain at the configured base (4).
+// only_one_wall_top = true, wall_loops must remain at the configured base (4).
 
 use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
@@ -19,7 +19,7 @@ use slicer_sdk::views::SliceRegionView;
 /// over the bound-view baseline (packet 06 5c-prime).
 fn config_4_walls(only_one_wall_top: bool) -> ConfigView {
     classic_perimeters_baseline()
-        .int("wall_count", 4)
+        .int("wall_loops", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_top", only_one_wall_top)
         .build()
@@ -139,7 +139,7 @@ fn top_layer_respects_wall_count_when_flag_disabled() {
     );
 }
 
-/// AC-N2: top_shell_index == None, only_one_wall_top = true → wall_count unchanged at 4.
+/// AC-N2: top_shell_index == None, only_one_wall_top = true → wall_loops unchanged at 4.
 #[test]
 fn non_top_layer_case() {
     let config = config_4_walls(true);
@@ -163,7 +163,7 @@ fn non_top_layer_case() {
 }
 
 /// AC-4 sub_top_layer_carve_case: top_shell_index == Some(1), top_solid_fill covers right half,
-/// only_one_wall_top = true, base wall_count = 4.
+/// only_one_wall_top = true, base wall_loops = 4.
 ///
 /// Expected: the split produces TWO outer walls (one per portion). The top portion
 /// (right half) emits exactly 1 outer wall and 0 inner walls. The non-top portion
@@ -198,7 +198,7 @@ fn sub_top_layer_carve_case() {
     );
     assert_eq!(
         inner_count, 3,
-        "sub-top carve: non-top portion must emit 3 inner walls (wall_count=4, 1 outer + 3 inner); got {inner_count}"
+        "sub-top carve: non-top portion must emit 3 inner walls (wall_loops=4, 1 outer + 3 inner); got {inner_count}"
     );
 }
 

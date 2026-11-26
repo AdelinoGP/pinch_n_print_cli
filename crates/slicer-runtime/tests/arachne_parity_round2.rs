@@ -251,7 +251,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
     );
     config.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
     config.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
-    config.insert("wall_count".to_string(), ConfigValue::Int(3));
+    config.insert("wall_loops".to_string(), ConfigValue::Int(3));
     config.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
     config.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
     config.insert("support_raft_layers".to_string(), ConfigValue::Int(0));
@@ -327,7 +327,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
     let config_id = region_map.intern_config(slicer_ir::ResolvedConfig {
         layer_height: 0.2,
         line_width: 0.45,
-        wall_count: 3,
+        wall_loops: 3,
         ..Default::default()
     });
     region_map.entries.insert(

@@ -236,7 +236,7 @@ fn parse_sparse_blocks(gcode: &str) -> Vec<SparseBlock> {
 /// "a modifier does not add wall loops" is only meaningful against an
 /// independently-established per-contour loop count. Reading it from the
 /// fixture's own output would make the assertion self-fulfilling; hardcoding it
-/// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_count` key
+/// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_loops` key
 /// is not usable here — it reports 2 while the emitted geometry carries 3 loops
 /// per contour, a discrepancy tracked separately as TASK-299 in
 /// `docs/07_implementation_status.md`.)
@@ -365,8 +365,9 @@ fn modifier_infill_two_densities() {
     // claim cannot be falsified from gcode alone: the per-region delivery
     // populates `LayerPlanIR.active_regions[].resolved_config` (verified at
     // IR level) but the gcode emitter at
-    // `crates/slicer-gcode/src/serialize.rs:440` emits a single hardcoded
-    // `sparse_infill_density = 15%` per slice, not per-region values. Adding
+    // `crates/slicer-gcode/src/serialize.rs` emits a single
+    // `sparse_infill_density = 20` (the typed default; wayfinder ticket 107
+    // replaced the padding twin) per slice, not per-region values. Adding
     // per-region emission is a > 20-line emitter change and is out of scope
     // for this packet (would be a follow-up). The gcode-observable check is
     // that sparse infill actually ran: at least one `;TYPE:Sparse infill`

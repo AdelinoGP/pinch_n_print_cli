@@ -67,7 +67,7 @@ fn make_config(only_one_wall_top: bool) -> ConfigView {
     base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", BASE_MAX_BEAD_COUNT)
         .bool("only_one_wall_top", only_one_wall_top)
         .build()
@@ -136,7 +136,7 @@ fn only_one_wall_top_second_pass() {
         .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", false)
         // Required-read baseline (packet 06 5c', item 11): see make_config;
@@ -169,7 +169,7 @@ fn only_one_wall_top_second_pass() {
         .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", true)
         // Required-read baseline (packet 06 5c', item 11): see make_config.
@@ -331,7 +331,7 @@ fn only_one_wall_top_second_pass_publishes_infill_areas() {
     let config = base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", 6)
         .bool("only_one_wall_top", true)
         // The second-pass function reads this via `require_abs_value`, so the
@@ -407,7 +407,7 @@ fn only_one_wall_top_infill_contour_includes_the_top_wall_band() {
     let config = base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", 6)
         .bool("only_one_wall_top", true)
         // The second-pass function reads this via `require_abs_value`, so the

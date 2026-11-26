@@ -10,8 +10,8 @@
 //! The split is performed at `Layer::Perimeters` commit by
 //! `slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice`
 //! (`crates/slicer-runtime/src/region_partition.rs`), which already partitions
-//! the four canonical fill polygons (bridge > bottom > top > sparse) and is the
-//! place where sub-regions are minted from modifier cross-sections.
+//! the five canonical fill polygons (bridge > bottom > top > internal > sparse)
+//! and is the place where sub-regions are minted from modifier cross-sections.
 //!
 //! # Test contract for the implementation worker
 //!

@@ -28,7 +28,11 @@ fn resolve_global_config(
         &source,
         bounds,
         &ResolutionTarget::default(),
-        &ExpansionContext::default(),
+        &ExpansionContext {
+            // The default `line_width` auto expansion needs a positive base.
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
     ) {
         Ok(config) => Ok(config),
         Err(ResolutionError::Application(error)) => Err(error),
@@ -41,7 +45,7 @@ fn resolve_global_config(
 /// module manifest `[config.schema]` entries for the rest).
 fn fixture_field_type(key: &str) -> &'static str {
     match key {
-        "wall_count" => "int",
+        "wall_loops" => "int",
         "wall_widths" => "float-list",
         "min_width_top_surface" => "float_or_percent",
         _ => "float",
@@ -277,43 +281,43 @@ fn rejects_negative_support_branch_merge_distance() {
 
 #[test]
 fn accepts_boundary_min() {
-    // `wall_count` is an Int-typed declared field so the value lands on the
+    // `wall_loops` is an Int-typed declared field so the value lands on the
     // matching `ResolvedConfig` slot via `apply_cli_key`.
-    let bounds = single_module_bounds("wall_count", Some(2.0), Some(8.0));
+    let bounds = single_module_bounds("wall_loops", Some(2.0), Some(8.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(2));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(2));
 
     let resolved = resolve_global_config(&source, &bounds).expect("min boundary must accept");
-    assert_eq!(resolved.wall_count, 2);
+    assert_eq!(resolved.wall_loops, 2);
 }
 
 #[test]
 fn accepts_boundary_max() {
-    let bounds = single_module_bounds("wall_count", Some(2.0), Some(8.0));
+    let bounds = single_module_bounds("wall_loops", Some(2.0), Some(8.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(8));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(8));
 
     let resolved = resolve_global_config(&source, &bounds).expect("max boundary must accept");
-    assert_eq!(resolved.wall_count, 8);
+    assert_eq!(resolved.wall_loops, 8);
 }
 
 #[test]
 fn accepts_when_only_min_declared() {
-    let bounds = single_module_bounds("wall_count", Some(1.0), None);
+    let bounds = single_module_bounds("wall_loops", Some(1.0), None);
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(1_000));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(1_000));
 
     resolve_global_config(&source, &bounds).expect("unbounded above: large value must accept");
 }
 
 #[test]
 fn rejects_below_min_when_only_min_declared() {
-    let bounds = single_module_bounds("wall_count", Some(1.0), None);
+    let bounds = single_module_bounds("wall_loops", Some(1.0), None);
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(0));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(0));
 
     let err = resolve_global_config(&source, &bounds).expect_err("below min must reject");
-    assert_out_of_range(err, "wall_count", 0.0, None);
+    assert_out_of_range(err, "wall_loops", 0.0, None);
 }
 
 #[test]
@@ -410,12 +414,12 @@ fn no_bounds_declared_accepts_any_value() {
 #[test]
 fn int_value_coerced_to_f64_for_check() {
     // Int values are coerced to f64 for the bounds comparison.
-    let bounds = single_module_bounds("wall_count", Some(0.0), Some(100.0));
+    let bounds = single_module_bounds("wall_loops", Some(0.0), Some(100.0));
     let mut source = HashMap::new();
-    source.insert("wall_count".to_string(), ConfigValue::Int(2_000_000_000));
+    source.insert("wall_loops".to_string(), ConfigValue::Int(2_000_000_000));
 
     let err = resolve_global_config(&source, &bounds).expect_err("Int above max must reject");
-    assert_out_of_range(err, "wall_count", 2_000_000_000.0, None);
+    assert_out_of_range(err, "wall_loops", 2_000_000_000.0, None);
 }
 
 #[test]
@@ -447,30 +451,30 @@ fn intersection_strictest_min_max_wins() {
     let bounds = ConfigBoundsIndex::from_modules([
         &fixture_module(
             "mod.a",
-            fixture_entries("wall_count", Some(0.0), Some(10.0)),
+            fixture_entries("wall_loops", Some(0.0), Some(10.0)),
         ),
         &fixture_module(
             "mod.b",
-            fixture_entries("wall_count", Some(5.0), Some(100.0)),
+            fixture_entries("wall_loops", Some(5.0), Some(100.0)),
         ),
     ]);
 
     let mut below = HashMap::new();
-    below.insert("wall_count".to_string(), ConfigValue::Int(3));
+    below.insert("wall_loops".to_string(), ConfigValue::Int(3));
     let err =
         resolve_global_config(&below, &bounds).expect_err("3 below strictest min (5) must reject");
-    assert_out_of_range(err, "wall_count", 3.0, None);
+    assert_out_of_range(err, "wall_loops", 3.0, None);
 
     let mut inside = HashMap::new();
-    inside.insert("wall_count".to_string(), ConfigValue::Int(7));
+    inside.insert("wall_loops".to_string(), ConfigValue::Int(7));
     let resolved = resolve_global_config(&inside, &bounds).expect("7 inside [5,10] must accept");
-    assert_eq!(resolved.wall_count, 7);
+    assert_eq!(resolved.wall_loops, 7);
 
     let mut above = HashMap::new();
-    above.insert("wall_count".to_string(), ConfigValue::Int(50));
+    above.insert("wall_loops".to_string(), ConfigValue::Int(50));
     let err = resolve_global_config(&above, &bounds)
         .expect_err("50 above strictest max (10) must reject");
-    assert_out_of_range(err, "wall_count", 50.0, None);
+    assert_out_of_range(err, "wall_loops", 50.0, None);
 }
 
 #[test]
@@ -479,13 +483,13 @@ fn intersection_empty_range_rejects_all_values() {
     // intersection is empty (5 < 10). Every value must be rejected.
     let bounds = ConfigBoundsIndex::from_declarations([
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(0.0),
             max: Some(5.0),
             module_id: "mod.a".to_string(),
         },
         BoundsDeclaration {
-            key: "wall_count".to_string(),
+            key: "wall_loops".to_string(),
             min: Some(10.0),
             max: Some(100.0),
             module_id: "mod.b".to_string(),
@@ -494,7 +498,7 @@ fn intersection_empty_range_rejects_all_values() {
 
     for v in [-5, 0, 3, 7, 50, 200] {
         let mut source = HashMap::new();
-        source.insert("wall_count".to_string(), ConfigValue::Int(v));
+        source.insert("wall_loops".to_string(), ConfigValue::Int(v));
         let err = resolve_global_config(&source, &bounds)
             .expect_err("every value must reject when intersection is empty");
         match err {
@@ -587,4 +591,152 @@ fn percent_bounds_accepts_float_or_percent_value_within_range() {
 
     resolve_global_config(&source, &bounds)
         .expect("float_or_percent value within declared bounds must accept");
+}
+
+// ── Host `[speeds]` bounds (wayfinder ticket 113) ───────────────────────────
+//
+// `FeedrateConfig` had no bounds machinery at all: `read_speed`
+// (`crates/slicer-ir/src/feedrate.rs`) coerces any numeric value and returns
+// `None` otherwise, so a configured `0` or a negative reached
+// `DefaultGCodeEmitter::resolve_feedrate` (`crates/slicer-gcode/src/emit.rs`),
+// which applies no floor and emits `F0` or a negative feedrate. Before this,
+// only the 14 of 26 `SPEED_KEYS` that some module manifest happened to also
+// declare were range-checked; the rest were unchecked.
+//
+// Canonical declares `def->min` on these keys but never enforces it —
+// `set_deserialize` ignores it and `Print::validate`'s speed check is commented
+// out — so rejecting is a deliberate divergence, not parity. See ticket 113.
+
+/// The bounds index seeds host speed bounds even with no modules loaded.
+fn host_speed_bounds() -> ConfigBoundsIndex {
+    ConfigBoundsIndex::from_modules(std::iter::empty::<&slicer_scheduler::LoadedModule>())
+}
+
+#[test]
+fn host_speed_keys_are_bounds_checked_without_any_module_declaring_them() {
+    // `travel_speed` is one of the 12 keys no module manifest declares, so
+    // before ticket 113 nothing checked it at all.
+    let bounds = host_speed_bounds();
+    let mut source = HashMap::new();
+    source.insert("travel_speed".to_string(), ConfigValue::Float(-5.0));
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("a negative travel speed must reject, not emit a negative F");
+    assert_out_of_range(err, "travel_speed", -5.0, None);
+}
+
+#[test]
+fn zero_is_rejected_for_a_speed_that_has_no_zero_meaning() {
+    // `top_surface_speed` carries canonical `min = 1` and neither canonical
+    // nor ADR-0072 gives it a zero sentinel, so a 0 would reach the emitter as
+    // F0.
+    let bounds = host_speed_bounds();
+    let mut source = HashMap::new();
+    source.insert("top_surface_speed".to_string(), ConfigValue::Float(0.0));
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("zero top surface speed must reject — it would emit F0");
+    assert_out_of_range(err, "top_surface_speed", 0.0, None);
+}
+
+#[test]
+fn zero_is_accepted_for_the_volumetric_auto_speeds() {
+    // ADR-0072: `0` on exactly these three keys selects the emitter-owned
+    // volumetric AUTO speed (`role_base_speed_mm_per_s`,
+    // `crates/slicer-gcode/src/emit.rs`). Canonical declares `min = 1` on all
+    // three, so this floor is the port's deliberate deviation; a `1.0` floor
+    // here rejected the sentinel before the emitter could honour it.
+    let bounds = host_speed_bounds();
+    for key in ["outer_wall_speed", "inner_wall_speed", "gap_infill_speed"] {
+        let mut source = HashMap::new();
+        source.insert(key.to_string(), ConfigValue::Float(0.0));
+        resolve_global_config(&source, &bounds).unwrap_or_else(|e| {
+            panic!("zero must be accepted for volumetric AUTO key `{key}`: {e:?}")
+        });
+
+        // The floor moved to 0, not away: a negative still rejects.
+        let mut negative = HashMap::new();
+        negative.insert(key.to_string(), ConfigValue::Float(-1.0));
+        let err = resolve_global_config(&negative, &bounds)
+            .expect_err("a negative AUTO-key speed must still reject");
+        assert_out_of_range(err, key, -1.0, None);
+    }
+}
+
+#[test]
+fn zero_is_accepted_for_the_sentinel_speeds() {
+    // Canonical assigns zero a meaning on these keys, so the bound admits it:
+    // `skirt_speed` 0 = default layer extrusion speed, `travel_speed_z` 0 = use
+    // `travel_speed`, `overhang_*_speed` 0 = use the wall speed,
+    // `filament_ironing_speed` 0 = use `ironing_speed`.
+    let bounds = host_speed_bounds();
+    for key in [
+        "skirt_speed",
+        "travel_speed_z",
+        "overhang_1_4_speed",
+        "overhang_2_4_speed",
+        "overhang_3_4_speed",
+        "overhang_4_4_speed",
+        "wipe_speed",
+        "filament_ironing_speed",
+    ] {
+        let mut source = HashMap::new();
+        source.insert(key.to_string(), ConfigValue::Float(0.0));
+        resolve_global_config(&source, &bounds)
+            .unwrap_or_else(|e| panic!("zero must be accepted for sentinel key `{key}`: {e:?}"));
+    }
+}
+
+#[test]
+fn wipe_tower_max_purge_speed_carries_canonical_min_ten() {
+    // The bound ticket 108 recorded as inexpressible. Canonical declares
+    // `min = 10` on this key in `PrintConfigDef::init_fff_params`.
+    let bounds = host_speed_bounds();
+    let mut source = HashMap::new();
+    source.insert(
+        "wipe_tower_max_purge_speed".to_string(),
+        ConfigValue::Float(9.0),
+    );
+    let err = resolve_global_config(&source, &bounds).expect_err("below canonical min 10 rejects");
+    assert_out_of_range(err, "wipe_tower_max_purge_speed", 9.0, None);
+
+    let mut ok = HashMap::new();
+    ok.insert(
+        "wipe_tower_max_purge_speed".to_string(),
+        ConfigValue::Float(10.0),
+    );
+    resolve_global_config(&ok, &bounds).expect("exactly the canonical min is accepted");
+}
+
+#[test]
+fn no_speed_key_carries_an_upper_bound() {
+    // No canonical speed key declares a `max`. The `max = 300.0` rows that used
+    // to sit on the module-manifest twins were a PnP invention and would have
+    // rejected legitimate high-speed profiles; this pins their removal.
+    let bounds = host_speed_bounds();
+    for (key, _, max) in slicer_ir::feedrate::speed_bounds() {
+        assert!(
+            max.is_none(),
+            "`{key}` declares an upper bound; canonical declares none for any speed key"
+        );
+        let mut source = HashMap::new();
+        source.insert(key.to_string(), ConfigValue::Float(1000.0));
+        resolve_global_config(&source, &bounds)
+            .unwrap_or_else(|e| panic!("1000 mm/s must be accepted for `{key}`: {e:?}"));
+    }
+}
+
+#[test]
+fn every_speed_key_is_bounds_checked() {
+    // The registration table and the bounds table cannot drift: every key the
+    // emitter reads is range-checked at config resolution.
+    let bounds = host_speed_bounds();
+    for (key, min, _) in slicer_ir::feedrate::speed_bounds() {
+        let mut source = HashMap::new();
+        source.insert(key.to_string(), ConfigValue::Float(min - 1.0));
+        let err = resolve_global_config(&source, &bounds)
+            .err()
+            .unwrap_or_else(|| panic!("`{key}` must reject a value below its min {min}"));
+        assert_out_of_range(err, key, min - 1.0, None);
+    }
 }

@@ -827,7 +827,7 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 fn resolved_config_for_height(layer_height: f32) -> ResolvedConfig {
     ResolvedConfig {
         layer_height: layer_height as f64,
-        first_layer_height: layer_height as f64,
+        initial_layer_print_height: layer_height as f64,
         ..ResolvedConfig::default()
     }
 }

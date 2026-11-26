@@ -242,7 +242,7 @@ fn arachne_params_from_config(
         line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
-    let wall_count = config.require_int("wall_count")?.max(0) as u32;
+    let wall_loops = config.require_int("wall_loops")?.max(0) as u32;
     // extra_perimeters (TASK-328): per-region bonus wall count, read with the
     // value-identical expression classic-perimeters uses so the two generators
     // cannot drift on clamping/defaulting.
@@ -257,14 +257,14 @@ fn arachne_params_from_config(
     // Canonical `process_arachne` (`PerimeterGenerator.cpp`) passes
     // `WallToolPaths(..., coord_t(loop_number + 1), ...)` with
     // `loop_number = wall_loops + extra_perimeters - 1`, so `inset_count`
-    // is `wall_count + extra_perimeters`. A zero/absent max_bead_count therefore
-    // means "auto-derive `2 * (wall_count + extra_perimeters)`" (even, and —
+    // is `wall_loops + extra_perimeters`. A zero/absent max_bead_count therefore
+    // means "auto-derive `2 * (wall_loops + extra_perimeters)`" (even, and —
     // unlike a fixed manifest default — actually tracks both keys). A positive
     // value is an explicit advanced override (e.g. the `max_bead_count_cap`
     // parity fixture) and is honoured verbatim.
     let max_bead_count = match max_bead_count_explicit {
         Some(v) if v > 0 => v as u32,
-        _ => (2 * (wall_count + extra_perimeters)).max(1),
+        _ => (2 * (wall_loops + extra_perimeters)).max(1),
     };
     let distribution_count = config
         .get_int("wall_distribution_count")
@@ -1467,7 +1467,7 @@ mod tests {
         );
         fields.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
         fields.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
-        fields.insert("wall_count".to_string(), ConfigValue::Int(3));
+        fields.insert("wall_loops".to_string(), ConfigValue::Int(3));
         fields.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
         fields.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
         fields.insert(

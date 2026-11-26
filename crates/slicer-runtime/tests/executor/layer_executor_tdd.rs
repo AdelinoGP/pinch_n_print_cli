@@ -8,11 +8,6 @@
 
 use crate::common::seed::seed_slice_ir as seed_mesh_slice_ir;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
-
 use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
@@ -27,6 +22,10 @@ use slicer_runtime::{
     WasmArtifactMetadata,
 };
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 // ============================================================================
 // Test 1: Layers processed in parallel with deterministic stage ordering
@@ -273,7 +272,10 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
 
 #[test]
 fn layer_executor_continues_on_non_fatal_module_error() {
-    // Arrange: Create a plan with 2 layers; first module in each layer returns non-fatal error
+    // Arrange: Create a plan with 2 layers; the first module in each layer
+    // returns a non-fatal error. The trailing `Layer::Infill` stage then
+    // commits real IR, so the assertions can observe that execution continued
+    // *through* the layer — not merely that nothing panicked.
     let mesh = Arc::new(mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 2);
     let plan = execution_plan_fixture(
@@ -290,7 +292,7 @@ fn layer_executor_continues_on_non_fatal_module_error() {
     let runner = ScriptedRunner::new()
         .with_non_fatal_error(0, "Layer::Perimeters", "com.example.perimeters")
         .with_non_fatal_error(1, "Layer::Perimeters", "com.example.perimeters")
-        .with_default_success();
+        .with_infill_commit_after_non_fatal();
 
     // Act
     let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
@@ -298,6 +300,47 @@ fn layer_executor_continues_on_non_fatal_module_error() {
     // Assert: Should succeed despite non-fatal errors
     let layer_outputs = result.expect("per-layer executor should continue on non-fatal errors");
     assert_eq!(layer_outputs.len(), 2);
+
+    // The injected errors must actually have fired. Without this, a runner
+    // that silently ignored the non-fatal key would make every continuation
+    // assertion below vacuous.
+    let mut fired = runner.non_fatal_fired();
+    fired.sort();
+    assert_eq!(
+        fired,
+        non_fatal_keys(),
+        "both injected non-fatal errors must be observed by the runner"
+    );
+
+    // Continuation, observed directly: on every layer the stage scheduled
+    // *after* the non-fatal error still ran.
+    let mut continued = runner.ran_after_non_fatal();
+    continued.sort();
+    assert_eq!(
+        continued,
+        vec![
+            (
+                0,
+                String::from("Layer::Infill"),
+                String::from("com.example.infill"),
+            ),
+            (
+                1,
+                String::from("Layer::Infill"),
+                String::from("com.example.infill"),
+            ),
+        ],
+        "the stage after the non-fatal error must still run on every layer"
+    );
+
+    // And the later stage's output landed: the layers were not abandoned after
+    // the non-fatal error.
+    for (layer_index, layer) in layer_outputs.iter().enumerate() {
+        assert!(
+            !layer.ordered_entities.is_empty(),
+            "layer {layer_index} must carry the Infill commit issued after the non-fatal error"
+        );
+    }
 
     // Verify both layers were fully processed (Infill should have run after non-fatal Perimeters)
     let invocations = runner.invocations();
@@ -311,6 +354,23 @@ fn layer_executor_continues_on_non_fatal_module_error() {
             "layer {layer_index} should complete all stages despite non-fatal error"
         );
     }
+}
+
+/// The two `(layer, stage, module)` triples the continuation test injects,
+/// in sorted order (rayon worker order across layers is not deterministic).
+fn non_fatal_keys() -> Vec<(u32, String, String)> {
+    vec![
+        (
+            0,
+            String::from("Layer::Perimeters"),
+            String::from("com.example.perimeters"),
+        ),
+        (
+            1,
+            String::from("Layer::Perimeters"),
+            String::from("com.example.perimeters"),
+        ),
+    ]
 }
 
 // ============================================================================
@@ -363,6 +423,16 @@ struct ScriptedRunner {
     fatal_errors: HashMap<(u32, String, String), String>,
     /// Non-fatal errors by (layer_index, stage_id, module_id)
     non_fatal_errors: HashMap<(u32, String, String), String>,
+    /// Non-fatal keys that actually fired, in firing order.
+    non_fatal_fired: Mutex<Vec<(u32, String, String)>>,
+    /// Layers where a non-fatal error has already been observed.
+    non_fatal_layers: Mutex<HashSet<u32>>,
+    /// Invocations that ran after a non-fatal error on the same layer.
+    ran_after_non_fatal: Mutex<Vec<(u32, String, String)>>,
+    /// When true, `Layer::Infill` commits real IR on layers that already
+    /// reported a non-fatal error, so the test can observe that the later
+    /// stage's output actually landed.
+    commit_infill_after_non_fatal: bool,
     /// Recorded invocations: (layer_index, stage_id, module_id)
     invocations: Mutex<Vec<(u32, String, String)>>,
     /// Invocation counter for generating unique arena IDs
@@ -375,6 +445,10 @@ impl ScriptedRunner {
             expected_sequence: Vec::new(),
             fatal_errors: HashMap::new(),
             non_fatal_errors: HashMap::new(),
+            non_fatal_fired: Mutex::new(Vec::new()),
+            non_fatal_layers: Mutex::new(HashSet::new()),
+            ran_after_non_fatal: Mutex::new(Vec::new()),
+            commit_infill_after_non_fatal: false,
             invocations: Mutex::new(Vec::new()),
             invocation_counter: AtomicU32::new(0),
         }
@@ -410,12 +484,28 @@ impl ScriptedRunner {
         self
     }
 
+    /// Commit a real `InfillIR` on any layer whose earlier stage reported a
+    /// non-fatal error. This is the observable half of "the host logged and
+    /// continued": a later stage's commit must reach the layer output.
+    fn with_infill_commit_after_non_fatal(mut self) -> Self {
+        self.commit_infill_after_non_fatal = true;
+        self
+    }
+
     fn with_default_success(self) -> Self {
         self
     }
 
     fn invocations(&self) -> Vec<(u32, String, String)> {
         self.invocations.lock().unwrap().clone()
+    }
+
+    fn non_fatal_fired(&self) -> Vec<(u32, String, String)> {
+        self.non_fatal_fired.lock().unwrap().clone()
+    }
+
+    fn ran_after_non_fatal(&self) -> Vec<(u32, String, String)> {
+        self.ran_after_non_fatal.lock().unwrap().clone()
     }
 }
 
@@ -442,10 +532,33 @@ impl LayerStageRunner for ScriptedRunner {
             });
         }
 
-        // Non-fatal errors: return None (continue with next module).
-        // The old NonFatalError variant is no longer part of the trait return type;
-        // non-fatal behaviour is expressed by returning Ok(None).
-        let _non_fatal = self.non_fatal_errors.get(&key);
+        // Non-fatal errors: the trait return type has no `NonFatalError`
+        // variant, so the "host logs and continues" contract is expressed by
+        // committing nothing for this stage and letting the executor advance.
+        // Record what fired so the test cannot pass without exercising it.
+        if let Some(message) = self.non_fatal_errors.get(&key) {
+            self.non_fatal_fired.lock().unwrap().push(key.clone());
+            self.non_fatal_layers.lock().unwrap().insert(layer.index);
+            log::warn!(
+                "scripted runner: module {} at stage {} reported non-fatal error: {}",
+                module.module_id,
+                stage_id,
+                message
+            );
+            return Ok(None);
+        }
+
+        // Observable continuation: a stage scheduled after the non-fatal error
+        // commits real IR, proving the executor did not abandon the layer.
+        if self.commit_infill_after_non_fatal
+            && stage_id == "Layer::Infill"
+            && self.non_fatal_layers.lock().unwrap().contains(&layer.index)
+        {
+            self.ran_after_non_fatal.lock().unwrap().push(key);
+            let mut infill = infill_ir_two_regions();
+            infill.global_layer_index = layer.index;
+            return Ok(Some(LayerStageCommit::Infill(infill)));
+        }
 
         Ok(None)
     }

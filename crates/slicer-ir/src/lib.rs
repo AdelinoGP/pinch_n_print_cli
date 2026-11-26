@@ -3,6 +3,7 @@
 //! All IR types are shared contracts between the host and modules.
 //! Every IR struct carries a `schema_version: SemVer`.
 
+#![recursion_limit = "256"]
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
@@ -26,8 +27,9 @@ pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use prepared_regions::PreparedRegionData;
 pub use resolved_config::{
-    classify_declared_key, is_declared_float_or_percent_key, ConfigResolutionError,
-    DeclaredKeyKind, ResolvedConfig, DEFAULT_RESOLUTION_MM, RESOLUTION_FLOOR_MM,
+    classify_declared_key, is_declared_float_or_percent_key, parse_orca_point_string,
+    ConfigResolutionError, DeclaredKeyKind, ResolvedConfig, DEFAULT_RESOLUTION_MM,
+    RESOLUTION_FLOOR_MM,
 };
 pub use slice_ir::{AggregatedRegionSplitEntry, RegionSplitValueType};
 pub use stage_io::{

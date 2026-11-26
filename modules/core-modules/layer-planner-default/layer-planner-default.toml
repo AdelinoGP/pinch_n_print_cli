@@ -36,9 +36,9 @@ max     = 1.0
 display = "Layer Height"
 group   = "Layer Planning"
 
-[config.schema.first_layer_height]
+[config.schema.initial_layer_print_height]
 type    = "float"
-default = 0.3
+default = 0.2
 min     = 0.01
 max     = 1.0
 display = "First Layer Height"

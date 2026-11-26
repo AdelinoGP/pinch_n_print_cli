@@ -552,20 +552,21 @@ fn config_block_includes_user_passed() {
 }
 
 #[test]
-fn config_block_uses_resolved_wall_count_and_precision_over_raw_orca_aliases() {
+fn config_block_uses_resolved_wall_loops_and_precision_over_raw_orca_aliases() {
     let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
     let config = PipelineConfig {
         default_resolved_config: Arc::new(ResolvedConfig {
-            wall_count: 3,
+            wall_loops: 3,
             gcode_resolution: 0.025,
             ..ResolvedConfig::default()
         }),
         ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
     };
-    let raw = HashMap::from([
-        ("wall_loops".into(), ConfigValue::Int(99)),
-        ("resolution".into(), ConfigValue::Float(0.5)),
-    ]);
+    // `resolution` is the appendix's Orca spelling of PnP `gcode_resolution`;
+    // the resolved value must beat the raw alias spelling. `wall_loops` is the
+    // same spelling on both sides after the canonical rename, so it arrives
+    // through the resolved map directly.
+    let raw = HashMap::from([("resolution".into(), ConfigValue::Float(0.5))]);
 
     let gcode = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
         .expect("pipeline should succeed")

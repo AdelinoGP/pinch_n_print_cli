@@ -22,7 +22,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use slicer_config::resolution::{resolve_scope_stack, ResolutionError, ResolutionTarget};
+use slicer_config::resolution::{
+    resolve_scope_stack, resolved_target_key, ResolutionError, ResolutionTarget,
+};
 use slicer_config::{ConfigSchemaRegistry, ExpansionContext, ScopedConfig};
 use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 use slicer_ir::{
@@ -236,42 +238,6 @@ fn cap_exceeded(
     }
 }
 
-const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
-
-fn append_key_part(key: &mut String, value: &str) {
-    use std::fmt::Write as _;
-    let _ = write!(key, "{}:{value}", value.len());
-}
-
-fn resolved_target_key(
-    object_id: &str,
-    modifier_ids: &[String],
-    paint_semantics: &[String],
-    tool_index: Option<u32>,
-) -> String {
-    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
-        return object_id.to_owned();
-    }
-    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
-    append_key_part(&mut key, object_id);
-    key.push('|');
-    for modifier_id in modifier_ids {
-        append_key_part(&mut key, modifier_id);
-        key.push(',');
-    }
-    key.push('|');
-    for semantic in paint_semantics {
-        append_key_part(&mut key, semantic);
-        key.push(',');
-    }
-    key.push('|');
-    if let Some(tool_index) = tool_index {
-        use std::fmt::Write as _;
-        let _ = write!(key, "{tool_index}");
-    }
-    key
-}
-
 fn ordered_modifier_ids(modifier_volumes: &[ModifierVolume]) -> Vec<String> {
     let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
     order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
@@ -359,6 +325,33 @@ fn resolved_target_config_for_layer(
     Ok(host_config.and_then(|(configs, _)| {
         resolved_target_config(configs, object_id, modifier_volumes, chain, tool_index).cloned()
     }))
+}
+
+/// Apply a paint-semantic / per-tool `ResolvedConfig` on top of a base config.
+///
+/// Delegates to [`ResolvedConfig::overlay_onto`] with `origin` naming the
+/// config the overlay was *resolved from* (`ResolvedConfig::default()` for the
+/// compatibility path, where overlays are built from defaults). A field is
+/// copied only when it differs from `origin` — i.e. only when the overlay
+/// explicitly set it — which implements the documented
+/// `global < per_object < per_paint_semantic < per_tool` precedence: an
+/// inherited value the overlay never touched cannot clobber a
+/// lower-precedence override, and "override back to the default" is
+/// expressible (wayfinder ticket 126; the old hand-written
+/// compare-against-`default()` diff had both defects, plus a 28-of-83
+/// field allowlist).
+///
+/// The production path does not need this: the runtime precomputes every
+/// target stack with tool-last precedence, and
+/// [`resolved_target_config_for_layer`] returns it whole. This helper keeps
+/// the compatibility entry points (no host authority) faithful to the same
+/// precedence rules.
+fn overlay_resolved(
+    base: ResolvedConfig,
+    overlay: &ResolvedConfig,
+    origin: &ResolvedConfig,
+) -> ResolvedConfig {
+    ResolvedConfig::overlay_onto(base, overlay, origin)
 }
 
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
@@ -965,6 +958,13 @@ pub fn execute_region_mapping_inner(
                 .unwrap_or(&empty_variants);
             let chains = enumerate_canonical_chains(variants_for_obj, &canonical_order);
 
+            // Resolution origin of the compatibility paint/tool overlays: the
+            // legacy entry points have no host global base and build their
+            // overlays from `ResolvedConfig::default()`, so the default is the
+            // correct origin there (wayfinder ticket 126). The production path
+            // never reads this — it returns whole pre-resolved target stacks.
+            let overlay_origin = ResolvedConfig::default();
+
             // `paint_semantic_configs` is keyed by `PaintSemantic`; the chain
             // fold below matches a chain's semantic *name* against
             // `paint_semantic_namespace_key` in lexical namespace order.
@@ -1016,7 +1016,7 @@ pub fn execute_region_mapping_inner(
                     if let Some(sem_cfg) = paint_semantic_configs.get(*sem_key) {
                         paint_overrides.insert((*sem_key).clone(), sem_cfg.clone());
                         if host_config.is_none() {
-                            effective = sem_cfg.clone();
+                            effective = overlay_resolved(effective, sem_cfg, &overlay_origin);
                         }
                     }
                 }
@@ -1030,12 +1030,14 @@ pub fn execute_region_mapping_inner(
                 }
 
                 // Compatibility callers without the production target map can
-                // still provide a fully resolved tool target.
+                // still provide a fully resolved tool target. Overlay it last
+                // (highest precedence) against its default origin so inherited
+                // fields do not clobber lower-precedence overrides.
                 if host_config.is_none() {
                     if let Some(tool_config) =
                         chain_tool_index.and_then(|index| tool_configs.get(&index))
                     {
-                        effective = tool_config.clone();
+                        effective = overlay_resolved(effective, tool_config, &overlay_origin);
                     }
                 }
 
@@ -1073,17 +1075,54 @@ pub fn execute_region_mapping_inner(
                             &chain,
                             chain_tool_index,
                             layer.z,
-                        )?
-                        .unwrap_or_else(|| base_config.clone());
-                        let child_config = stamp_pre_resolved_sub_region_configs(
-                            base_config.clone(),
-                            resolved_child_config,
-                            modifiers,
-                            parent_region_id,
-                            sub_id,
-                        )
-                        .remove(&sub_id)
-                        .expect("modifier config helper always emits the child entry");
+                        )?;
+                        let child_config = match resolved_child_config {
+                            Some(resolved) => stamp_pre_resolved_sub_region_configs(
+                                base_config.clone(),
+                                resolved,
+                                modifiers,
+                                parent_region_id,
+                                sub_id,
+                            )
+                            .remove(&sub_id)
+                            .expect("modifier config helper always emits the child entry"),
+                            None => {
+                                // Compatibility path: no pre-resolved target
+                                // stack, so compose the child as
+                                // base → modifiers → paint → tool, the same
+                                // precedence the production resolver applies.
+                                let mut child = stamp_modifier_sub_region_configs(
+                                    base_config.clone(),
+                                    parent_region_id,
+                                    sub_id,
+                                    modifiers,
+                                )
+                                .remove(&sub_id)
+                                .expect("modifier config helper always emits the child entry");
+                                if host_config.is_none() {
+                                    // Same lexical-namespace overlay order
+                                    // as the parent chain fold above.
+                                    for (sem_key, namespace) in &configured {
+                                        if !chain.iter().any(|(sem_name, _)| sem_name == namespace)
+                                        {
+                                            continue;
+                                        }
+                                        if let Some(sem_cfg) = paint_semantic_configs.get(*sem_key)
+                                        {
+                                            child =
+                                                overlay_resolved(child, sem_cfg, &overlay_origin);
+                                        }
+                                    }
+                                    if let Some(tool_config) =
+                                        chain_tool_index.and_then(|index| tool_configs.get(&index))
+                                    {
+                                        child =
+                                            overlay_resolved(child, tool_config, &overlay_origin);
+                                    }
+                                }
+                                child
+                            }
+                        };
 
                         let key = RegionKey {
                             global_layer_index: layer.index,

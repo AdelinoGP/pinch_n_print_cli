@@ -3292,7 +3292,7 @@ fn prior_region(case: &OrchCase, region: &OrchRegion) -> InfillRegion {
 fn region_config() -> ConfigView {
     ConfigViewBuilder::new()
         .float("line_width", 0.4)
-        .float("infill_density", 0.2)
+        .float("sparse_infill_density", 20.0)
         .float("layer_height", 0.2)
         .float("infill_overlap", f64::from(INFILL_OVERLAP))
         .float_or_percent("infill_anchor_max", 20.0, false)

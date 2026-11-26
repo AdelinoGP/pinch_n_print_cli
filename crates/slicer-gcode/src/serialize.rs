@@ -83,6 +83,11 @@ pub struct DefaultGCodeSerializer {
     top_surface_line_width: f32,
     /// Extrusion width for support material in mm (resolved from config; defaults to 0.4).
     support_line_width: f32,
+    /// Manual filament change (OrcaSlicer `manual_filament_change`, default
+    /// false). When true, toolchanges serialize as canonical's
+    /// `GCodeWriter::toolchange_prefix` tag line (`; MANUAL_TOOL_CHANGE T<n>`)
+    /// instead of the bare `T<n>` command.
+    manual_filament_change: bool,
     /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
     gcode_xy_decimals: u32,
 }
@@ -111,6 +116,7 @@ impl DefaultGCodeSerializer {
             sparse_infill_line_width: 0.45,
             top_surface_line_width: 0.42,
             support_line_width: 0.4,
+            manual_filament_change: false,
             gcode_xy_decimals: 3,
         }
     }
@@ -124,6 +130,14 @@ impl DefaultGCodeSerializer {
     /// Sets the resolved support extrusion width in millimeters.
     pub fn with_support_line_width(mut self, width_mm: f32) -> Self {
         self.support_line_width = width_mm;
+        self
+    }
+
+    /// Sets manual-filament-change mode (OrcaSlicer `manual_filament_change`).
+    /// Wired from the resolved config in `run_slice`; default false keeps the
+    /// bare `T<n>` toolchange emission.
+    pub fn with_manual_filament_change(mut self, enabled: bool) -> Self {
+        self.manual_filament_change = enabled;
         self
     }
 
@@ -319,6 +333,14 @@ pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigVal
     map.insert(
         "gcode_resolution".into(),
         ConfigValue::String(cfg.gcode_resolution.to_string()),
+    );
+    // `sparse_infill_density` is Orca's `coPercent` key. The module-facing
+    // map carries the raw percent magnitude as a float (fail-closed module
+    // reads require a numeric `Float`), but Orca's appendix reader
+    // (`ConfigOptionPercent::deserialize`) expects the `20%` spelling.
+    map.insert(
+        "sparse_infill_density".into(),
+        ConfigValue::Percent(f64::from(cfg.sparse_infill_density)),
     );
     map
 }
@@ -595,8 +617,8 @@ fn translate_appendix_enum<'a>(key: &str, value: &'a str) -> &'a str {
         // `s_keys_map_WallDirection` is `ccw` / `cw`.
         ("wall_direction", "counter_clockwise") => "ccw",
         ("wall_direction", "clockwise") => "cw",
-        // The appendix alias renders `seam_mode` under Orca's `seam_position`
-        // name. PnP spells the rear-position variant `rear`; Orca's
+        // seam-placer / seam-planner-default declare Orca's `seam_position`
+        // name, but PnP spells the rear-position variant `rear`; Orca's
         // `s_keys_map_SeamPosition` is `back`.
         ("seam_position", "rear") => "back",
         // `dont_filter_internal_bridges` is a *bool* in PnP (a deliberate
@@ -688,7 +710,7 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("wipe_tower_no_sparse_layers", "0"),
     ("wipe_tower_x", "15"),
     ("wipe_tower_y", "220"),
-    ("wipe_tower_width", "60"),
+    ("prime_tower_width", "60"),
     ("gap_fill_target", "nowhere"),
     ("enable_arc_fitting", "0"),
     ("extra_perimeters_on_overhangs", "0"),
@@ -740,12 +762,6 @@ const SUPPORT_CONFIG_DEFAULTS: &[(&str, &str)] = &[
 /// (`ironing_enabled`), not a rename. Padding-only values remain Orca defaults,
 /// not evidence of PnP's effective settings.
 const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
-    // classic-/arachne-perimeters read `wall_count`; Orca names the same
-    // plain-integer count `wall_loops`.
-    ("wall_loops", "wall_count"),
-    // gyroid-/rectilinear-infill read `infill_angle`; Orca names the same
-    // degrees value `infill_direction`.
-    ("infill_direction", "infill_angle"),
     // `resolution` is a real PnP key now (slicing-time contour simplification),
     // so it renders itself. It used to alias `gcode_resolution`, which is a
     // *different* mechanism (emission-time per-role Douglas-Peucker): the
@@ -755,18 +771,10 @@ const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
     // Legacy Slic3r spelling of the support toggle; the resolved bool is
     // `enable_support`.
     ("support_material", "enable_support"),
-    // seam-placer / seam-planner-default read `seam_mode`; Orca names the
-    // enum `seam_position`.
-    ("seam_position", "seam_mode"),
     // slicer-scheduler reads `spiral_vase` (`SPIRAL_VASE_CONFIG_KEY` in
     // `crates/slicer-scheduler/src/execution_plan.rs`); Orca names the bool
     // `spiral_mode`.
     ("spiral_mode", "spiral_vase"),
-    // fuzzy-skin reads the non-namespaced `thickness` / `point_distance`;
-    // Orca names them `fuzzy_skin_thickness` / `fuzzy_skin_point_distance`
-    // (03-asset-scoped-gap.md; rename workstream ticket 103).
-    ("fuzzy_skin_thickness", "thickness"),
-    ("fuzzy_skin_point_distance", "point_distance"),
 ];
 
 /// Render an alias source value into the appendix's scalar spelling, or `None`
@@ -774,8 +782,8 @@ const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
 /// default then stands). Bools render as `1`/`0` — the only two literals
 /// OrcaSlicer's `ConfigOptionBool::deserialize` accepts. String values pass
 /// through [`translate_appendix_enum`] keyed by the *appendix* name, so an
-/// alias whose PnP-internal spelling differs from OrcaSlicer's wire value
-/// (`seam_mode`'s `rear` → `seam_position`'s `back`) is canonicalized too.
+/// alias whose PnP-internal spelling differs from OrcaSlicer's wire value is
+/// canonicalized too.
 fn render_appendix_alias_value(value: &ConfigValue, appendix_key: &str) -> Option<String> {
     match value {
         ConfigValue::Bool(b) => Some(u8::from(*b).to_string()),
@@ -1058,6 +1066,13 @@ impl DefaultGCodeSerializer {
                     output.push_str(&self.flavor.set_temperature(*tool, *celsius, *wait));
                 }
                 GCodeCommand::ToolChange { to, .. } => {
+                    // Wayfinder ticket 50 (P43): manual-filament-change mode
+                    // emits canonical `GCodeWriter::toolchange_prefix`'s tag
+                    // line (the ` MANUAL_TOOL_CHANGE ` reserved tag) before
+                    // the tool-select command. Default false keeps `T<n>`.
+                    if self.manual_filament_change {
+                        output.push_str("; MANUAL_TOOL_CHANGE ");
+                    }
                     output.push('T');
                     push_u64_digits(output, *to as u64);
                     output.push('\n');
@@ -1485,12 +1500,10 @@ mod tests {
         // generators received wall_count = 1 or 3.
         for wall_count in [1, 3] {
             let cfg = ResolvedConfig {
-                wall_count,
+                wall_loops: wall_count,
                 ..ResolvedConfig::default()
             };
-            let mut map = resolved_config_to_map(&cfg);
-            // An Orca-named raw field is not the setting PnP applied.
-            map.insert("wall_loops".into(), ConfigValue::Int(99));
+            let map = resolved_config_to_map(&cfg);
             let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
             let actual: Vec<_> = block
                 .lines()
@@ -1510,7 +1523,7 @@ mod tests {
         let mut cfg = ResolvedConfig {
             gcode_resolution: 0.025,
             infill_resolution: 0.08,
-            infill_angle: 30.0,
+            infill_direction: 30.0,
             ..ResolvedConfig::default()
         };
         cfg.extensions
@@ -1599,8 +1612,8 @@ mod tests {
     /// Helper coverage ({`appendix_enum_translation_is_a_pure_rename`}) is not
     /// path coverage: a PnP-internal spelling reaching
     /// `serialize_config_block` must be canonicalized in the emitted line —
-    /// including the `seam_mode` alias (rendered under Orca's `seam_position`)
-    /// and the two keys PnP models as bools but Orca declares as `coEnum`s.
+    /// including `seam_position`'s PnP-internal `rear` variant and the two
+    /// keys PnP models as bools but Orca declares as `coEnum`s.
     /// Wire tokens follow the pinned `s_keys_map_WallSequence`,
     /// `s_keys_map_PerimeterGeneratorType`, `s_keys_map_WallDirection`,
     /// `s_keys_map_SeamPosition`, and `s_keys_map_InternalBridgeFilter` maps.
@@ -1624,7 +1637,7 @@ mod tests {
                 ConfigValue::Bool(true),
             ),
             (
-                "seam_mode".to_string(),
+                "seam_position".to_string(),
                 ConfigValue::String("rear".to_string()),
             ),
         ]);
@@ -1767,8 +1780,8 @@ mod tests {
             "ccw"
         );
         assert_eq!(translate_appendix_enum("wall_direction", "clockwise"), "cw");
-        // The appendix alias renders `seam_mode` under `seam_position`; PnP's
-        // `rear` is Orca's `back`.
+        // PnP's `seam_position` variant `rear` is Orca's `back`; the retired
+        // `seam_mode` spelling is not translated.
         assert_eq!(translate_appendix_enum("seam_position", "rear"), "back");
         assert_eq!(
             translate_appendix_enum("seam_position", "aligned"),

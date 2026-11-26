@@ -51,7 +51,7 @@ fn integrated_parity_lightning_infill() {
     let resolved = ResolvedConfig {
         sparse_fill_holder: "com.core.lightning-infill".to_string(),
         line_width: 0.45,
-        infill_density: 0.2,
+        sparse_infill_density: 20.0,
         layer_height: 0.2,
         extensions: std::collections::BTreeMap::from([(
             "prepared_plan_diagnostic".into(),
@@ -115,23 +115,22 @@ fn integrated_parity_lightning_infill() {
         // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
         // view holds them at their resolved defaults (lightning_infill_tdd.rs
         // fixtures) and carries the host-expanded `line_width`.
-        // `infill_density` / `infill_speed` are declared required reads
-        // since the guest's config-literal fallbacks migrated to
-        // `require_*`; seed the manifest defaults (lightning-infill.toml).
+        // `sparse_infill_density` is a declared required read since the
+        // guest's config-literal fallbacks migrated to `require_*`; seed the
+        // manifest defaults (lightning-infill.toml, 20 = 20%).
         config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
             ("layer_height".into(), slicer_ir::ConfigValue::Float(0.2)),
-            ("infill_angle".into(), slicer_ir::ConfigValue::Float(45.0)),
+            (
+                "infill_direction".into(),
+                slicer_ir::ConfigValue::Float(45.0),
+            ),
             (
                 "prepared_plan_diagnostic".into(),
                 slicer_ir::ConfigValue::String("none".into()),
             ),
             (
-                "infill_density".to_string(),
-                slicer_ir::ConfigValue::Float(0.2),
-            ),
-            (
-                "infill_speed".to_string(),
-                slicer_ir::ConfigValue::Float(60.0),
+                "sparse_infill_density".to_string(),
+                slicer_ir::ConfigValue::Float(20.0),
             ),
             (
                 "bridge_line_width".to_string(),

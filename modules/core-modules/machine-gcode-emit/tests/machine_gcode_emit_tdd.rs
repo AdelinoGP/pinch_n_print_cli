@@ -1416,3 +1416,261 @@ fn next_extruder_in_filament_start_gcode_passes_through_verbatim() {
         "the warning must name the unavailable key and filament-start injection point: {warnings:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// `printer_structure` time-lapse gate (wayfinder ticket 27 / P20)
+// ---------------------------------------------------------------------------
+
+/// One layer-marker triple followed by a move, so the layer-scoped injection
+/// window fires exactly once.
+fn one_layer_commands() -> Vec<GCodeCommand> {
+    vec![
+        GCodeCommand::Raw {
+            text: ";LAYER_CHANGE".into(),
+        },
+        GCodeCommand::Raw {
+            text: ";Z:0.200".into(),
+        },
+        GCodeCommand::Raw {
+            text: ";HEIGHT:0.200".into(),
+        },
+        GCodeCommand::Raw {
+            text: "G1 X1".into(),
+        },
+    ]
+}
+
+fn timelapse_config(structure: Option<&str>) -> Vec<(&'static str, ConfigValue)> {
+    let mut pairs: Vec<(&'static str, ConfigValue)> = vec![
+        ("time_lapse_gcode", ConfigValue::String("TIMELAPSE".into())),
+        ("layer_change_gcode", ConfigValue::String("CHANGE".into())),
+    ];
+    if let Some(structure) = structure {
+        pairs.push((
+            "printer_structure",
+            ConfigValue::String(structure.to_string()),
+        ));
+    }
+    pairs
+}
+
+#[test]
+fn timelapse_injects_when_printer_structure_is_absent_or_undefine() {
+    for structure in [None, Some("undefine")] {
+        let output = run(&timelapse_config(structure), &one_layer_commands());
+        assert!(
+            raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+            "printer_structure {structure:?} must not suppress time-lapse injection \
+             (recorded divergence: canonical suppresses on undefined single-extruder \
+             machines; this port keeps the pre-gate behaviour at the default)"
+        );
+    }
+}
+
+#[test]
+fn timelapse_injects_on_i3_printers() {
+    let output = run(&timelapse_config(Some("i3")), &one_layer_commands());
+    assert!(
+        raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+        "canonical `need_insert_timelapse_gcode_for_traditional` is true for psI3, \
+         so an i3 printer must inject time_lapse_gcode"
+    );
+}
+
+#[test]
+fn timelapse_is_suppressed_on_non_i3_single_tool_printers() {
+    for structure in ["corexy", "hbot", "delta"] {
+        let output = run(&timelapse_config(Some(structure)), &one_layer_commands());
+        let texts = raw_texts(&output);
+        assert!(
+            !texts.contains(&"TIMELAPSE".to_string()),
+            "printer_structure = {structure} is not psI3, so canonical injects no \
+             time-lapse G-code on a single-tool print; got {texts:?}"
+        );
+        assert!(
+            texts.contains(&"CHANGE".to_string()),
+            "the gate must suppress only the time-lapse site, not the neighbouring \
+             layer_change_gcode injection; got {texts:?}"
+        );
+    }
+}
+
+#[test]
+fn timelapse_survives_suppression_when_the_print_performs_a_toolchange() {
+    let mut commands = one_layer_commands();
+    commands.push(GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    });
+    let output = run(&timelapse_config(Some("corexy")), &commands);
+    assert!(
+        raw_texts(&output).contains(&"TIMELAPSE".to_string()),
+        "canonical's `is_multi_extruder` arm forces injection regardless of structure; \
+         the port's stand-in for it is the presence of a toolchange in the print"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// P40 (ticket 47): flush temp/speed placeholders
+// ---------------------------------------------------------------------------
+
+#[test]
+fn flush_temp_and_speed_substitute_into_change_filament_template() {
+    let output = run(
+        &[
+            (
+                "change_filament_gcode",
+                ConfigValue::String(
+                    "M104 S[filament_flush_temp] ; flush at [filament_flush_volumetric_speed]mm3/s"
+                        .into(),
+                ),
+            ),
+            ("filament_flush_temp", ConfigValue::Int(270)),
+            ("filament_flush_volumetric_speed", ConfigValue::Float(12.5)),
+            // Distinct fallback values prove the explicit entries win.
+            ("nozzle_temperature_range_high", ConfigValue::Int(240)),
+            ("filament_max_volumetric_speed", ConfigValue::Float(8.0)),
+        ],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        }],
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| t.contains("M104 S270")),
+        "non-default flush temp must substitute into the template; got {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("12.5")),
+        "non-default flush volumetric speed must substitute into the template; got {texts:?}"
+    );
+}
+
+#[test]
+fn flush_temp_and_speed_default_to_canonical_fallbacks() {
+    let output = run(
+        &[
+            (
+                "change_filament_gcode",
+                ConfigValue::String(
+                    "T=[filament_flush_temp] V=[filament_flush_volumetric_speed]".into(),
+                ),
+            ),
+            ("filament_flush_temp", ConfigValue::Int(0)),
+            ("filament_flush_volumetric_speed", ConfigValue::Float(0.0)),
+            ("nozzle_temperature_range_high", ConfigValue::Int(240)),
+            ("filament_max_volumetric_speed", ConfigValue::Float(8.0)),
+        ],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        }],
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| t.contains("T=240")),
+        "zero flush temp must fall back to nozzle_temperature_range_high; got {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("V=8")),
+        "zero flush speed must fall back to filament_max_volumetric_speed; got {texts:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `manual_filament_change` first-toolchange skip (wayfinder ticket 50 / P43)
+// ---------------------------------------------------------------------------
+
+/// Canonical `GCode.cpp` toolchange path skips `change_filament_gcode` on the
+/// first toolchange (`m_toolchange_count == 1`) when `manual_filament_change`
+/// is set; later toolchanges still inject. The count here is 1-based,
+/// matching canonical.
+#[test]
+fn manual_filament_change_skips_first_change_filament_injection_only() {
+    let commands = &[
+        GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        },
+        GCodeCommand::ToolChange {
+            after_entity_index: 1,
+            from: 1,
+            to: 2,
+        },
+    ];
+
+    // Default (absent key): both toolchanges inject.
+    let output = run(
+        &[("change_filament_gcode", ConfigValue::String("FCHG".into()))],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert_eq!(
+        texts.iter().filter(|t| *t == "FCHG").count(),
+        2,
+        "default must inject change_filament_gcode at every toolchange; got {texts:?}"
+    );
+
+    // Enabled: first injection skipped, second still injected, and both
+    // ToolChange commands are re-emitted (the skip affects the template only).
+    let output = run(
+        &[
+            ("change_filament_gcode", ConfigValue::String("FCHG".into())),
+            ("manual_filament_change", ConfigValue::Bool(true)),
+        ],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert_eq!(
+        texts.iter().filter(|t| *t == "FCHG").count(),
+        1,
+        "enabled must skip the first change_filament_gcode only; got {texts:?}"
+    );
+    let toolchanges = output
+        .commands()
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                GcodeOutputCommand::Command(GCodeCommand::ToolChange { .. })
+            )
+        })
+        .count();
+    assert_eq!(
+        toolchanges, 2,
+        "both ToolChange commands must still be re-emitted; got {toolchanges}"
+    );
+}
+
+/// The skip is scoped to the `FilamentChange` site: `filament_end_gcode`
+/// still injects at the first toolchange under `manual_filament_change`.
+#[test]
+fn manual_filament_change_does_not_skip_filament_end_gcode() {
+    let commands = &[GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    }];
+    let output = run(
+        &[
+            ("filament_end_gcode", ConfigValue::String("FEND".into())),
+            ("change_filament_gcode", ConfigValue::String("FCHG".into())),
+            ("manual_filament_change", ConfigValue::Bool(true)),
+        ],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| *t == "FEND"),
+        "filament_end_gcode must still inject at the first toolchange; got {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| *t == "FCHG"),
+        "change_filament_gcode must be skipped at the first toolchange; got {texts:?}"
+    );
+}

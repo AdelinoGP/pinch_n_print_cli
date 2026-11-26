@@ -686,7 +686,7 @@ fn classic_strategy(limits: &ClassicLimits, classes: &[ClassTag]) -> BoxedStrate
 /// Build the module from the five declared configuration keys.
 fn classic_module() -> ClassicPerimeters {
     let config: ConfigView = ConfigViewBuilder::new()
-        .int("wall_count", i64::from(WITNESS_WALL_COUNT))
+        .int("wall_loops", i64::from(WITNESS_WALL_COUNT))
         .float("outer_wall_speed", f64::from(OUTER_WALL_SPEED_MM_S))
         .float("inner_wall_speed", f64::from(INNER_WALL_SPEED_MM_S))
         .float(

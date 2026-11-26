@@ -60,6 +60,18 @@ pub enum ModelLoadError {
         /// Full path of the second, colliding input.
         second: std::path::PathBuf,
     },
+    /// EXCEEDS_PRINTABLE_HEIGHT — an object's world-space Z maximum is above the
+    /// configured build-volume height (`printable_height`). Canonical rejects the
+    /// same condition in `Print::validate` (`Print.cpp`) with "The object %1%
+    /// exceeds the maximum build volume height."
+    ExceedsPrintableHeight {
+        /// Id of the offending object.
+        object_id: String,
+        /// The maximum world-space Z found on the object, in mm.
+        z_max: f32,
+        /// The configured build-volume height, in mm.
+        printable_height: f32,
+    },
     /// 3MF paint metadata is malformed or contains an unrecognized value.
     PaintMetadata {
         /// Human-readable reason for the failure.
@@ -112,6 +124,16 @@ impl fmt::Display for ModelLoadError {
                  collide. Rename one input or stage them apart.",
                 first.display(),
                 second.display()
+            ),
+            Self::ExceedsPrintableHeight {
+                object_id,
+                z_max,
+                printable_height,
+            } => write!(
+                f,
+                "EXCEEDS_PRINTABLE_HEIGHT: object '{object_id}' reaches world-space Z {z_max} mm, \
+                 above the build volume height {printable_height} mm. Reduce the object's size or \
+                 raise `printable_height`."
             ),
             Self::PaintMetadata {
                 reason,
@@ -901,8 +923,36 @@ fn resolve_object(
                                     config_fields.insert(k.clone(), value);
                                 }
                             }
+                            "sparse_infill_density" => {}
                             _ => {
                                 config_fields.insert(k.clone(), ConfigValue::String(v.clone()));
+                            }
+                        }
+                    }
+                    if let Some(density_str) = part.metadata.get("sparse_infill_density") {
+                        match parse_density_value(density_str) {
+                            Some(_validated) => {
+                                // Wayfinder ticket 107: `sparse_infill_density`
+                                // is canonical-percent everywhere. Percent
+                                // forms stay raw strings ("40%") so the
+                                // modules' percent-aware reads resolve them to
+                                // fractions; plain floats are stored as floats
+                                // and are likewise read as percent
+                                // (Float(0.4) = 0.4%).
+                                let value = if density_str.contains('%') {
+                                    ConfigValue::String(density_str.clone())
+                                } else {
+                                    ConfigValue::Float(density_str.parse::<f64>().unwrap_or(0.0))
+                                };
+                                config_fields.insert("sparse_infill_density".to_string(), value);
+                            }
+                            None => {
+                                log::warn!(
+                                    target: "slicer_model_io::loader",
+                                    "sparse_infill_density value '{}' on part {} is not a valid density, skipping",
+                                    density_str,
+                                    comp.objectid
+                                );
                             }
                         }
                     }
@@ -1047,7 +1097,7 @@ fn object_metadata_to_config_data(
                     out.insert(key.clone(), value);
                 }
             }
-            "support_type" => {
+            "support_type" | "support_interface_not_for_body" => {
                 out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
             "wall_loops"
@@ -1072,11 +1122,7 @@ fn object_metadata_to_config_data(
             | "sparse_infill_density" => {
                 out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
-            "seam_position"
-            | "sparse_infill_pattern"
-            | "brim_type"
-            | "fuzzy_skin"
-            | "support_base_pattern" => {
+            "seam_position" | "sparse_infill_pattern" | "brim_type" | "fuzzy_skin" => {
                 out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
             _ => {
@@ -1088,6 +1134,28 @@ fn object_metadata_to_config_data(
         }
     }
     out
+}
+
+/// Validate an authored `sparse_infill_density` literal and return it as a
+/// 0–1 fraction.
+///
+/// Percent and bare-number spellings are both accepted (canonical
+/// `sparse_infill_density` is a percent key, and Orca sidecars carry both
+/// `"40%"` and `"0.4"`). The validated fraction is only a gate: the caller
+/// stores the authored spelling so the percent-aware module read resolves it.
+fn parse_density_value(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim();
+    let (num_str, is_percent) = if let Some(stripped) = trimmed.strip_suffix('%') {
+        (stripped.trim(), true)
+    } else {
+        (trimmed, false)
+    };
+    let parsed: f64 = num_str.parse().ok()?;
+    let value = if is_percent { parsed / 100.0 } else { parsed };
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return None;
+    }
+    Some(value)
 }
 
 /// Rebase an authored `extruder` index into the zero-based runtime index.
@@ -2939,6 +3007,49 @@ fn object_world_z_extent_from_mesh_and_transform(
     } else {
         None
     }
+}
+
+/// Validate that an [`ObjectMesh`] fits under the configured build-volume
+/// height.
+///
+/// Uses [`object_world_z_extent`] to compute the world-space Z range and rejects
+/// the object when its maximum Z exceeds `printable_height`.
+///
+/// Objects with no geometry or a degenerate extent are treated as valid.
+///
+/// A non-positive `printable_height` disables the check, so a caller that has no
+/// meaningful build volume cannot accidentally reject every object.
+///
+/// # Divergence from canonical
+///
+/// Canonical `Print::validate` (`Print.cpp`) compares the **last sliced layer's**
+/// Z against `printable_height`, so it can distinguish "the object is too tall"
+/// from "the object fits but its last layer does not". This check runs before
+/// slicing and compares the object's mesh extent instead, which needs no layer
+/// plan and rejects earlier. The two agree except within one layer height of the
+/// limit, where this form is the stricter of the two.
+///
+/// # Errors
+///
+/// Returns `Err(ExceedsPrintableHeight { .. })` when the object's world-space Z
+/// maximum is above `printable_height`.
+pub fn validate_printable_height(
+    object: &ObjectMesh,
+    printable_height: f32,
+) -> Result<(), ModelLoadError> {
+    if printable_height <= 0.0 {
+        return Ok(());
+    }
+    if let Some((_z_min, z_max)) = object_world_z_extent(object) {
+        if z_max > printable_height {
+            return Err(ModelLoadError::ExceedsPrintableHeight {
+                object_id: object.id.to_string(),
+                z_max,
+                printable_height,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Compute the world-space Z extent `(z_min, z_max)` of an [`ObjectMesh`] by

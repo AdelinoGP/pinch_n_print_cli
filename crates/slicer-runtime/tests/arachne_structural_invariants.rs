@@ -109,11 +109,11 @@ fn assert_capture_is_structural(fixture: &str, generator: WallGenerator, capture
         !capture.is_empty(),
         "fixture {fixture}, generator {generator_name}: capture must be nonempty"
     );
-    let mut wall_count = 0;
+    let mut wall_loops = 0;
     for perimeter in capture {
         for region in &perimeter.regions {
             for wall in &region.walls {
-                wall_count += 1;
+                wall_loops += 1;
                 assert!(
                     wall.path.points.len() >= 2,
                     "fixture {fixture}, generator {generator_name}, layer {}: wall must have at least two points",
@@ -133,7 +133,7 @@ fn assert_capture_is_structural(fixture: &str, generator: WallGenerator, capture
         }
     }
     assert!(
-        wall_count > 0,
+        wall_loops > 0,
         "fixture {fixture}, generator {generator_name}: capture must contain a wall"
     );
 }

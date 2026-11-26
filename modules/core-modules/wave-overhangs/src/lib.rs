@@ -128,11 +128,17 @@ pub struct WaveOverhangs {
     /// Nozzle diameter, in mm.
     nozzle_diameter: f32,
     /// Wall (perimeter) count of the enclosing region.
-    wall_count: u32,
+    wall_loops: u32,
     /// Layer height, in mm.
     layer_height: f32,
     /// Whether the printer profile enables thick (round-thread) bridges.
     thick_bridges: bool,
+    /// Internal-bridge fill density as a fraction (1.0 == the manifest's `100%`).
+    internal_bridge_density: f32,
+    /// Internal-bridge flow ratio.
+    internal_bridge_flow: f32,
+    /// Whether internal bridges use the thick (round-thread) bridge model.
+    thick_internal_bridges: bool,
 }
 
 impl WaveOverhangs {
@@ -364,9 +370,18 @@ impl LayerModule for WaveOverhangs {
             // (`"100%"` -> 1.0), mirroring `rectilinear-infill`.
             bridge_density: config.require_abs_value("bridge_density", 1.0)? as f32,
             nozzle_diameter: nozzle_diameter_mm as f32,
-            wall_count: config.require_int("wall_count")?.max(0) as u32,
+            wall_loops: config.require_int("wall_loops")?.max(0) as u32,
             layer_height: config.require_float("layer_height")? as f32,
+            // Declared in this manifest because `ConfigView::from_declared`
+            // whitelists by the module's own schema: an undeclared key can
+            // never reach the guest, so the read below would always have
+            // taken the fallback. Absence still means the flat-thread bridge
+            // model, matching the host default.
             thick_bridges: config.require_bool("thick_bridges")?,
+            internal_bridge_density: config.require_abs_value("internal_bridge_density", 1.0)?
+                as f32,
+            internal_bridge_flow: config.require_float("internal_bridge_flow")? as f32,
+            thick_internal_bridges: config.require_bool("thick_internal_bridges")?,
         })
     }
 
@@ -432,27 +447,25 @@ impl LayerModule for WaveOverhangs {
             };
 
             // ---- Region partition (steps 1-4). ------------------------------
+            // External remainder: every bridge polygon that is not a member of
+            // `internal_bridge_areas`. The two sets are grouped into
+            // `bridge_groups` below — one entry per internal polygon, plus this
+            // external remainder — because the internal/external twins of the
+            // bridging keys are selected per polygon, not per region.
             let external = difference(region.bridge_areas(), region.internal_bridge_areas());
-            // Each internal-bridge polygon keeps its own host-authored angle
-            // (`internal_bridge_angle_deg` falls back to
-            // `bridge_orientation_deg` when the host sent none).
-            let internal_qualified: Vec<(Vec<ExPolygon>, f32)> = region
-                .internal_bridge_areas()
-                .iter()
-                .enumerate()
-                .map(|(index, area)| {
-                    (
-                        intersection(region.bridge_areas(), std::slice::from_ref(area)),
-                        region.internal_bridge_angle_deg(index),
-                    )
-                })
-                .collect();
 
             // The packet docs call this `prev_object_boundary`; the accessor
             // that actually exists is `prev_layer_boundary()` (object-scoped
             // since packet 243). Naming drift in the docs, not here.
+            // Support geometry: top/bottom solid fill plus the converted
+            // sparse islands (internal_solid_fill) — an island is 100% solid
+            // material at this z, so wave crests may terminate on it exactly
+            // as on any other solid fill.
             let solid_and_sparse = union(
-                &union(region.top_solid_fill(), region.bottom_solid_fill()),
+                &union(
+                    &union(region.top_solid_fill(), region.bottom_solid_fill()),
+                    region.internal_solid_fill(),
+                ),
                 region.sparse_infill_area(),
             );
             let supported_fill = intersection(region.prev_layer_boundary(), &solid_and_sparse);
@@ -469,9 +482,9 @@ impl LayerModule for WaveOverhangs {
                 self.anchor_depth_mm,
             );
             // Reproduces the generator's own canonical `anchors_size`
-            // (`EXTERNAL_INFILL_MARGIN_MM.min(base_spacing * (wall_count + 1))`).
+            // (`EXTERNAL_INFILL_MARGIN_MM.min(base_spacing * (wall_loops + 1))`).
             let anchors_size_mm =
-                AUTO_ANCHOR_DEPTH_CAP_MM.min(bridge_spacing_mm * (self.wall_count as f32 + 1.0));
+                AUTO_ANCHOR_DEPTH_CAP_MM.min(bridge_spacing_mm * (self.wall_loops as f32 + 1.0));
             let anchor_depth = if anchor_depth_cfg > 0.0 {
                 anchor_depth_cfg
             } else {
@@ -536,7 +549,7 @@ impl LayerModule for WaveOverhangs {
                 // FLOW-derived spacing, deliberately distinct from
                 // `line_spacing` (canonical `overhang_flow.scaled_spacing()`).
                 base_spacing: bridge_spacing_mm,
-                wall_count: self.wall_count,
+                wall_loops: self.wall_loops,
             };
 
             // ---- Conventional bridge fill parameters (fallback). ------------
@@ -562,117 +575,163 @@ impl LayerModule for WaveOverhangs {
             } else {
                 self.nozzle_diameter
             };
-            let base_spacing_mm = if self.thick_bridges {
-                canonical_bridging_flow(
-                    self.bridge_line_width,
-                    self.bridge_flow,
-                    self.nozzle_diameter,
-                )
-                .spacing_mm
-            } else {
-                line_width_to_spacing(bridge_width, layer_h).unwrap_or(bridge_width)
-            };
-            let fallback_spacing_units = if self.bridge_density > 0.0 {
-                generator::units(base_spacing_mm / self.bridge_density)
-            } else {
-                0.0
-            };
-            let fallback_flow = bridging_flow(
-                self.bridge_flow,
-                self.thick_bridges,
-                thread_base_width,
-                bridge_width,
-                layer_h,
-            );
-            let fallback_role = if region.is_internal_bridge() {
-                ExtrusionRole::InternalBridgeInfill
-            } else {
-                ExtrusionRole::BridgeInfill
-            };
-            let angle = region.bridge_orientation_deg();
+            // Canonical `Fill::make_fills` picks the density and the thick /
+            // thin bridging flow from the *internal* twins of these keys when
+            // the surface is an internal bridge (`is_thick_bridge`,
+            // `internal_bridge_density.get_abs_value(1.0)`).
+            //
+            // `bridge_areas` carries both the external bridge sites and the
+            // qualified internal-bridge sites the host mirrored into
+            // `internal_bridge_areas`, so the split is per polygon: membership
+            // in `internal_bridge_areas` selects the internal twins and every
+            // other polygon keeps the external ones. This is the same grouping
+            // rectilinear-infill's `bridge_groups` builds; the region-wide
+            // `is_internal_bridge` flag it replaces was always false in
+            // production (ticket 152). Each internal polygon keeps its own
+            // host-authored angle (`internal_bridge_angle_deg` falls back to
+            // `bridge_orientation_deg` when the host sent none).
+            let bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> =
+                std::iter::once((external, false, region.bridge_orientation_deg()))
+                    .chain(region.internal_bridge_areas().iter().enumerate().map(
+                        |(index, area)| {
+                            (
+                                intersection(region.bridge_areas(), std::slice::from_ref(area)),
+                                true,
+                                region.internal_bridge_angle_deg(index),
+                            )
+                        },
+                    ))
+                    .collect();
             let z = region.z();
 
-            // ---- Per connected external component. --------------------------
-            for component in union_ex(&external) {
-                let component_slice = std::slice::from_ref(&component);
-                let band = intersection(
-                    &supported_fill,
-                    &offset(component_slice, anchor_depth, OffsetJoinType::Round, 0.0),
+            // ---- Per bridge group: external remainder, then each internal
+            // polygon. ------------------------------------------------------
+            for (bridge, is_internal_bridge, bridge_angle_deg) in bridge_groups {
+                let (bridge_density, thick_bridges, bridge_flow) = if is_internal_bridge {
+                    (
+                        self.internal_bridge_density,
+                        self.thick_internal_bridges,
+                        self.internal_bridge_flow,
+                    )
+                } else {
+                    (self.bridge_density, self.thick_bridges, self.bridge_flow)
+                };
+                let group_spacing_mm = if thick_bridges {
+                    canonical_bridging_flow(
+                        self.bridge_line_width,
+                        bridge_flow,
+                        self.nozzle_diameter,
+                    )
+                    .spacing_mm
+                } else {
+                    line_width_to_spacing(bridge_width, layer_h).unwrap_or(bridge_width)
+                };
+                let group_spacing_units = if bridge_density > 0.0 {
+                    generator::units(group_spacing_mm / bridge_density)
+                } else {
+                    0.0
+                };
+                let group_flow = bridging_flow(
+                    bridge_flow,
+                    thick_bridges,
+                    thread_base_width,
+                    bridge_width,
+                    layer_h,
                 );
-                let wave_domain = union(component_slice, &band);
+                let group_role = if is_internal_bridge {
+                    ExtrusionRole::InternalBridgeInfill
+                } else {
+                    ExtrusionRole::BridgeInfill
+                };
 
-                let WaveOutput {
-                    mut paths,
-                    filled: _,
-                    fallbacks,
-                } = generator::generate(&wave_domain, &supported_fill, &params);
-                // Any fallback signal forces conventional bridge fill for this
-                // component; the reasons are kept on `WaveOutput` for tests and
-                // future diagnostics.
-
-                let waves_usable = fallbacks.is_empty() && !paths.is_empty();
-                if waves_usable {
-                    anchor_first(&mut paths, &supported_fill);
-                    // One order-lock tag per connected wave domain: the whole
-                    // wave prints as a single unbreakable ordered run.
-                    let tag = locks.allocate().ok_or_else(|| {
-                        ModuleError::fatal(
-                            ERR_ORDER_LOCK_EXHAUSTED,
-                            "wave-overhangs: order-lock tag space exhausted",
-                        )
-                    })?;
-                    for pl in &paths {
+                // Internal bridges sit over sparse infill, not over air, so the
+                // wave generator's anchor domain does not apply: they take the
+                // unlocked rectilinear fill at their own host-authored angle
+                // (canonical `bridge_over_infill` -> `stInternalBridge`).
+                if is_internal_bridge {
+                    for pl in rectilinear_scanlines(&bridge, bridge_angle_deg, group_spacing_units)
+                    {
                         output
                             .push_solid_path(to_path(
-                                pl,
+                                &pl,
                                 z,
-                                wave_width,
-                                wave_flow_factor,
-                                ExtrusionRole::BridgeInfill,
-                                speed_factor,
-                                Some(tag),
+                                bridge_width,
+                                group_flow,
+                                group_role.clone(),
+                                FALLBACK_SPEED_FACTOR,
+                                None,
                             ))
                             .map_err(ModuleError::from)?;
                     }
                     continue;
                 }
 
-                // Fallback: conventional rectilinear bridge fill, unlocked.
-                // Every nonempty external component reaches this branch when
-                // waves are impossible, so no component is silently dropped.
-                for pl in rectilinear_scanlines(component_slice, angle, fallback_spacing_units) {
-                    output
-                        .push_solid_path(to_path(
-                            &pl,
-                            z,
-                            bridge_width,
-                            fallback_flow,
-                            fallback_role.clone(),
-                            FALLBACK_SPEED_FACTOR,
-                            None,
-                        ))
-                        .map_err(ModuleError::from)?;
-                }
-            }
+                // ---- Per connected external component. ----------------------
+                for component in union_ex(&bridge) {
+                    let component_slice = std::slice::from_ref(&component);
+                    let band = intersection(
+                        &supported_fill,
+                        &offset(component_slice, anchor_depth, OffsetJoinType::Round, 0.0),
+                    );
+                    let wave_domain = union(component_slice, &band);
 
-            // ---- Internal-qualified polygons: unlocked rectilinear. ---------
-            for pl in internal_qualified
-                .iter()
-                .flat_map(|(area, internal_angle)| {
-                    rectilinear_scanlines(area, *internal_angle, fallback_spacing_units)
-                })
-            {
-                output
-                    .push_solid_path(to_path(
-                        &pl,
-                        z,
-                        bridge_width,
-                        fallback_flow,
-                        fallback_role.clone(),
-                        FALLBACK_SPEED_FACTOR,
-                        None,
-                    ))
-                    .map_err(ModuleError::from)?;
+                    let WaveOutput {
+                        mut paths,
+                        filled: _,
+                        fallbacks,
+                    } = generator::generate(&wave_domain, &supported_fill, &params);
+                    // Any fallback signal forces conventional bridge fill for this
+                    // component; the reasons are kept on `WaveOutput` for tests and
+                    // future diagnostics.
+
+                    let waves_usable = fallbacks.is_empty() && !paths.is_empty();
+                    if waves_usable {
+                        anchor_first(&mut paths, &supported_fill);
+                        // One order-lock tag per connected wave domain: the whole
+                        // wave prints as a single unbreakable ordered run.
+                        let tag = locks.allocate().ok_or_else(|| {
+                            ModuleError::fatal(
+                                ERR_ORDER_LOCK_EXHAUSTED,
+                                "wave-overhangs: order-lock tag space exhausted",
+                            )
+                        })?;
+                        for pl in &paths {
+                            output
+                                .push_solid_path(to_path(
+                                    pl,
+                                    z,
+                                    wave_width,
+                                    wave_flow_factor,
+                                    ExtrusionRole::BridgeInfill,
+                                    speed_factor,
+                                    Some(tag),
+                                ))
+                                .map_err(ModuleError::from)?;
+                        }
+                        continue;
+                    }
+
+                    // Fallback: conventional rectilinear bridge fill, unlocked.
+                    // Every nonempty external component reaches this branch when
+                    // waves are impossible, so no component is silently dropped.
+                    for pl in rectilinear_scanlines(
+                        component_slice,
+                        bridge_angle_deg,
+                        group_spacing_units,
+                    ) {
+                        output
+                            .push_solid_path(to_path(
+                                &pl,
+                                z,
+                                bridge_width,
+                                group_flow,
+                                group_role.clone(),
+                                FALLBACK_SPEED_FACTOR,
+                                None,
+                            ))
+                            .map_err(ModuleError::from)?;
+                    }
+                }
             }
         }
         Ok(())

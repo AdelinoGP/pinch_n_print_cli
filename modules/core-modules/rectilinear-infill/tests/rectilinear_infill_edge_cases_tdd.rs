@@ -27,9 +27,9 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 /// a specific key add it after this baseline so their explicit value wins.
 fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .float("infill_density", 0.2)
-        .float("infill_angle", 45.0)
-        .float("infill_speed", 60.0)
+        // Canonical-percent density; canonical angle/speed names.
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 45.0)
         .float("line_width", 0.45)
         .float("bridge_line_width", 0.0)
         .float("initial_layer_line_width", 0.0)
@@ -55,9 +55,11 @@ fn baseline_config() -> ConfigViewBuilder {
 
 fn config(density: f64) -> ConfigView {
     baseline_config()
-        .float("infill_density", density)
-        .float("infill_angle", 0.0)
-        .float("infill_speed", 50.0)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
+        .float("infill_direction", 0.0)
+        .float("sparse_infill_speed", 50.0)
         .float("line_width", 0.4)
         .build()
 }

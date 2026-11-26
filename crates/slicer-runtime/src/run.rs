@@ -5,12 +5,34 @@
 /// (`[host_runtime]`) and locked by `gcode_emit::host_keys_doc_lock`.
 pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
 
-use std::path::PathBuf;
+/// Default for the `gcode_add_line_number` host config key when the user does
+/// not set it. Canonical declares it `coBool` default `0` (`PrintConfig.cpp`)
+/// and its only behavioural read is the export-time post-processor
+/// `gcode_add_line_number` (`PostProcessor.cpp`). Read straight from the
+/// CLI/JSON config source at this crate's export seam — no `ResolvedConfig`
+/// field — so it is mirrored in `docs/config/host-keys.toml`
+/// (`[host_runtime]`) and locked by the `host_keys_doc_lock` test.
+pub const DEFAULT_GCODE_ADD_LINE_NUMBER: bool = false;
+
+/// Default for the `post_process` host config key when the user does not set
+/// it: no scripts, so the exported artifact is byte-identical. Canonical
+/// declares it `coStrings` default `{}` (`PrintConfig.cpp`) and runs the listed
+/// commands at export time (`PostProcessor.cpp::run_post_process_scripts`).
+/// Read straight from the CLI/JSON config source at this crate's export seam —
+/// no `ResolvedConfig` field — so it is mirrored in
+/// `docs/config/host-keys.toml` (`[host_runtime]`) and locked by the
+/// `host_keys_doc_lock` test.
+pub const DEFAULT_POST_PROCESS: &[&str] = &[];
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
 use slicer_config::resolution::{
-    query_z_grid, resolve_scope_stack, ResolutionTarget, ResolvedObjectLayerConfig,
+    query_z_grid, resolve_scope_stack, resolved_target_key, ResolutionTarget,
+    ResolvedObjectLayerConfig,
 };
 use slicer_config::{
     ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext, IngestionWarning,
@@ -52,10 +74,83 @@ where
         Some(ConfigValue::List(items)) => u32::try_from(items.len()).unwrap_or(u32::MAX).max(1),
         _ => 1,
     };
+    // Canonical `support_interface_not_for_body` (`PrintConfig.cpp` coBool,
+    // default true; `ToolOrdering::collect_extruders` + `GCode::process_layer`
+    // in `ToolOrdering.cpp` / `GCode.cpp`). Bool wins; Int/String spellings
+    // are honoured so an explicit false never silently decays to the default.
+    let support_interface_not_for_body = match config_source.get("support_interface_not_for_body") {
+        Some(ConfigValue::Bool(b)) => *b,
+        Some(ConfigValue::Int(v)) => *v != 0,
+        Some(ConfigValue::String(s)) if s.eq_ignore_ascii_case("true") || s == "1" => true,
+        Some(ConfigValue::String(s)) if s.eq_ignore_ascii_case("false") || s == "0" => false,
+        _ => true,
+    };
+    let support_tool = rebase("support_filament");
+    let interface_tool = rebase("support_interface_filament");
+    // Only an explicitly configured interface filament engages the gate
+    // (canonical `process_layer` arms on a configured interface extruder; a
+    // default profile must never change tool assignment). When the gate is
+    // on, the body collides with the interface tool, and another tool
+    // exists, advance the body to the smallest configured tool that is not
+    // the interface tool. This is the PnP simplification of canonical's
+    // `get_next_extruder` flush-volume ordering (no flush matrix exists here)
+    // and deliberately ignores the `WipingExtrusions::mark_wiping_extrusions`
+    // override arm, which has no port analogue (named non-borrow).
+    let interface_explicit = matches!(
+        config_source.get("support_interface_filament"),
+        Some(ConfigValue::Int(v)) if *v >= 1
+    );
+    let support_tool = if support_interface_not_for_body
+        && interface_explicit
+        && support_tool == interface_tool
+        && tool_count > 1
+    {
+        (0..tool_count)
+            .find(|t| *t != interface_tool)
+            .unwrap_or(support_tool)
+    } else {
+        support_tool
+    };
     crate::layer_executor::SupportToolSelection {
-        support_tool: rebase("support_filament"),
-        interface_tool: rebase("support_interface_filament"),
+        support_tool,
+        interface_tool,
+        support_interface_not_for_body,
         tool_count,
+        feature_filaments: parse_feature_filament_selection(&config_source, tool_count),
+    }
+}
+
+/// Parse the six canonical feature-filament selectors (`*_filament_id`,
+/// coInt, default 0 = Default/inherit) into explicit 0-based tools.
+///
+/// A configured value N ≥ 1 selects tool N−1, clamped to the configured tool
+/// count (the canonical `clamp_feature_filament_to_valid` shape — unlike the
+/// support selectors above, which reject out-of-range values to tool 0, an
+/// out-of-range explicit selector clamps to the last configured tool).
+/// A 0, absent, negative, or non-`Int` spelling means inherit (`None`): the
+/// existing paint/variant/spatial/modifier resolution decides, so a default
+/// profile never changes any tool assignment.
+fn parse_feature_filament_selection<K>(
+    config_source: &std::collections::HashMap<K, ConfigValue>,
+    tool_count: u32,
+) -> crate::layer_executor::FeatureFilamentSelection
+where
+    K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
+{
+    let selector = |key: &str| match config_source.get(key) {
+        Some(ConfigValue::Int(value)) if *value >= 1 => {
+            let rebased = u32::try_from(value.saturating_sub(1)).unwrap_or(u32::MAX);
+            Some(rebased.min(tool_count.saturating_sub(1)))
+        }
+        _ => None,
+    };
+    crate::layer_executor::FeatureFilamentSelection {
+        sparse: selector("sparse_infill_filament_id"),
+        internal_solid: selector("internal_solid_filament_id"),
+        top_surface: selector("top_surface_filament_id"),
+        bottom_surface: selector("bottom_surface_filament_id"),
+        inner_wall: selector("inner_wall_filament_id"),
+        outer_wall: selector("outer_wall_filament_id"),
     }
 }
 
@@ -68,6 +163,39 @@ fn resolved_host_options(
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
     (relative, parse_support_tool_selection(&map))
+}
+
+/// Build the `(claim, holder)` list validated at startup: the global defaults
+/// plus every distinct non-empty override carried by a resolved target stack,
+/// so an object/paint/tool-scoped typo fails the same gate as a global one
+/// (ticket 152, A-ac035ed8).
+fn configured_fill_holders<'a>(
+    default: &'a ResolvedConfig,
+    targets: &'a BTreeMap<String, ResolvedConfig>,
+) -> Vec<(&'static str, &'a str)> {
+    let mut holders: Vec<(&'static str, &'a str)> = vec![
+        ("claim:top-fill", default.top_fill_holder.as_str()),
+        ("claim:bottom-fill", default.bottom_fill_holder.as_str()),
+        ("claim:bridge-fill", default.bridge_fill_holder.as_str()),
+        ("claim:sparse-fill", default.sparse_fill_holder.as_str()),
+    ];
+    for config in targets.values() {
+        for (claim, holder) in [
+            ("claim:top-fill", config.top_fill_holder.as_str()),
+            ("claim:bottom-fill", config.bottom_fill_holder.as_str()),
+            ("claim:bridge-fill", config.bridge_fill_holder.as_str()),
+            ("claim:sparse-fill", config.sparse_fill_holder.as_str()),
+        ] {
+            if !holder.is_empty()
+                && !holders.iter().any(|(known_claim, known_holder)| {
+                    *known_claim == claim && *known_holder == holder
+                })
+            {
+                holders.push((claim, holder));
+            }
+        }
+    }
+    holders
 }
 
 use crate::config_resolution::{validate_support_layer_heights, ConfigBoundsIndex};
@@ -91,10 +219,13 @@ use crate::progress_events::{
 use crate::progress_instrumentation::{now_unix_ms, ProgressPipelineInstrumentation, ProgressTier};
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
-use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
+use crate::validation::{
+    validate_startup_dag_with_configured_holders, DagValidationPass, SchedulerError, StageDag,
+};
 use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
+use slicer_ir::resolved_config::resolve_support_line_width_mm;
 use slicer_wasm_host::build_live_execution_plan;
 use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_manifest_first;
 use slicer_wasm_host::WasmRuntimeDispatcher;
@@ -108,7 +239,6 @@ fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<Confi
         .collect()
 }
 
-const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
 pub(crate) const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
 pub(crate) const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
 
@@ -120,40 +250,6 @@ fn paint_semantic_name(semantic: &PaintSemantic) -> String {
         PaintSemantic::SupportBlocker => "support_blocker".to_owned(),
         PaintSemantic::Custom(name) => name.clone(),
     }
-}
-
-fn append_key_part(key: &mut String, value: &str) {
-    use std::fmt::Write as _;
-    let _ = write!(key, "{}:{value}", value.len());
-}
-
-fn resolved_target_key(
-    object_id: &str,
-    modifier_ids: &[String],
-    paint_semantics: &[String],
-    tool_index: Option<u32>,
-) -> String {
-    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
-        return object_id.to_owned();
-    }
-    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
-    append_key_part(&mut key, object_id);
-    key.push('|');
-    for modifier_id in modifier_ids {
-        append_key_part(&mut key, modifier_id);
-        key.push(',');
-    }
-    key.push('|');
-    for semantic in paint_semantics {
-        append_key_part(&mut key, semantic);
-        key.push(',');
-    }
-    key.push('|');
-    if let Some(tool_index) = tool_index {
-        use std::fmt::Write as _;
-        let _ = write!(key, "{tool_index}");
-    }
-    key
 }
 
 fn ordered_subsets(values: &[String]) -> Vec<Vec<String>> {
@@ -1302,7 +1398,7 @@ fn run_pipeline_fork(
 ///
 /// Derived in [`run_slice`] from `slicer_gcode::estimate_print` over the
 /// final postpass `GCodeIR` plus the resolved config
-/// (`filament_density`, `first_layer_height`).
+/// (`filament_density`, `initial_layer_print_height`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SliceStatsInputs {
     /// Estimated print time in whole seconds.
@@ -1314,7 +1410,7 @@ pub struct SliceStatsInputs {
     pub gcode_filament_length_mm: f64,
     /// Number of emitted layers (`GCodeIR.metadata.layer_count`).
     pub layer_count: u32,
-    /// First layer height in mm (`ResolvedConfig.first_layer_height`).
+    /// First layer height in mm (`ResolvedConfig.initial_layer_print_height`).
     pub first_layer_height_mm: f32,
     /// Extruded volume per extruder index, in mm³.
     pub extruded_volume_mm3: std::collections::BTreeMap<u32, f64>,
@@ -1615,7 +1711,22 @@ fn run_slice_shared(
 
     // Seed model-derived config (e.g. the 3MF project's filament_colour) as
     // defaults: only fill keys the user did not set explicitly via --config.
+    //
+    // `post_process` is deliberately excluded. It names host commands to run
+    // against the exported artifact, and a 3MF carries the full print config in
+    // `project_settings.config`, so honouring it from a model file would let a
+    // downloaded model execute arbitrary commands on the slicing machine.
+    // Canonical runs the model's value; only an explicit `--config` value is
+    // honoured here (deliberate divergence, DEV-206).
     for (key, value) in &opts.config_overrides {
+        if key == "post_process" {
+            if !config_source.contains_key(key) {
+                eprintln!(
+                    "warning: ignoring post_process from model metadata; set it in the slice config file instead"
+                );
+            }
+            continue;
+        }
         config_source
             .entry(key.clone())
             .or_insert_with(|| value.clone());
@@ -1648,11 +1759,11 @@ fn run_slice_shared(
     // on a prime/wipe tower automatically for multi-tool prints so colour
     // transitions are purged off-part. Mirror that: if the model paints >= 2
     // distinct tool indices and the user did NOT explicitly set
-    // `wipe_tower_enabled`, enable it. Single-colour / unpainted prints keep the
+    // `enable_prime_tower`, enable it. Single-colour / unpainted prints keep the
     // default (false) and are unaffected. (The wipe-tower module is fully
     // implemented and wired; it was simply gated off by the resolved-config
     // default of `false` with no auto-enable signal.)
-    if !config_source.contains_key("wipe_tower_enabled") {
+    if !config_source.contains_key("enable_prime_tower") {
         use std::collections::BTreeSet;
         let mut tools: BTreeSet<u32> = BTreeSet::new();
         for object in &mesh_ir.objects {
@@ -1667,7 +1778,7 @@ fn run_slice_shared(
             }
         }
         if tools.len() >= 2 {
-            config_source.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+            config_source.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
         }
     }
 
@@ -1781,6 +1892,39 @@ fn run_slice_shared(
         );
     }
 
+    let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
+    let RuntimeResolvedScopes {
+        default_config: default_resolved_config,
+        target_configs: resolved_configs_map,
+        tool_configs: per_tool_configs_map,
+        object_layer_configs,
+        expansion_context,
+    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
+    validate_support_layer_heights(&resolved_configs_map)
+        .map_err(|e| SliceRunError(format!("{e}")))?;
+
+    // Build-volume height gate. Canonical rejects the same condition in
+    // `Print::validate` (`Print.cpp`); here it runs on the object's world-space
+    // Z extent before slicing. Per-object config wins so a per-object
+    // `printable_height` override is honoured, falling back to the global value.
+    // The object's empty target (no modifier / paint / tool) is keyed by the
+    // object id itself in the pre-resolved target map.
+    for object in &mesh_ir.objects {
+        let printable_height = resolved_configs_map
+            .get(object.id.as_str())
+            .unwrap_or(&default_resolved_config)
+            .printable_height;
+        slicer_model_io::loader::validate_printable_height(object, printable_height)
+            .map_err(|e| SliceRunError(format!("{e}")))?;
+    }
+
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
+    let expanded_global_source =
+        overlay_expanded_global(&module_config_source, &default_resolved_config);
+    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
+    let dag_modules: Vec<crate::manifest::LoadedModule> =
+        loaded.bindings.iter().map(|b| b.module.clone()).collect();
+
     // Static-DAG snapshot for the HTML report's "Pipeline (DAG)" section.
     // Captured here so it can borrow the same `dag_producers` slice the
     // validator builds below; the snapshot itself stores owned strings so
@@ -1855,8 +1999,6 @@ fn run_slice_shared(
             }
         }
 
-        let dag_modules: Vec<crate::manifest::LoadedModule> =
-            loaded.bindings.iter().map(|b| b.module.clone()).collect();
         // Build global-scope ClaimHolder entries from each loaded module's
         // declared `claims` so the validator can resolve fill-role-claim
         // owners (claim:sparse-fill, claim:top-fill, claim:bottom-fill,
@@ -1879,14 +2021,39 @@ fn run_slice_shared(
         let host_version = crate::manifest::parse_semver(env!("CARGO_PKG_VERSION"))
             .expect("slicer-runtime CARGO_PKG_VERSION must be valid semver");
         let request = crate::validation::DagValidationRequest {
-            modules: dag_modules,
+            modules: dag_modules.clone(),
             stage_dags,
             host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
             host_version,
             claim_holders,
             access_audits: Vec::new(),
         };
-        let report = validate_startup_dag(&request);
+        let configured_fill_holders =
+            configured_fill_holders(&default_resolved_config, &resolved_configs_map);
+        let report =
+            validate_startup_dag_with_configured_holders(&request, &configured_fill_holders);
+
+        let holder_errors: Vec<_> = report
+            .errors
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    &diagnostic.detail,
+                    SchedulerError::UnmatchedClaimHolder { .. }
+                        | SchedulerError::ClaimHolderDoesNotDeclareClaim { .. }
+                )
+            })
+            .collect();
+        if !holder_errors.is_empty() {
+            let detail = holder_errors
+                .iter()
+                .map(|diagnostic| format!("{:?}", diagnostic.detail))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let msg = format!("startup DAG claim-holder validation failed: {detail}");
+            emit_validation_failure(crate::progress_events::VALIDATION_CLAIM_HOLDER_CODE, &msg);
+            return Err(PreparationVisualCaptureError::Slice(SliceRunError(msg)));
+        }
 
         let version_errors: Vec<_> = report
             .errors
@@ -1939,22 +2106,6 @@ fn run_slice_shared(
         ));
     }
 
-    let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let RuntimeResolvedScopes {
-        default_config: default_resolved_config,
-        target_configs: resolved_configs_map,
-        tool_configs: per_tool_configs_map,
-        object_layer_configs,
-        expansion_context,
-    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
-    validate_support_layer_heights(&resolved_configs_map)
-        .map_err(|e| SliceRunError(format!("{e}")))?;
-
-    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
-    let expanded_global_source =
-        overlay_expanded_global(&module_config_source, &default_resolved_config);
-    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
-
     freeze_selected_preparation_bindings(
         &lifecycle,
         &loaded,
@@ -2001,7 +2152,39 @@ fn run_slice_shared(
         _ => GcodeFlavor::Marlin,
     };
     let (relative, support_tools) = resolved_host_options(&default_resolved_config);
-    let support_line_width_mm = default_resolved_config.support_line_width.value as f32;
+    // Canonical `gcode_add_line_number` (`PrintConfig.cpp` coBool default 0).
+    // `extract_bool` also accepts an `Int` 0/1, the hand-written-JSON spelling
+    // `is_declared_bool_key` cannot classify; an absent or mistyped value keeps
+    // the default, matching the sibling read above.
+    let gcode_add_line_number = match config_source.get("gcode_add_line_number") {
+        Some(value) => slicer_ir::resolved_config::extract_bool("gcode_add_line_number", value)
+            .unwrap_or(DEFAULT_GCODE_ADD_LINE_NUMBER),
+        None => DEFAULT_GCODE_ADD_LINE_NUMBER,
+    };
+    // Canonical `post_process` (`PrintConfig.cpp` coStrings): commands run
+    // against the exported artifact after the file exists
+    // (`PostProcessor.cpp::run_post_process_scripts`). Each script rewrites the
+    // file in place, so the export must produce one — a stdout-only run has no
+    // file to hand them, and silently skipping configured scripts is worse than
+    // saying so.
+    let post_process_scripts = parse_post_process_scripts(&config_source)?;
+    if !post_process_scripts.is_empty() && opts.output_path.is_none() {
+        return Err(PreparationVisualCaptureError::Slice(SliceRunError(
+            "post_process requires an output file: the configured scripts rewrite the exported G-code in place, so this run needs --output".to_string(),
+        )));
+    }
+    let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
+        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Int(value)) => *value as f32,
+        _ => 0.4,
+    };
+    // Canonical `Flow::support_material_flow` fallback chain: authored value →
+    // object `line_width` → nozzle diameter.
+    let support_line_width_mm = resolve_support_line_width_mm(
+        default_resolved_config.support_line_width,
+        default_resolved_config.line_width as f32,
+        nozzle_diameter_mm,
+    );
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
     // needs before `default_resolved_config` / `per_tool_configs_map` are
@@ -2013,7 +2196,7 @@ fn run_slice_shared(
         .map(|(&tool, cfg)| (tool, cfg.filament_diameter))
         .collect();
     let stats_filament_density = default_resolved_config.filament_density.clone();
-    let stats_first_layer_height_mm = default_resolved_config.first_layer_height as f32;
+    let stats_first_layer_height_mm = default_resolved_config.initial_layer_print_height as f32;
 
     let pipeline_config = PipelineConfig {
         cancel_flag: opts.cancel_flag.clone(),
@@ -2042,12 +2225,14 @@ fn run_slice_shared(
                 )
                 .with_extrusion_mode(relative)
                 .with_resolved_config(default_resolved_config.clone())
-                .with_tool_configs(per_tool_configs_map.clone()),
+                .with_tool_configs(per_tool_configs_map.clone())
+                .with_flavor(flavor),
             ),
             serializer: Box::new(
                 DefaultGCodeSerializer::with_extrusion_mode(relative)
                     .with_flavor(flavor)
-                    .with_support_line_width(support_line_width_mm),
+                    .with_support_line_width(support_line_width_mm)
+                    .with_manual_filament_change(default_resolved_config.manual_filament_change),
             ),
         },
         support_tools,
@@ -2276,14 +2461,233 @@ fn run_slice_shared(
     }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
+    // Canonical's export steps, in canonical order
+    // (`BackgroundSlicingProcess::finalize_gcode`): the configured
+    // `post_process` scripts rewrite the exported artifact first, then
+    // `gcode_add_line_number` numbers it. Both work on the artifact rather than
+    // the file the caller writes, so the `--output` file and the stdout path
+    // receive identical bytes; both are off by default, so the emitted bytes of
+    // a config that sets neither key are unchanged.
+    let gcode_text = if post_process_scripts.is_empty() {
+        pipeline_output.gcode_text
+    } else {
+        let output_path = opts.output_path.as_ref().ok_or_else(|| {
+            SliceRunError(
+                "post_process requires an output file: the configured scripts rewrite the exported G-code in place, so this run needs --output".to_string(),
+            )
+        })?;
+        run_post_process_scripts(
+            &pipeline_output.gcode_text,
+            output_path,
+            &post_process_scripts,
+        )?
+    };
+    let gcode_text = if gcode_add_line_number {
+        add_line_numbers(&gcode_text)
+    } else {
+        gcode_text
+    };
+
     Ok(SliceRunResult::FullSlice(Box::new(SliceOutcome {
-        gcode_text: pipeline_output.gcode_text,
+        gcode_text,
         layer_count,
         wallclock_ms,
         profile: profile_summary,
         ingestion_warnings,
         region_map: pipeline_output.region_map,
     })))
+}
+
+/// Canonical `gcode_add_line_number` (`PostProcessor.cpp`): prefix **every**
+/// exported line with `N<line> `, numbered from 1 in file order. Canonical
+/// rewrites the exported file line by line, so the whole artifact is covered
+/// (header, comments, and CONFIG_BLOCK included) and the result ends with a
+/// newline. The port emits `\n`-only G-code, so [`str::lines`] reproduces
+/// canonical's `std::getline` split exactly.
+fn add_line_numbers(text: &str) -> String {
+    let mut out = String::new();
+    for (index, line) in text.lines().enumerate() {
+        out.push('N');
+        out.push_str(&(index + 1).to_string());
+        out.push(' ');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// Parse the `post_process` host config key from the raw CLI/JSON config
+/// source: the canonical `coStrings` spelling (`["cmd1", "cmd2"]`) and the
+/// single-command string form.
+///
+/// Entries come back unsplit: canonical splits each one on `\r`/`\n` at run
+/// time (one entry may pack several commands), so that split lives in
+/// [`run_post_process_scripts`].
+fn parse_post_process_scripts(
+    config_source: &std::collections::HashMap<String, ConfigValue>,
+) -> Result<Vec<String>, SliceRunError> {
+    match config_source.get("post_process") {
+        None => Ok(Vec::new()),
+        Some(ConfigValue::String(script)) => Ok(vec![script.clone()]),
+        Some(ConfigValue::List(items)) => items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| match item {
+                ConfigValue::String(script) => Ok(script.clone()),
+                _ => Err(SliceRunError(format!(
+                    "post_process entry {index} must be a string"
+                ))),
+            })
+            .collect(),
+        Some(_) => Err(SliceRunError(
+            "post_process must be a string or a list of strings".to_string(),
+        )),
+    }
+}
+
+/// Run the configured `post_process` scripts over a working copy of the
+/// exported artifact and return the rewritten text.
+///
+/// Canonical (`PostProcessor.cpp::run_post_process_scripts`) hands each script
+/// a file path — for a file export, `<output>.pp`, a copy next to the artifact
+/// — and treats a non-zero exit or a file the script deleted as fatal. The port
+/// keeps that shape: the caller writes `output_path` itself, so the scripts
+/// work on the sibling `<output>.pp` working copy and the result is folded back
+/// into the artifact both export paths carry.
+fn run_post_process_scripts(
+    text: &str,
+    output_path: &Path,
+    scripts: &[String],
+) -> Result<String, SliceRunError> {
+    let working_copy = post_process_working_copy_path(output_path);
+    if let Some(parent) = working_copy.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                SliceRunError(format!(
+                    "failed to create the output directory for post-processing: {e}"
+                ))
+            })?;
+        }
+    }
+    std::fs::write(&working_copy, text).map_err(|e| {
+        SliceRunError(format!(
+            "failed to write the post-processing working copy {}: {e}",
+            working_copy.display()
+        ))
+    })?;
+
+    let rewritten = (|| -> Result<String, SliceRunError> {
+        for entry in scripts {
+            for script in entry.split(['\r', '\n']) {
+                let script = script.trim();
+                if script.is_empty() {
+                    continue;
+                }
+                run_post_process_script(script, &working_copy, output_path)?;
+            }
+        }
+        std::fs::read_to_string(&working_copy).map_err(|e| {
+            SliceRunError(format!(
+                "post-processing left {} unreadable: {e}",
+                working_copy.display()
+            ))
+        })
+    })();
+
+    // Canonical removes the copy on failure and the caller removes it on
+    // success; here both happen in one place.
+    let _ = std::fs::remove_file(&working_copy);
+    rewritten
+}
+
+/// Canonical names a file export's working copy `<path>.pp`
+/// (`PostProcessor.cpp::run_post_process_scripts`), so scripts never touch the
+/// file the caller keeps.
+fn post_process_working_copy_path(output_path: &Path) -> PathBuf {
+    let mut path = output_path.as_os_str().to_os_string();
+    path.push(".pp");
+    PathBuf::from(path)
+}
+
+/// Run one configured command with the working-copy path appended as the final
+/// argument, mirroring canonical's `run_script`: `$SHELL -c "<script> '<path>'"`
+/// on POSIX, `cmd /C` on Windows. `SLIC3R_PP_HOST` /
+/// `SLIC3R_PP_OUTPUT_NAME` carry the post-process values canonical exports to
+/// the script's environment.
+fn run_post_process_script(
+    script: &str,
+    working_copy: &Path,
+    output_path: &Path,
+) -> Result<(), SliceRunError> {
+    #[cfg(windows)]
+    let mut command = {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new("cmd");
+        // `raw_arg` keeps the command line verbatim: the entry is a command
+        // line, and the working-copy path is appended as one quoted argument.
+        command
+            .raw_arg("/C")
+            .raw_arg(format!("{script} \"{}\"", working_copy.display()));
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let mut command = Command::new(shell);
+        command
+            .arg("-c")
+            .arg(format!("{script} {}", shell_quote(working_copy)));
+        command
+    };
+
+    let output = command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::piped())
+        .env("SLIC3R_PP_HOST", "File")
+        .env("SLIC3R_PP_OUTPUT_NAME", output_path)
+        .output()
+        .map_err(|e| {
+            SliceRunError(format!(
+                "failed to start post-processing script {script}: {e}"
+            ))
+        })?;
+
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut message = format!(
+            "Post-processing script {script} on file {} failed.\nError code: {code}",
+            working_copy.display()
+        );
+        if !stderr.is_empty() {
+            message.push_str(&format!("\nOutput:\n{stderr}"));
+        }
+        return Err(SliceRunError(message));
+    }
+    if !working_copy.exists() {
+        return Err(SliceRunError(format!(
+            "Post-processing script {script} failed.\nThe script deleted or renamed {} instead of modifying it in place.",
+            working_copy.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Quote `path` for a POSIX shell (`'` becomes `'\''`), the escaping canonical
+/// `run_script` applies to the path it appends.
+#[cfg(not(windows))]
+fn shell_quote(path: &Path) -> String {
+    let mut quoted = String::from("'");
+    for character in path.to_string_lossy().chars() {
+        if character == '\'' {
+            quoted.push_str("'\\''");
+        } else {
+            quoted.push(character);
+        }
+    }
+    quoted.push('\'');
+    quoted
 }
 
 /// Fast byte-slice counter matching
@@ -2336,7 +2740,7 @@ pub struct PrepassContext {
     /// (the same value `run_slice` passes to prepass).
     ///
     /// Exposed for printer-level keys a caller needs but no stage output
-    /// carries — `bed_shape` for visual-debug's `frame: "plate"` viewport
+    /// carries — `printable_area` for visual-debug's `frame: "plate"` viewport
     /// being the first. Per-object overlays are irrelevant to those keys: the
     /// bed is a property of the printer, not of any object on it.
     pub default_resolved_config: Arc<slicer_ir::ResolvedConfig>,
@@ -2523,11 +2927,211 @@ pub fn prepare_prepass_context(
 
 #[cfg(test)]
 mod tests {
-    use super::{emit_host_support_diagnostics, parse_support_tool_selection};
-    use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
+    use super::{
+        add_line_numbers, emit_host_support_diagnostics, parse_feature_filament_selection,
+        parse_post_process_scripts, parse_support_tool_selection, resolve_support_line_width_mm,
+        run_post_process_scripts,
+    };
+    use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+    use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity, ResolvedConfig};
     use slicer_scheduler::validation::ModuleAccessAudit;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn add_line_numbers_prefixes_every_line_from_one() {
+        // Canonical `gcode_add_line_number`: every line — comments, commands,
+        // and blanks alike — prefixed `N<line> ` from 1, newline-terminated.
+        assert_eq!(
+            add_line_numbers("; header\nG1 X0 Y0\n\nG1 X1\n"),
+            "N1 ; header\nN2 G1 X0 Y0\nN3 \nN4 G1 X1\n"
+        );
+        // An unterminated final line gains a newline, matching canonical's
+        // `getline` + `"\n"` write loop; empty input stays empty.
+        assert_eq!(add_line_numbers("G28"), "N1 G28\n");
+        assert_eq!(add_line_numbers(""), "");
+    }
+
+    /// Script text that appends `marker` to the file path the runner appends as
+    /// its final argument, in each platform shell's spelling.
+    #[cfg(windows)]
+    fn appending_script(marker: &str) -> String {
+        format!("echo {marker}>>")
+    }
+
+    #[cfg(not(windows))]
+    fn appending_script(marker: &str) -> String {
+        format!("printf '{marker}\\n' >>")
+    }
+
+    #[test]
+    fn post_process_scripts_parse_string_list_and_reject_other_shapes() {
+        let mut source = HashMap::new();
+        assert!(
+            parse_post_process_scripts(&source).unwrap().is_empty(),
+            "an absent key means no scripts"
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::String("run-me.sh".to_string()),
+        );
+        assert_eq!(
+            parse_post_process_scripts(&source).unwrap(),
+            vec!["run-me.sh".to_string()]
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::String("first.sh".to_string()),
+                ConfigValue::String("second.sh".to_string()),
+            ]),
+        );
+        assert_eq!(
+            parse_post_process_scripts(&source).unwrap(),
+            vec!["first.sh".to_string(), "second.sh".to_string()]
+        );
+
+        source.insert("post_process".to_string(), ConfigValue::Bool(true));
+        assert!(
+            parse_post_process_scripts(&source).is_err(),
+            "a non-list, non-string value must be rejected"
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::List(vec![ConfigValue::Int(3)]),
+        );
+        assert!(
+            parse_post_process_scripts(&source).is_err(),
+            "a non-string list entry must be rejected"
+        );
+    }
+
+    #[test]
+    fn post_process_scripts_rewrite_the_working_copy_and_clean_up() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+
+        // One entry packing two commands across a newline, wrapped in blank
+        // lines: canonical splits each entry on `\r`/`\n` and skips the empties.
+        let scripts = vec![format!(
+            "\n{}\n{}\n",
+            appending_script("POST_PROCESSED"),
+            appending_script("SECOND_LINE")
+        )];
+
+        let rewritten = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect("the working-copy rewrite must succeed");
+
+        let mut lines = rewritten.lines();
+        assert_eq!(lines.next(), Some("G1 X0 Y0"));
+        assert_eq!(lines.next(), Some("POST_PROCESSED"));
+        assert_eq!(
+            lines.next(),
+            Some("SECOND_LINE"),
+            "one entry's newline-separated commands must run in order"
+        );
+        assert_eq!(lines.next(), None);
+
+        assert!(
+            !dir.path().join("artifact.gcode.pp").exists(),
+            "the working copy must not survive the run"
+        );
+        assert!(
+            !output.exists(),
+            "the runner works on the copy; writing `output` stays the caller's job"
+        );
+    }
+
+    #[test]
+    fn post_process_script_failure_is_fatal_and_removes_the_working_copy() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+        let scripts = vec!["definitely-not-a-real-command-pnp-92".to_string()];
+
+        let error = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect_err("a script that cannot run must fail the slice");
+        assert!(
+            error.0.contains("definitely-not-a-real-command-pnp-92"),
+            "the failure must name the script, got: {}",
+            error.0
+        );
+        assert!(
+            !dir.path().join("artifact.gcode.pp").exists(),
+            "a failed run must not leave the working copy behind"
+        );
+    }
+
+    #[test]
+    fn post_process_script_deleting_the_artifact_is_fatal() {
+        #[cfg(windows)]
+        let scripts = vec!["del".to_string()];
+        #[cfg(not(windows))]
+        let scripts = vec!["rm".to_string()];
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+        let error = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect_err("a script that deletes the artifact must fail the slice");
+        assert!(
+            error.0.contains("deleted"),
+            "the failure must say the artifact was deleted, got: {}",
+            error.0
+        );
+    }
+
+    #[test]
+    fn support_line_width_resolution_handles_mm_percent_and_auto() {
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.42,
+                    is_percent: false
+                },
+                0.4,
+                0.4,
+            ),
+            0.42
+        );
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 50.0,
+                    is_percent: true
+                },
+                0.4,
+                0.4,
+            ),
+            0.2
+        );
+        // Canonical auto (`Flow::support_material_flow`): 0 resolves to
+        // `line_width`, not the nozzle.
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.0,
+                    is_percent: false
+                },
+                0.5,
+                0.4,
+            ),
+            0.5
+        );
+        // Orca's auto `line_width` of 0 resolves on to the nozzle diameter.
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.0,
+                    is_percent: false
+                },
+                0.0,
+                0.4,
+            ),
+            0.4
+        );
+    }
 
     #[test]
     fn model_object_strings_are_typed_before_production_resolution() {
@@ -2710,6 +3314,95 @@ mod tests {
     }
 
     #[test]
+    fn configured_fill_holders_include_scoped_overrides() {
+        let default = ResolvedConfig::default();
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "object:obj-a".to_string(),
+            ResolvedConfig {
+                top_fill_holder: "com.example.missing".to_string(),
+                ..ResolvedConfig::default()
+            },
+        );
+        let pairs = super::configured_fill_holders(&default, &targets);
+        assert!(
+            pairs.iter().any(|(claim, holder)| {
+                *claim == "claim:top-fill" && *holder == "com.example.missing"
+            }),
+            "an object-scoped holder override must be validated: {pairs:?}"
+        );
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(claim, holder)| {
+                    *claim == "claim:top-fill" && *holder == default.top_fill_holder.as_str()
+                })
+                .count(),
+            1,
+            "the global holder must appear exactly once"
+        );
+    }
+
+    #[test]
+    fn feature_filament_selectors_are_declared_host_keys() {
+        // Ticket 152 (A-2d8d71c1): the six `*_filament_id` keys were read by
+        // `parse_feature_filament_selection` but declared nowhere, so the
+        // ingestor warn-dropped every authored value and the feature could
+        // never fire in production. This goes through the live registry and
+        // the real resolution path, not a hand-built map.
+        let registry =
+            slicer_config::assemble_registry(&[], &slicer_config::HostChannels::from_live())
+                .unwrap()
+                .registry;
+        let mut ingestor = slicer_config::ConfigIngestor::new(&registry);
+        let mut source: HashMap<String, ConfigValue> = HashMap::new();
+        for (index, key) in [
+            "sparse_infill_filament_id",
+            "internal_solid_filament_id",
+            "top_surface_filament_id",
+            "bottom_surface_filament_id",
+            "inner_wall_filament_id",
+            "outer_wall_filament_id",
+        ]
+        .iter()
+        .enumerate()
+        {
+            source.insert((*key).to_string(), ConfigValue::Int(index as i64 + 1));
+        }
+        // Six tools so every 1-based selector is in range.
+        source.insert(
+            "filament_density".into(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24); 6]),
+        );
+        ingestor
+            .ingest_delta(slicer_config::ConfigScope::Global, &source)
+            .unwrap();
+        let outcome = ingestor.finish();
+        assert!(
+            outcome.warnings.is_empty(),
+            "the six *_filament_id selectors must be recognized host keys: {:?}",
+            outcome.warnings
+        );
+        let config = slicer_config::resolve_scope_stack(
+            &registry,
+            &outcome.scoped,
+            &slicer_config::ResolutionTarget::default(),
+            &slicer_config::ExpansionContext {
+                nozzle_diameter_mm: 0.4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (_, tools) = super::resolved_host_options(&config);
+        assert_eq!(tools.feature_filaments.sparse, Some(0));
+        assert_eq!(tools.feature_filaments.internal_solid, Some(1));
+        assert_eq!(tools.feature_filaments.top_surface, Some(2));
+        assert_eq!(tools.feature_filaments.bottom_surface, Some(3));
+        assert_eq!(tools.feature_filaments.inner_wall, Some(4));
+        assert_eq!(tools.feature_filaments.outer_wall, Some(5));
+    }
+
+    #[test]
     fn expanded_global_overlay_feeds_feedrate_config() {
         use super::overlay_expanded_global;
         // The raw source still carries the unexpanded overhang percent
@@ -2789,6 +3482,177 @@ mod tests {
         let selection = parse_support_tool_selection(&extreme);
         assert_eq!(selection.support_tool, 0);
         assert_eq!(selection.interface_tool, 0);
+    }
+
+    #[test]
+    fn support_interface_not_for_body_defaults_true_and_advances_colliding_body() {
+        // Absent key means canonical default true; a default profile never
+        // changes assignment (both tools 0, single tool).
+        let absent = HashMap::<String, ConfigValue>::new();
+        let selection = parse_support_tool_selection(&absent);
+        assert!(selection.support_interface_not_for_body);
+        assert_eq!(selection.support_tool, 0);
+
+        // Explicit false is honoured (all spellings) and never advances.
+        for value in [
+            ConfigValue::Bool(false),
+            ConfigValue::Int(0),
+            ConfigValue::String("false".to_string()),
+            ConfigValue::String("0".to_string()),
+        ] {
+            let mut cfg = HashMap::new();
+            cfg.insert(
+                "filament_density".to_string(),
+                ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+            );
+            cfg.insert("support_filament".to_string(), ConfigValue::Int(2));
+            cfg.insert(
+                "support_interface_filament".to_string(),
+                ConfigValue::Int(2),
+            );
+            cfg.insert("support_interface_not_for_body".to_string(), value);
+            let selection = parse_support_tool_selection(&cfg);
+            assert!(!selection.support_interface_not_for_body);
+            assert_eq!(selection.support_tool, 1);
+            assert_eq!(selection.interface_tool, 1);
+        }
+
+        // Default true with an explicitly configured colliding interface and
+        // another tool available advances the body to the smallest
+        // non-interface tool.
+        let mut colliding = HashMap::new();
+        colliding.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        colliding.insert("support_filament".to_string(), ConfigValue::Int(2));
+        colliding.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(2),
+        );
+        let selection = parse_support_tool_selection(&colliding);
+        assert!(selection.support_interface_not_for_body);
+        assert_eq!(selection.interface_tool, 1);
+        assert_eq!(selection.support_tool, 0);
+
+        // No advancement when the interface was never explicitly configured,
+        // even on a multi-tool machine with colliding tools.
+        let mut implicit = HashMap::new();
+        implicit.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        let selection = parse_support_tool_selection(&implicit);
+        assert_eq!(selection.support_tool, 0);
+
+        // No advancement on a single-tool machine.
+        let mut single = HashMap::new();
+        single.insert("support_filament".to_string(), ConfigValue::Int(2));
+        single.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(2),
+        );
+        let selection = parse_support_tool_selection(&single);
+        assert_eq!(selection.support_tool, 1);
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_rebases_configured_one_based_indices() {
+        let absent = HashMap::<String, ConfigValue>::new();
+        let selection = parse_feature_filament_selection(&absent, 1);
+        assert_eq!(selection.sparse, None);
+        assert_eq!(selection.internal_solid, None);
+        assert_eq!(selection.top_surface, None);
+        assert_eq!(selection.bottom_surface, None);
+        assert_eq!(selection.inner_wall, None);
+        assert_eq!(selection.outer_wall, None);
+
+        // Three configured tools; every key carries a 1-based Orca index.
+        let mut configured = HashMap::new();
+        configured.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.24),
+            ]),
+        );
+        configured.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(2));
+        configured.insert(
+            "internal_solid_filament_id".to_string(),
+            ConfigValue::Int(3),
+        );
+        configured.insert("top_surface_filament_id".to_string(), ConfigValue::Int(1));
+        configured.insert(
+            "bottom_surface_filament_id".to_string(),
+            ConfigValue::Int(3),
+        );
+        configured.insert("inner_wall_filament_id".to_string(), ConfigValue::Int(2));
+        configured.insert("outer_wall_filament_id".to_string(), ConfigValue::Int(1));
+        let selection = parse_support_tool_selection(&configured);
+        assert_eq!(selection.tool_count, 3);
+        let features = selection.feature_filaments;
+        assert_eq!(features.sparse, Some(1));
+        assert_eq!(features.internal_solid, Some(2));
+        assert_eq!(features.top_surface, Some(0));
+        assert_eq!(features.bottom_surface, Some(2));
+        assert_eq!(features.inner_wall, Some(1));
+        assert_eq!(features.outer_wall, Some(0));
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_zero_and_invalid_mean_inherit() {
+        // Canonical 0 = Default: inherit, never an explicit tool — so the
+        // parser yields `None`, and so do absent, negative, and non-`Int`
+        // spellings (the support-selector precedent maps those to tool 0;
+        // here tool 0 must stay reachable only as an explicit `1`).
+        let mut zero = HashMap::new();
+        zero.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(0));
+        zero.insert(
+            "outer_wall_filament_id".to_string(),
+            ConfigValue::Float(2.0),
+        );
+        zero.insert(
+            "inner_wall_filament_id".to_string(),
+            ConfigValue::String("2".to_string()),
+        );
+        zero.insert("top_surface_filament_id".to_string(), ConfigValue::Int(-1));
+        let selection = parse_feature_filament_selection(&zero, 3);
+        assert_eq!(selection.sparse, None);
+        assert_eq!(selection.outer_wall, None);
+        assert_eq!(selection.inner_wall, None);
+        assert_eq!(selection.top_surface, None);
+        assert_eq!(selection.internal_solid, None);
+        assert_eq!(selection.bottom_surface, None);
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_clamps_explicit_index_to_tool_count() {
+        // Canonical `clamp_feature_filament_to_valid`: an explicit index past
+        // the last configured tool clamps to it instead of rejecting.
+        let mut clamped = HashMap::new();
+        clamped.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        clamped.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(9));
+        clamped.insert(
+            "outer_wall_filament_id".to_string(),
+            ConfigValue::Int(i64::MAX),
+        );
+        let selection = parse_support_tool_selection(&clamped);
+        assert_eq!(selection.tool_count, 2);
+        assert_eq!(selection.feature_filaments.sparse, Some(1));
+        assert_eq!(selection.feature_filaments.outer_wall, Some(1));
+
+        // A single-tool machine folds every explicit selector onto tool 0.
+        let mut single = HashMap::new();
+        single.insert(
+            "bottom_surface_filament_id".to_string(),
+            ConfigValue::Int(4),
+        );
+        let selection = parse_feature_filament_selection(&single, 1);
+        assert_eq!(selection.bottom_surface, Some(0));
     }
 
     #[test]

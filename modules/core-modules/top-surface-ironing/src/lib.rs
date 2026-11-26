@@ -56,7 +56,7 @@ pub struct TopSurfaceIroning {
     enabled: bool,
     ironing_speed: f64,
     ironing_flow: f64,
-    ironing_spacing_mm: f64,
+    ironing_spacing: f64,
     ironing_pattern: String,
 }
 
@@ -77,8 +77,8 @@ impl TopSurfaceIroning {
     }
 
     /// Ironing line spacing in mm.
-    pub fn ironing_spacing_mm(&self) -> f64 {
-        self.ironing_spacing_mm
+    pub fn ironing_spacing(&self) -> f64 {
+        self.ironing_spacing
     }
 
     /// Ironing pattern name.
@@ -419,7 +419,10 @@ impl LayerModule for TopSurfaceIroning {
             ));
         }
 
-        let ironing_spacing_mm = config.require_float("ironing_spacing_mm")?;
+        // Required read (config-scope-resolution plan): `ironing_spacing` is
+        // declared in the manifest, so the bound view always holds its
+        // registry default.
+        let ironing_spacing = config.require_float("ironing_spacing")?;
 
         let ironing_pattern = config.require_string("ironing_pattern")?;
         if ironing_pattern != "rectilinear" {
@@ -438,7 +441,7 @@ impl LayerModule for TopSurfaceIroning {
             enabled,
             ironing_speed,
             ironing_flow,
-            ironing_spacing_mm,
+            ironing_spacing,
             ironing_pattern,
         })
     }
@@ -497,7 +500,7 @@ impl LayerModule for TopSurfaceIroning {
                     poly,
                     &bb,
                     z,
-                    self.ironing_spacing_mm,
+                    self.ironing_spacing,
                     flow_factor,
                     speed_factor,
                 );

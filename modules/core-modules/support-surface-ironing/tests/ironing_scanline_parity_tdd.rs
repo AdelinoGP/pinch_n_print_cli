@@ -17,10 +17,19 @@ use support_surface_ironing::SupportSurfaceIroning;
 /// seeds each declared default); this fixture seeds the same values.
 fn config_with(overrides: Vec<(&str, ConfigValue)>) -> ConfigView {
     let mut fields: HashMap<String, ConfigValue> = HashMap::from([
-        ("ironing_enabled".to_string(), ConfigValue::Bool(false)),
-        ("ironing_speed".to_string(), ConfigValue::Float(30.0)),
-        ("ironing_flow_rate".to_string(), ConfigValue::Float(100.0)),
-        ("ironing_spacing".to_string(), ConfigValue::Float(0.1)),
+        ("support_ironing".to_string(), ConfigValue::Bool(false)),
+        (
+            "support_ironing_speed".to_string(),
+            ConfigValue::Float(30.0),
+        ),
+        (
+            "support_ironing_flow".to_string(),
+            ConfigValue::Percent(10.0),
+        ),
+        (
+            "support_ironing_spacing".to_string(),
+            ConfigValue::Float(0.1),
+        ),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
     ]);
     for (key, value) in overrides {
@@ -40,8 +49,11 @@ fn region_with_polygon(polygon: ExPolygon, z: f32) -> SliceRegionView {
 
 fn run(polygon: ExPolygon, spacing: f32) -> Vec<slicer_ir::ExtrusionPath3D> {
     let config = config_with(vec![
-        ("ironing_enabled", ConfigValue::Bool(true)),
-        ("ironing_spacing", ConfigValue::Float(spacing as f64)),
+        ("support_ironing", ConfigValue::Bool(true)),
+        (
+            "support_ironing_spacing",
+            ConfigValue::Float(spacing as f64),
+        ),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_polygon(polygon, 1.0);

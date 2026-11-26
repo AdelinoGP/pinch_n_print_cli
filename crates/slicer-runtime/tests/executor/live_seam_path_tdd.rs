@@ -1408,13 +1408,13 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
 
     // Bound-view baseline (packet 06 5c-prime): `run-perimeters`
     // contract-requires the full `classic_perimeters_baseline` surface
-    // (first failure: `layer_height`) plus `wall_count` and `line_width`
+    // (first failure: `layer_height`) plus `wall_loops` and `line_width`
     // (the already-expanded base width the auto-sentinel wall widths
     // resolve through); seam placement itself is independent of these keys.
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(
             crate::common::classic_perimeters_baseline()
-                .int("wall_count", 2)
+                .int("wall_loops", 2)
                 .float("line_width", 0.4)
                 .build(),
         ))

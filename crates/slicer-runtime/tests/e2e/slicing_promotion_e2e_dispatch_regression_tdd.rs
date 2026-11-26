@@ -46,7 +46,7 @@ fn shared_staircase_paths() -> (&'static Path, &'static Path) {
             &cfg,
             "{\n  \
                 \"ironing_enabled\": true,\n  \
-                \"ironing_spacing_mm\": 0.2,\n  \
+                \"ironing_spacing\": 0.2,\n  \
                 \"ironing_speed\": 15.0,\n  \
                 \"ironing_flow\": 15,\n  \
                 \"top_shell_layers\": 2,\n  \
@@ -178,7 +178,7 @@ fn config_path(tmp: &tempfile::TempDir) -> PathBuf {
         // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
         "{\n  \
             \"ironing_enabled\": true,\n  \
-            \"ironing_spacing_mm\": 0.2,\n  \
+            \"ironing_spacing\": 0.2,\n  \
             \"ironing_speed\": 15.0,\n  \
             \"ironing_flow\": 15,\n  \
             \"top_shell_layers\": 2,\n  \
@@ -273,11 +273,11 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
                              // placed on the plate at load (`place_bare_mesh_on_bed`), so its footprint
                              // is centred on the bed, not on (0, 0). Derive that centre the way
                              // production does rather than re-deriving the rule here; the config below
-                             // declares no `bed_shape`, so the resolved default applies. The 10 mm bound
-                             // itself is unchanged — only what it is measured from.
-    let bed_shape = slicer_ir::ResolvedConfig::default().bed_shape;
-    let (centre_x, centre_y) = slicer_model_io::bed_center_mm(&bed_shape)
-        .expect("the default bed_shape must describe a plate");
+                             // declares no `printable_area`, so the resolved default applies. The 10 mm
+                             // bound itself is unchanged — only what it is measured from.
+    let printable_area = slicer_ir::ResolvedConfig::default().printable_area;
+    let (centre_x, centre_y) = slicer_model_io::bed_center_mm(&printable_area)
+        .expect("the default printable_area must describe a plate");
 
     let mut in_ironing = false;
     let mut checked = 0;

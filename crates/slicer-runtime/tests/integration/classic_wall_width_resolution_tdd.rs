@@ -50,7 +50,7 @@ fn zero_width_resolves_to_canonical_auto_extrusion_width() {
     // sentinel — the value this test asserts.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", expected as f64)
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("nozzle_diameter", nozzle_diameter as f64)
         .float("outer_wall_line_width", 0.0)
         .float("inner_wall_line_width", 0.0)

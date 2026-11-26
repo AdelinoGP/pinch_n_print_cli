@@ -35,12 +35,12 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.infill_density]
+[config.schema.sparse_infill_density]
 type    = "float"
-default = 0.2
+default = 20.0
 min     = 0.0
-max     = 1.0
-display = "Infill Density"
+max     = 100.0
+display = "Sparse Infill Density"
 group   = "Infill"
 
 [config.schema.infill_shift_step]
@@ -49,27 +49,18 @@ default = 0.0
 display = "Infill Shift Step"
 group   = "Infill"
 
-[config.schema.infill_angle]
+[config.schema.infill_direction]
 type    = "float"
 default = 45.0
 min     = 0.0
 max     = 360.0
-display = "Infill Angle"
-group   = "Infill"
-
-[config.schema.infill_speed]
-type    = "float"
-default = 60.0
-min     = 1.0
-max     = 300.0
-display = "Infill Speed"
+display = "Infill Direction"
 group   = "Infill"
 
 [config.schema.sparse_infill_speed]
 type    = "float"
-default = 60.0
+default = 100.0
 min     = 1.0
-max     = 300.0
 display = "Sparse Infill Speed"
 group   = "Infill"
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
@@ -78,7 +69,6 @@ denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 type    = "float"
 default = 60.0
 min     = 1.0
-max     = 300.0
 display = "Top Surface Speed"
 group   = "Infill"
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
@@ -121,7 +111,7 @@ group   = "Infill"
 type    = "float_or_percent"
 default = "100%"
 min     = 10.0
-max     = 120.0
+max     = 125.0
 display = "Bridge Density"
 group   = "Infill"
 
@@ -142,7 +132,6 @@ group   = "Infill"
 type    = "float"
 default = 25.0
 min     = 1.0
-max     = 300.0
 display = "Bridge Speed"
 group   = "Infill"
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]

@@ -2,7 +2,7 @@
 
 Asserts that every extruding move in an ';TYPE:Internal Bridge' section is
 emitted at F2250 (internal_bridge_speed default 37.5 mm/s x 60) and that both
-reslice outputs (--config varying only infill_speed) carry identical bridge
+reslice outputs (--config varying only sparse_infill_speed) carry identical bridge
 move feedrate lists. Non-vacuous: fails when zero bridge extrusions are found.
 
 Usage: python3 resources/test_config/ac6_check.py <a.gcode> <b.gcode>

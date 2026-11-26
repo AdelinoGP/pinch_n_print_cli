@@ -3222,7 +3222,7 @@ fn planner(line_width_mm: f32) -> SupportPlanner {
         support_interface_top_layers: 0,
         support_interface_bottom_layers: 0,
         support_base_pattern: "rectilinear".to_owned(),
-        support_top_z_distance_mm: 0.2,
+        support_top_z_distance: 0.2,
         support_layer_height_mm: 0.0,
         independent_support_layer_height: false,
         support_object_xy_distance: 0.0,

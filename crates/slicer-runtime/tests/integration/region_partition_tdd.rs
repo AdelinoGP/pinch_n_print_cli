@@ -6,14 +6,14 @@
 //! - For each `(object_id, region_id)` present in `SliceIR`, finds the matching
 //!   `PerimeterIR.regions` entry; absence is fatal.
 //! - Computes pairwise-disjoint canonical fill polygons by precedence
-//!   `bridge > bottom > top > sparse` and writes them back onto the arena's
-//!   `SlicedRegion` in place.
+//!   `bridge > bottom > top > internal > sparse` and writes them back onto the
+//!   arena's `SlicedRegion` in place.
 //! - `top_solid_fill` / `bottom_solid_fill` / `bridge_areas` end up clipped to
 //!   `perimeter.infill_areas` AND deduped against higher-precedence siblings.
 //! - `sparse_infill_area` is the remainder of `perimeter.infill_areas` after
 //!   subtracting the three solid/bridge polygons.
 
-use slicer_core::polygon_ops::intersection;
+use slicer_core::polygon_ops::{difference, intersection};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -21,8 +21,13 @@ use slicer_ir::{
     RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
 };
 use slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice;
+use slicer_runtime::wit_host::{
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, OriginId,
+};
 use slicer_runtime::LayerArena;
 use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
+
+use crate::common::{commit_hec_for_test, point3_with_width};
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
 
@@ -163,7 +168,7 @@ fn internal_bridge_qualification_writes_gated_areas() {
         .collect::<Vec<_>>();
     let mut region_map = RegionMapIR::default();
     let resolved = slicer_ir::ResolvedConfig {
-        infill_density: 0.2,
+        sparse_infill_density: 20.0,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
         // Packet 04: `line_width = 0` is the auto sentinel the host expands
@@ -253,7 +258,7 @@ fn internal_bridge_angle_is_per_area_from_boundary() {
         .collect::<Vec<_>>();
     let mut region_map = RegionMapIR::default();
     let config = region_map.intern_config(slicer_ir::ResolvedConfig {
-        infill_density: 0.2,
+        sparse_infill_density: 20.0,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
         // Packet 04: the host expands the auto-zero sentinel to
@@ -362,6 +367,16 @@ fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
     let config = region_map.intern_config(slicer_ir::ResolvedConfig {
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // Isolates the shell-band marker, which is what this test is about.
+        // `internal_solid_fill` has two producers at this stage: this marker
+        // (`difference(top_solid_fill, top_solid_seed)`) and
+        // `convert_small_sparse_islands`, which since the five-way fill
+        // partition writes converted `minimum_sparse_infill_area` islands into
+        // the same bucket. `0.0` is canonical's own "feature off" value for the
+        // threshold, so with it the bucket holds the marker alone. The island
+        // half of the interaction is pinned by
+        // `converted_islands_join_the_shell_band_marker_in_the_internal_bucket`.
+        minimum_sparse_infill_area: 0.0,
         ..Default::default()
     });
     for index in 0..2 {
@@ -403,6 +418,136 @@ fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
         propagated_area
     );
     assert!(approx_eq(ex_area_mm2(lower), 38.64, 0.1));
+}
+
+/// Companion to `shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill`,
+/// which switches island conversion off to isolate the marker. This one leaves
+/// `minimum_sparse_infill_area` at its canonical default (15 mm2) and pins what
+/// the five-way fill partition changed: `convert_small_sparse_islands` writes
+/// converted islands into `internal_solid_fill` (they used to ride
+/// `bottom_solid_fill` under a `bottom_shell_index = Some(1)` stamp).
+///
+/// Same fixture. `internal_solid_fill` must therefore hold *both* producers:
+///
+/// - the shell-band marker, still the shrunk propagated half, still excluding
+///   the exposed seed — the marker's own invariant is unchanged by conversion;
+/// - converted islands, which are `difference(infill_areas, solids)` and so lie
+///   strictly OUTSIDE `top_solid_fill`. Since master's t166 miter opening
+///   replaced the round-join opening, the exposed half carries no corner
+///   fillets, so the converted content now sits in the propagated half. The
+///   test therefore asserts the conversion non-vacuously against
+///   `top_solid_fill` and checks the exposed half only when it is non-empty.
+///
+/// The load-bearing assertion is the last one: whatever lands in the exposed
+/// half must not overlap the exposed top surface. That is the invariant the
+/// sibling test's `is_empty()` used to carry when this bucket had one producer.
+#[test]
+fn converted_islands_join_the_shell_band_marker_in_the_internal_bucket() {
+    let object_id = ObjectId::from("seed-square");
+    let full_square = square(0.0, 0.0, 10.0, 10.0);
+    let covered = square(5.0, 0.0, 10.0, 10.0);
+    let slices = vec![
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![sliced_region("seed-square", 0, vec![full_square])],
+        },
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![sliced_region("seed-square", 0, vec![covered])],
+        },
+    ];
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+        top_shell_layers: 2,
+        bottom_shell_layers: 0,
+        // Canonical default, i.e. conversion ON — the difference from the
+        // sibling test is this one line.
+        minimum_sparse_infill_area: 15.0,
+        ..Default::default()
+    });
+    for index in 0..2 {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: index,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 2);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("region map");
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("slice IR");
+
+    commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
+    let classified = blackboard.slice_ir().expect("classified slices");
+    let region = &classified[0].regions[0];
+    let lower = &region.internal_solid_fill;
+
+    // Strictly more than the marker alone: conversion added geometry.
+    let marker_area = 38.64;
+    assert!(
+        ex_area_mm2(lower) > marker_area + 0.1,
+        "conversion must contribute to internal_solid_fill on top of the {marker_area} mm2          marker; got {:.4}. Equal to the marker means converted islands stopped landing          in this bucket.",
+        ex_area_mm2(lower)
+    );
+
+    // Conversion must contribute geometry outside the shell-band marker, which
+    // is a subset of `top_solid_fill`. This replaces the older "the exposed
+    // half must be non-empty" expectation: master's t166 miter opening removed
+    // the round-join corner fillets that used to be the exposed half's only
+    // islands, so the converted content moved to the propagated half. The
+    // load-bearing invariant is the disjointness check below, which holds
+    // wherever the converted islands land.
+    let converted = difference(lower, &region.top_solid_fill);
+    assert!(
+        ex_area_mm2(&converted) > 0.1,
+        "conversion must contribute geometry outside top_solid_fill; got {:.4} mm2. \
+         Zero means converted islands stopped landing in this bucket.",
+        ex_area_mm2(&converted)
+    );
+
+    // The exposed half may be empty since t166; when it is not, whatever lands
+    // there must be island geometry, never the exposed top surface itself.
+    let exposed_half = square(0.0, 0.0, 5.0, 10.0);
+    let in_exposed = intersection(lower, &[exposed_half]);
+
+    // The invariant that matters, and the one the sibling test's `is_empty()`
+    // used to carry: what lands in the exposed half is island geometry, never
+    // the exposed top surface itself. Converted islands are
+    // `difference(infill_areas, solids)`, so they are disjoint from
+    // `top_solid_fill` by construction; the exposed top surface stays in
+    // `top_solid_fill` alone. Restricting to the exposed half is what isolates
+    // the island producer here — the marker lives entirely in the propagated
+    // half (x >= 5.4) and IS a subset of `top_solid_fill`, deliberately: it is
+    // the shell band, and the fill-stage partition carves it back to empty
+    // under `top > internal` precedence.
+    let overlap = intersection(&in_exposed, &region.top_solid_fill);
+    assert!(
+        ex_area_mm2(&overlap) < 0.001,
+        "internal_solid_fill's exposed-half content must be converted islands only,          disjoint from top_solid_fill. Overlap {:.6} mm2 means the exposed top seed          itself is being claimed as internal solid.",
+        ex_area_mm2(&overlap)
+    );
 }
 
 fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
@@ -896,4 +1041,167 @@ fn ac6_partition_preserves_unrelated_fields() {
     assert_eq!(r.top_shell_index, Some(2));
     assert_eq!(r.bottom_shell_index, Some(3));
     assert!(r.is_bridge);
+}
+
+#[test]
+fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
+    let wall_inset = square(0.0, 0.0, 10.0, 10.0);
+    let mut slice = empty_slice_ir();
+    slice
+        .regions
+        .push(sliced_region("obj-1", 0, vec![wall_inset.clone()]));
+    let mut arena = arena_with(slice, empty_perimeter_ir());
+    arena.take_perimeter();
+    arena
+        .set_perimeter(perimeter_region_ir_for_test(wall_inset))
+        .expect("set perimeter");
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
+
+    let module_id = "test.internal-bridge";
+    let mut ctx = HostExecutionContextBuilder::new(module_id, 0.2, 0.2).build();
+    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
+        points: vec![
+            point3_with_width(-1.0, -1.0, 0.2, 0.4),
+            point3_with_width(11.0, 1.0, 0.2, 0.4),
+        ],
+        role: ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+        tool_index: None,
+        order_lock: None,
+    });
+    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
+        points: vec![
+            point3_with_width(-1.0, 9.0, 0.2, 0.4),
+            point3_with_width(11.0, 11.0, 0.2, 0.4),
+        ],
+        role: ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+        tool_index: None,
+        order_lock: None,
+    });
+    ctx.infill_output_mut().sparse_path_origins.extend([
+        Some(OriginId {
+            object_id: "obj-1".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        }),
+        Some(OriginId {
+            object_id: "obj-1".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        }),
+    ]);
+    commit_hec_for_test(
+        "Layer::InfillPostProcess",
+        module_id,
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("infill postprocess commit");
+
+    let sparse = &arena.slice().expect("slice").regions[0].sparse_infill_area;
+    let infill = arena.infill().expect("infill");
+    let bridge = &infill.regions[0].internal_bridge_infill;
+    // This fixture has no persisted qualified internal-bridge carrier. The
+    // pre-shrink pin expected paths from any overlap; canonical gating drops
+    // the candidate before executor construction, so no paths are emitted.
+    assert!(
+        bridge.is_empty(),
+        "unqualified candidates must not emit InternalBridgeInfill"
+    );
+    for path in bridge {
+        let min_x = path
+            .points
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::INFINITY, f32::min)
+            - 0.2;
+        let max_x = path
+            .points
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::NEG_INFINITY, f32::max)
+            + 0.2;
+        let min_y = path
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f32::INFINITY, f32::min)
+            - 0.2;
+        let max_y = path
+            .points
+            .iter()
+            .map(|p| p.y)
+            .fold(f32::NEG_INFINITY, f32::max)
+            + 0.2;
+        let bridge_box = square(min_x, min_y, max_x, max_y);
+        assert!(
+            ex_area_mm2(&intersection(sparse, &[bridge_box])) < 0.01,
+            "InternalBridgeInfill partition must be disjoint from sparse partition"
+        );
+    }
+}
+
+fn perimeter_region_ir_for_test(infill_area: ExPolygon) -> PerimeterIR {
+    let mut perimeter = empty_perimeter_ir();
+    perimeter
+        .regions
+        .push(perimeter_region("obj-1", 0, vec![infill_area]));
+    perimeter
+}
+
+#[test]
+fn internal_solid_fill_partition_carves_marker_and_keeps_islands() {
+    // The internal-solid bucket has dual content by construction: the PrePass
+    // shell-band marker (a subset of `top_solid_fill`) must carve to empty,
+    // while converted sparse islands must survive as the bucket's only
+    // survivors — and the sparse zone must not re-absorb them (the five-way
+    // precedence `bridge > bottom > top > internal > sparse`).
+    let wall_inset = square(0.0, 0.0, 10.0, 10.0);
+    let island = square(1.0, 1.0, 4.0, 4.0); // 9 mm^2, inside the wall inset
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![wall_inset.clone()]);
+    // Both contents in one fixture: the marker (subset of top) and a
+    // converted island (in neither top nor bottom nor bridge).
+    sr.top_solid_fill = vec![square(6.0, 6.0, 9.0, 9.0)];
+    sr.internal_solid_fill = vec![island.clone(), square(6.5, 6.5, 8.5, 8.5)];
+    slice.regions.push(sr);
+
+    let mut perim = empty_perimeter_ir();
+    perim
+        .regions
+        .push(perimeter_region("obj-1", 0, vec![wall_inset.clone()]));
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
+
+    let r = &arena.slice().expect("slice").regions[0];
+    // The marker square (6.5..8.5, strictly inside the top square 6..9) carves
+    // to empty; the island survives.
+    assert_eq!(
+        r.internal_solid_fill.len(),
+        1,
+        "the shell-band marker (subset of top_solid_fill) must carve away; the \
+         converted island must survive — got {:?}",
+        r.internal_solid_fill
+    );
+    assert!(
+        approx_eq(ex_area_mm2(&r.internal_solid_fill), 9.0, 0.01),
+        "the surviving polygon must be the 9 mm^2 island, got {} mm^2",
+        ex_area_mm2(&r.internal_solid_fill)
+    );
+    // The sparse zone must not re-absorb the island.
+    let island_area_in_sparse = ex_area_mm2(&intersection(&r.sparse_infill_area, &[island]));
+    assert!(
+        island_area_in_sparse < 0.01,
+        "sparse must not re-absorb a converted island, got {island_area_in_sparse} mm^2"
+    );
+    // The top bucket survives its own partition arm untouched.
+    assert!(
+        approx_eq(ex_area_mm2(&r.top_solid_fill), 9.0, 0.01),
+        "the top bucket must keep its square, got {} mm^2",
+        ex_area_mm2(&r.top_solid_fill)
+    );
 }

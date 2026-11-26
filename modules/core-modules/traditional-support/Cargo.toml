@@ -23,6 +23,7 @@ property_testing = []
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
 proptest = { workspace = true }
 slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
+toml = "0.8"
 
 [[test]]
 name = "traditional_family_tdd"

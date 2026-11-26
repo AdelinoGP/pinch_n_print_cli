@@ -806,7 +806,7 @@ fn ir_config_oracle_counterexamples() {
     // Index 0 is `0.0` in the generator, so changing it to `1.0` changes content
     // without changing length (index 2 already holds `1.0`, which would be a
     // no-op mutation).
-    sequence_content.bed_shape[0] = 1.0;
+    sequence_content.printable_area[0] = 1.0;
     let premise_pairs = [
         (with_f64_field(&base, 0.0), with_f64_field(&base, -0.0)),
         (
@@ -1001,7 +1001,7 @@ fn ir_config_oracle_counterexamples() {
     // (a) omitted-field comparator: compares only a subset of the fields.
     fn subset_eq(left: &ResolvedConfig, right: &ResolvedConfig) -> bool {
         left.layer_height.to_bits() == right.layer_height.to_bits()
-            && left.wall_count == right.wall_count
+            && left.wall_loops == right.wall_loops
     }
     let speed_50 = with_f32_field(&base, 50.0);
     let speed_60 = with_f32_field(&base, 60.0);
@@ -1456,12 +1456,12 @@ fn ir_config_type_and_integer_range_rejections() {
     );
 
     let negative = config
-        .apply_cli_key("wall_count", &ConfigValue::Int(-1))
+        .apply_cli_key("wall_loops", &ConfigValue::Int(-1))
         .expect_err("a negative wall count must fail");
     assert_eq!(
         negative,
         ConfigResolutionError::OutOfRange {
-            key: "wall_count".to_owned(),
+            key: "wall_loops".to_owned(),
             value: -1.0,
             min: Some(0.0),
             max: Some(f64::from(u32::MAX)),
@@ -1470,12 +1470,12 @@ fn ir_config_type_and_integer_range_rejections() {
     );
 
     let too_large = config
-        .apply_cli_key("wall_count", &ConfigValue::Int(4_294_967_296))
+        .apply_cli_key("wall_loops", &ConfigValue::Int(4_294_967_296))
         .expect_err("an above-u32 wall count must fail");
     assert_eq!(
         too_large,
         ConfigResolutionError::OutOfRange {
-            key: "wall_count".to_owned(),
+            key: "wall_loops".to_owned(),
             value: 4_294_967_296.0,
             min: Some(0.0),
             max: Some(f64::from(u32::MAX)),
@@ -1485,10 +1485,10 @@ fn ir_config_type_and_integer_range_rejections() {
 
     // Positive control: the rejections above are not vacuous.
     let applied = config
-        .apply_cli_key("wall_count", &ConfigValue::Int(3))
+        .apply_cli_key("wall_loops", &ConfigValue::Int(3))
         .expect("a valid wall count must apply");
     assert!(applied);
-    assert_eq!(config.wall_count, 3);
+    assert_eq!(config.wall_loops, 3);
 }
 
 /// The mode-pinning mechanism behind every `mode_locked` owner strategy.

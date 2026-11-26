@@ -1,6 +1,6 @@
 # Asset — Scoped gap list after triage (ticket 03)
 
-Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 25 keys that are already implemented under a Pinch name. **414 keys remain** — this is the set the packet queue must cover.
+Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 24 keys that are already implemented under a Pinch name. **415 keys remain** — this is the set the packet queue must cover (ticket 105 re-adjudicated `resolution` from the rename pool into this gap set: the host's emit-time per-role `gcode_resolution` does not implement canonical's generation-time global simplification).
 
 ## Ruled out of scope (42)
 
@@ -49,37 +49,36 @@ Derived from ticket 01's inventory by removing 42 keys ruled out of scope and 25
 | `wrapping_detection_layers` | Bambu-proprietary hardware |
 | `wrapping_exclude_area` | Bambu-proprietary hardware |
 
-## Already implemented under a Pinch name (25)
+## Already implemented under a Pinch name (24)
 
 These were counted as gaps by exact-name matching in ticket 01. Each is a **false gap**.
 
 | OrcaSlicer key | Pinch 'n Print key | owner | fidelity |
 |---|---|---|---|
-| `fuzzy_skin_thickness` | `thickness` | `fuzzy-skin` | exact |
-| `fuzzy_skin_point_distance` | `point_distance` | `fuzzy-skin` | exact |
+| `fuzzy_skin_thickness` | `thickness` | `fuzzy-skin` | exact — **renamed in ticket 103** |
+| `fuzzy_skin_point_distance` | `point_distance` | `fuzzy-skin` | exact — **renamed in ticket 103** |
 | `close_fan_the_first_x_layers` | `disable_fan_first_layers` | `part-cooling` | exact — **renamed in ticket 99** |
 | `fan_max_speed` | `fan_speed_max` | `part-cooling` | exact (word order) — **renamed in ticket 99**; scale deviation: Orca 0–100 % vs Pinch raw 0–255 → reclassified as gap work (P01) |
 | `fan_min_speed` | `fan_speed_min` | `part-cooling` | exact (word order) — **renamed in ticket 99**; same scale deviation + declared-but-never-read → reclassified as gap work (P01) |
 | `enable_overhang_bridge_fan` | `enable_overhang_fan` | `part-cooling` | exact — **renamed in ticket 99** |
-| `resolution` | `gcode_resolution` | `[host]` | exact |
-| `retraction_length` | `retract_length` | `path-optimization-default` | exact |
-| `retraction_speed` | `retract_speed` | `path-optimization-default` | exact |
-| `z_hop` | `travel_z_hop` | `path-optimization-default` | exact |
-| `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact |
-| `wall_loops` | `wall_count` | `classic-perimeters` | exact |
-| `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) |
-| `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact |
-| `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact |
-| `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact |
-| `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) |
-| `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) |
-| `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact |
-| `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact |
+| `retraction_length` | `retract_length` | `path-optimization-default` | exact — **renamed in ticket 101**; default 0.8 matches Orca |
+| `retraction_speed` | `retract_speed` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 25.0 → **30.0** (user ruling in-ticket) |
+| `z_hop` | `travel_z_hop` | `path-optimization-default` | exact — **renamed in ticket 101**; default aligned 0.0 → **0.4** and range `[0, 5]` adopted (user ruling in-ticket) |
+| `seam_position` | `seam_mode` | `seam-placer`, `seam-planner-default` | exact — **renamed in ticket 102**; default `aligned` already matches Orca (`spAligned`) |
+| `wall_loops` | `wall_count` | `classic-perimeters` | exact — **renamed in ticket 102**; default aligned 3 → **2** to match Orca (user ruling in-ticket; host `ResolvedConfig` was already 2) |
+| `printable_area` | `bed_shape` | `wipe-tower` | exact (Orca renamed Slic3r's `bed_shape`) — **renamed in ticket 100** |
+| `prime_volume` | `wipe_tower_purge_volume` | `wipe-tower` | exact — **renamed in ticket 100**; default deviation surfaced: Pinch `10.0` vs Orca `45.0` (see 100) |
+| `enable_prime_tower` | `wipe_tower_enabled` | `wipe-tower` | exact — **renamed in ticket 100**; the rename also makes Orca 3MF `enable_prime_tower` a *declared* key, so it now reaches the typed extractor instead of `extensions` |
+| `prime_tower_width` | `wipe_tower_width` | `wipe-tower` | exact — **renamed in ticket 100**; defaults match Orca (60.0), no deviation |
+| `support_top_z_distance` | `support_top_z_distance_mm` | `support-planner`, `tree-support` | exact (unit suffix) — **renamed in ticket 104** |
+| `small_perimeter_threshold` | `smaller_perimeter_threshold_mm` | `classic-perimeters` | exact (unit suffix) — **renamed in ticket 102**; default aligned 0.8 → **0.0** to match Orca's "0 = no threshold effect" (user ruling in-ticket) |
+| `initial_layer_print_height` | `first_layer_height` | `layer-planner-default` | exact — **renamed in ticket 104**; manifest default aligned 0.3 → **0.2** to match Orca (user ruling in-ticket; host `ResolvedConfig` was already 0.2) |
+| `infill_direction` | `infill_angle` | `gyroid-infill`, `rectilinear-infill` | exact — **renamed in ticket 105** |
 | `raft_layers` | `support_raft_layers` + `base_raft_layers` + `interface_raft_layers` | `support-planner` | **split** — one Orca key became three |
 | `ironing_type` | `ironing_enabled` | `top-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
 | `support_ironing` | `ironing_enabled` | `support-surface-ironing` | **narrowed** — Orca enum → Pinch bool |
-| `support_ironing_flow` | `ironing_flow_rate` | `support-surface-ironing` | exact |
-| `support_ironing_spacing` | `ironing_spacing` | `support-surface-ironing` | exact |
+| `support_ironing_flow` | `ironing_flow_rate` | `support-surface-ironing` | exact — **renamed in ticket 106**; manifest default aligned 100.0 → **0.10** to match Orca's 10% coPercent (user ruling in-ticket: `flow_factor` is a raw multiplier, canonical is percent-of-flow; range mirrored to [0.01, 1.0]) |
+| `support_ironing_spacing` | `ironing_spacing` | `support-surface-ironing` | exact — **renamed in ticket 106** |
 
 ## Judged Pinch-specific — no OrcaSlicer counterpart (37)
 
@@ -92,7 +91,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | `path_optimization_emit_layer_markers` | debug/diagnostic output |
 | `filament_change_extrusion_role_gcode`, `process_change_extrusion_role_gcode` | Pinch-only; Orca has only `change_extrusion_role_gcode` (separately declared, and live) |
 | `flat_bridge_closing_join` | flat-bridge enclosure join style; Orca has no key |
-| `min_segment_length`, `infill_resolution`, `support_resolution`, `perimeter_arc_tolerance` | Pinch splits path simplification per-domain; Orca has one global `resolution` (already mapped above) |
+| `min_segment_length`, `infill_resolution`, `support_resolution`, `perimeter_arc_tolerance` | Pinch splits path simplification per-domain; Orca's global `resolution` is **re-adjudicated in ticket 105** as a separate gap (generation-time global simplification is a missing decision point; the host's emit-time per-role keys do not implement it) |
 | `narrow_loop_length_threshold_mm`, `smaller_perimeter_line_width` | Orca's small-perimeter handling is speed-only (`small_perimeter_speed`), not width |
 | `thin_wall_speed`, `bottom_surface_speed` | finer per-role speed split than Orca exposes |
 | `bridge_line_width` | Orca derives bridge width from `bridge_flow` rather than a width key |
@@ -107,9 +106,10 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | `gcode_xy_decimals` | coordinate formatting; no reference counterpart |
 | `bed_temperature_initial_layer_single` | Pinch collapses Orca's per-plate-type bed-temp family into one key |
 | `apply_to_all` | fuzzy-skin scope flag; overlaps Orca's `fuzzy_skin` enum rather than renaming a key |
-| `infill_density`, `infill_speed`, `infill_overlap` | **not renames — duplicates.** `sparse_infill_density`, `sparse_infill_speed` and `infill_wall_overlap` are *also* declared live under their Orca names |
+| `infill_density`, `infill_speed` | **not renames — duplicates, collapsed by ticket 107.** `sparse_infill_density` and `sparse_infill_speed` are *also* declared live under their Orca names; the Pinch spellings were deleted everywhere and the surviving keys standardised to canonical percent (density) / canonical defaults (speed). |
+| `infill_overlap` | **re-adjudicated by ticket 107 — NOT a duplicate.** Canonical `infill_wall_overlap` (coPercent 15, consumed only in `PerimeterGenerator.cpp` as `inset -= infill_peri_overlap`) is already ported in classic-perimeters; the linker's `infill_overlap` (0.45, fraction-of-spacing, infill-side post-pass boundary offset) is a PnP-invented second mechanism with no canonical counterpart (canonical has no infill-side overlap parameter). Kept live as a PnP-specific decision point; the 07 pool's duplicate-collapse count drops 3 → 2. |
 
-## In-scope gap by section (414)
+## In-scope gap by section (415)
 
 | count | Section / subsection |
 |---:|---|
@@ -126,7 +126,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 | 10 | Strength / Infill pattern-specific |
 | 10 | Multimaterial / Multimaterial advanced |
 | 9 | Support / Tree supports |
-| 9 | Quality / Precision |
+| 10 | Quality / Precision |
 | 9 | Quality / Bridging |
 | 9 | Printer / Machine / Motion limits |
 | 9 | Others / Special mode |
@@ -553,6 +553,7 @@ The remainder of ticket 01's 62-key rename pool. These do **not** remove anythin
 - `hole_to_polyhole_threshold`
 - `hole_to_polyhole_twisted`
 - `precise_z_height`
+- `resolution`
 - `xy_contour_compensation`
 - `xy_hole_compensation`
 
@@ -759,7 +760,7 @@ document**. Consequences for this asset:
   Pinch's three keys are a strict superset. Documented divergence, no rename.
 - **One rename 03's table missed:** `ironing_spacing_mm` →
   `ironing_spacing` (top-surface-ironing) — the "four spellings, one concept"
-  line from 07's original question.
+  line from 07's original question. **Renamed in ticket 106.**
 - **Mechanical rename scope = 26 keys**: the 22 exact/word-order/unit-suffix
   rows of the 25-table + the 3 duplicate collapses (the `infill_*` duplicates
   row above) + `ironing_spacing_mm`. Executed by workstream tickets 99–107;

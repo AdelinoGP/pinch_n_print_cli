@@ -847,9 +847,10 @@ fn unused_nondefault_and_plain_empty() {
         options
             .config_overrides
             .insert("layer_height".into(), ConfigValue::Float(0.25));
-        options
-            .config_overrides
-            .insert("first_layer_height".into(), ConfigValue::Float(0.25));
+        options.config_overrides.insert(
+            "initial_layer_print_height".into(),
+            ConfigValue::Float(0.25),
+        );
         options
             .config_overrides
             .insert("enable_support".into(), ConfigValue::Bool(false));
@@ -2251,7 +2252,7 @@ fn sdk_dispose_reports_busy_during_active_calls() {
         .insert("layer_height".into(), ConfigValue::Float(0.2));
     options
         .config_overrides
-        .insert("first_layer_height".into(), ConfigValue::Float(0.2));
+        .insert("initial_layer_print_height".into(), ConfigValue::Float(0.2));
     let extensions = SliceRuntimeExtensions::new(
         vec![IntegratedModuleRegistration {
             manifest_toml: path_manifest(),
@@ -3254,7 +3255,7 @@ fn arena_run_to_completion_on_failure() {
     opts.config_overrides
         .insert("layer_height".into(), ConfigValue::Float(0.2));
     opts.config_overrides
-        .insert("first_layer_height".into(), ConfigValue::Float(0.2));
+        .insert("initial_layer_print_height".into(), ConfigValue::Float(0.2));
     let control = Arc::new(FailureRunControl {
         trace: fixture.trace.clone(),
         ..Default::default()

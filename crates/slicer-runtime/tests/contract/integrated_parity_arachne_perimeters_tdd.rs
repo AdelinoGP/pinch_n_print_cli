@@ -90,7 +90,7 @@ fn integrated_parity_arachne_perimeters_native_matches_wasm() {
         ),
         ("outer_wall_line_width".to_owned(), ConfigValue::Float(0.0)),
         ("inner_wall_line_width".to_owned(), ConfigValue::Float(0.0)),
-        ("wall_count".to_owned(), ConfigValue::Int(3)),
+        ("wall_loops".to_owned(), ConfigValue::Int(3)),
         ("extra_perimeters".to_owned(), ConfigValue::Int(0)),
         ("precise_outer_wall".to_owned(), ConfigValue::Bool(false)),
         (
@@ -142,7 +142,7 @@ fn integrated_parity_arachne_perimeters_native_matches_wasm() {
     let mut region_map = slicer_ir::RegionMapIR::default();
     let mut resolved = slicer_ir::ResolvedConfig {
         line_width: 0.4,
-        wall_count: 3,
+        wall_loops: 3,
         ..Default::default()
     };
     for (key, value) in config.iter_entries() {

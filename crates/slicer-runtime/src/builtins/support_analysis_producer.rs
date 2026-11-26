@@ -10,7 +10,7 @@ use slicer_core::algos::overhang_annotation::{
 use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
 use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
-use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+use slicer_ir::resolved_config::{resolve_support_line_width_mm, ResolvedFloatOrPercent};
 use slicer_ir::slice_ir::{
     ExPolygon, PaintValue, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
     SupportCandidateSource, SupportGeometryKey, SupportSourceKey, SupportType,
@@ -147,6 +147,7 @@ pub fn commit_support_analysis_builtin(
                         object_id: region.object_id.clone(),
                         region_id: region.region_id,
                         polygons: region.polygons.as_slice(),
+                        bridge_polygons: region.bridge_areas.as_slice(),
                         needs_support,
                         variant_chain: region.variant_chain.clone(),
                         // Captured once from this actual `SlicedRegion`: the
@@ -244,6 +245,7 @@ pub fn commit_support_analysis_builtin(
                                 object_id,
                                 region_id,
                                 polygons,
+                                bridge_polygons,
                                 needs_support,
                                 variant_chain,
                                 address,
@@ -261,8 +263,10 @@ pub fn commit_support_analysis_builtin(
                                     &plan.global_layers,
                                     lower_index,
                                 ),
-                                // `layer_id` is trivially available here; the other
-                                // new knobs ride neutral from `base_params` (OFF).
+                                bridge_polygons: bridge_polygons.to_vec(),
+                                // `layer_id` is trivially available here;
+                                // `enforce_support_layers` still rides neutral from
+                                // `base_params` (see `resolve_contact_params`).
                                 // Clone (not move) the base: `bridge_polygons` is a
                                 // non-Copy field and this `Fn` closure may run
                                 // multiple times under rayon.
@@ -545,24 +549,16 @@ fn collect_print_plane_occupancy(
 /// expanded support line width, so the two families never share an extrusion
 /// path.
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
-    let fallback_line_width = if config.line_width > 0.0 {
-        config.line_width as f32
-    } else {
-        DEFAULT_LINE_WIDTH_MM
+    let nozzle_diameter_mm = match config.extensions.get("nozzle_diameter") {
+        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Int(value)) => *value as f32,
+        _ => 0.4,
     };
-    let support_line_width = config.support_line_width;
-    if support_line_width.is_percent {
-        // BASE-UNAVAILABLE: this caller exposes no declared nozzle_diameter value.
-        return resolved_float_or_percent_abs(support_line_width, fallback_line_width)
-            .unwrap_or(0.0);
-    }
-    if support_line_width.value == 0.0 {
-        // Absolute-zero is the auto sentinel, indistinguishable by construction.
-        return fallback_line_width;
-    }
-    resolved_float_or_percent_abs(support_line_width, fallback_line_width)
-        .filter(|width| *width > 0.0)
-        .unwrap_or(fallback_line_width)
+    resolve_support_line_width_mm(
+        config.support_line_width,
+        config.line_width as f32,
+        nozzle_diameter_mm,
+    )
 }
 
 /// Fill `SupportAnalysisIR::support_territory` with the full cross-section of
@@ -728,6 +724,9 @@ struct ContactWork<'a> {
     object_id: String,
     region_id: u64,
     polygons: &'a [ExPolygon],
+    /// The region's host-derived `SlicedRegion::bridge_areas`, consumed by the
+    /// `bridge_no_support` gate (P30).
+    bridge_polygons: &'a [ExPolygon],
     needs_support: bool,
     variant_chain: Vec<(String, PaintValue)>,
     address: RegionKey,
@@ -920,18 +919,31 @@ fn resolve_contact_params(
         threshold_overlap_mm,
         xy_expansion_mm: extension_float(config, "support_expansion")
             .unwrap_or(config.support_expansion),
-        // New bridge / sharp-tail / enforce / layer-index knobs have no
-        // production config source yet; neutral values keep the candidate
-        // stream unchanged (all stages OFF).
-        bridge_no_support: false,
+        // Bridge polygons are supplied per region by the caller. The typed
+        // field is the canonical gate and is already emitted by
+        // `ResolvedConfig::to_config_map`.
+        bridge_no_support: config.bridge_no_support,
         bridge_polygons: Vec::new(),
-        support_sharp_tails: false,
+        // Sharp-tail detection is no longer a knob: canonical froze it ON
+        // (`g_config_support_sharp_tails`, `libslic3r.h`) and retired the key
+        // into `PrintConfigDef::handle_legacy`'s obsolete-key `ignore` set, so
+        // `detect_support_contacts` gates on its own
+        // `SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION` constant and there is nothing to
+        // source here.
+        //
+        // `enforce_support_layers` IS a live config key
+        // (`ResolvedConfig::enforce_support_layers`, canonical `coInt`) and is
+        // the one audit survivor still severed: packet 265 (P13, ticket 20,
+        // `status: draft`) specifies the read, so the window in
+        // `detect_support_contacts` rides at 0 regardless of the profile.
+        // `bridge_no_support` is NOT severed — the flag below is wired and the
+        // commit loop supplies per-region `bridge_polygons` from
+        // `SlicedRegion::bridge_areas` (P30, `e7404ff1`).
         enforce_support_layers: 0,
         layer_id: 0,
-        // Object-bottom boundary. This is the ONLY `ResolvedConfig` bridge
-        // into `SupportContactParams`, so without this read the raft-aware
-        // predicates in `detect_support_contacts` would ride at their default
-        // and the conversion would be inert.
+        // Object-bottom boundary. Without this read the raft-aware predicates
+        // in `detect_support_contacts` would ride at their default and the
+        // conversion would be inert.
         raft_layers: extension_u32(config, "support_raft_layers").unwrap_or(0),
     }
 }
@@ -1146,6 +1158,20 @@ mod tests {
         blackboard_with_stack_and_mesh(lower, upper, MeshIR::default())
     }
 
+    /// As [`blackboard_with_stack`], but seeds the upper region with the
+    /// host-derived bridge polygons consumed by support analysis.
+    fn blackboard_with_stack_and_bridge(
+        lower: &ExPolygon,
+        upper: &ExPolygon,
+        bridge_polygons: Vec<ExPolygon>,
+    ) -> Blackboard {
+        let mut blackboard = blackboard_with_stack(lower, upper);
+        let mut slices = blackboard.slice_ir().unwrap().as_ref().clone();
+        slices[1].regions[0].bridge_areas = bridge_polygons;
+        blackboard.replace_slice_ir(Arc::new(slices)).unwrap();
+        blackboard
+    }
+
     /// As [`blackboard_with_stack`], but with a caller-supplied `MeshIR` so a
     /// fixture can carry support-enforcer / support-blocker modifier volumes.
     fn blackboard_with_stack_and_mesh(
@@ -1339,6 +1365,45 @@ mod tests {
                 .get("support_threshold_angle_deg"),
             Some(&"12.5".to_string()),
             "the configured typed field must reach detection; reading `extensions`              instead silently pinned this to the default"
+        );
+    }
+
+    #[test]
+    fn configured_bridge_no_support_removes_region_bridge_contacts() {
+        let lower = square(1.0, 2.0, 3.0);
+        let upper = square(0.0, 1.0, 5.0);
+        let bridge = vec![square(0.0, 1.0, 1.0)];
+
+        let mut disabled = blackboard_with_stack_and_bridge(&lower, &upper, bridge.clone());
+        commit_support_analysis_builtin(
+            &mut disabled,
+            &ResolvedConfig {
+                support_enabled: true,
+                bridge_no_support: false,
+                ..ResolvedConfig::default()
+            },
+        )
+        .unwrap();
+        let disabled_geometry = &disabled.support_analysis().unwrap().candidates[0].geometry;
+        assert!(
+            !intersection_ex(disabled_geometry, &bridge).is_empty(),
+            "bridge contacts must remain when bridge_no_support is disabled"
+        );
+
+        let mut enabled = blackboard_with_stack_and_bridge(&lower, &upper, bridge.clone());
+        commit_support_analysis_builtin(
+            &mut enabled,
+            &ResolvedConfig {
+                support_enabled: true,
+                bridge_no_support: true,
+                ..ResolvedConfig::default()
+            },
+        )
+        .unwrap();
+        let enabled_geometry = &enabled.support_analysis().unwrap().candidates[0].geometry;
+        assert!(
+            intersection_ex(enabled_geometry, &bridge).is_empty(),
+            "configured bridge_no_support must remove the bridge region from contacts"
         );
     }
 

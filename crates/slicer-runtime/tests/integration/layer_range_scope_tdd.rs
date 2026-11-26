@@ -5,7 +5,7 @@
 //! `layer_height = 0.2`, object height 1.0. Both `run_slice_with_collector`
 //! (ordinary slicing) and `prepare_prepass_context` (visual-debug's prefix)
 //! must produce the identical schedule `[0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]`
-//! and resolve the in-range `infill_density = 0.35` at layer top `0.6`.
+//! and resolve the in-range `sparse_infill_density = 0.35` at layer top `0.6`.
 //!
 //! The expectations are literals: no assertion derives its schedule, profile,
 //! or config from production profile output.
@@ -130,13 +130,16 @@ fn fixture_mesh() -> Arc<MeshIR> {
 }
 
 /// The fixture's typed equivalent: global base heights, then one authored
-/// `layer_height = 0.1` plus `infill_density = 0.35` over `[0.4, 0.8)`.
+/// `layer_height = 0.1` plus `sparse_infill_density = 0.35` over `[0.4, 0.8)`.
 fn config_source() -> HashMap<String, ConfigValue> {
     HashMap::from([
         ("layer_height".to_string(), ConfigValue::Float(0.2)),
-        ("first_layer_height".to_string(), ConfigValue::Float(0.2)),
         (
-            "infill_density".to_string(),
+            "initial_layer_print_height".to_string(),
+            ConfigValue::Float(0.2),
+        ),
+        (
+            "sparse_infill_density".to_string(),
             ConfigValue::Float(BASE_INFILL_DENSITY),
         ),
         ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
@@ -158,7 +161,7 @@ fn layer_ranges() -> Vec<LayerRangeInput> {
         max_z: 0.8,
         values: std::collections::BTreeMap::from([
             ("layer_height".to_owned(), "0.1".to_owned()),
-            ("infill_density".to_owned(), "0.35".to_owned()),
+            ("sparse_infill_density".to_owned(), "0.35".to_owned()),
         ]),
     }]
 }
@@ -258,7 +261,7 @@ fn both_production_entry_points_share_range_resolution() {
         "both production entry points must produce the identical Z sequence"
     );
 
-    // Both paths must resolve the in-range `infill_density` through the same
+    // Both paths must resolve the in-range `sparse_infill_density` through the same
     // `resolve_scope_stack` target at the layer top `0.6`.
     let region_map = context
         .blackboard
@@ -306,7 +309,7 @@ fn raft_offset_keeps_height_range_in_authored_world_z() {
 }
 
 /// Assert that the region config at the layer whose top is `layer_top` carries
-/// `expected_infill_density`, resolved through the committed `RegionMapIR`.
+/// `expected_sparse_infill_density`, resolved through the committed `RegionMapIR`.
 ///
 /// Reads the map the slice itself committed; it derives nothing from the module
 /// set or from profile output.
@@ -314,7 +317,7 @@ fn assert_literal_region_value(
     region_map: &slicer_ir::RegionMapIR,
     schedule: &[f32],
     layer_top: f32,
-    expected_infill_density: f64,
+    expected_sparse_infill_density: f64,
     label: &str,
 ) {
     let layer_index = schedule
@@ -329,10 +332,10 @@ fn assert_literal_region_value(
         observed += 1;
         let resolved = region_map.config_for_raw(plan.config);
         assert!(
-            (resolved.infill_density - expected_infill_density as f32).abs() < 1.0e-6,
-            "{label}: region {key:?} must resolve infill_density = \
-             {expected_infill_density}, got {}",
-            resolved.infill_density
+            (resolved.sparse_infill_density - expected_sparse_infill_density as f32).abs() < 1.0e-6,
+            "{label}: region {key:?} must resolve sparse_infill_density = \
+             {expected_sparse_infill_density}, got {}",
+            resolved.sparse_infill_density
         );
     }
     assert!(

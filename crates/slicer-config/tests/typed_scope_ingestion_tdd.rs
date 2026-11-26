@@ -554,7 +554,7 @@ fn declared_float_accepts_canonical_percent_spelling_string() {
     // numeric string parses with its optional trailing `%` ignored, yielding
     // the percent magnitude — the same spelling `ConfigView::get_float`'s
     // string branch accepts at the readers. Regression: a modifier delta
-    // authored `sparse_infill_density = "40%"` (a real OrcaSlicer export's
+    // authored `sparse_sparse_infill_density = "40%"` (a real OrcaSlicer export's
     // percent wire) was rejected as `expected float, authored "40%"` by the
     // packet-08 registry-routed modifier ingestion.
     let registry = real_registry();

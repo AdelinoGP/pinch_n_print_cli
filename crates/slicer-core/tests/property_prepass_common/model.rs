@@ -152,8 +152,9 @@ impl Case {
     #[must_use]
     pub fn base_config(object_index: usize, region_id: usize) -> ResolvedConfig {
         ResolvedConfig {
-            wall_count: 1 + (object_index as u32) * 4 + region_id as u32,
-            infill_density: 0.125 * (1.0 + region_id as f32),
+            wall_loops: 1 + (object_index as u32) * 4 + region_id as u32,
+            // Canonical percent (wayfinder ticket 107): 12.5% steps.
+            sparse_infill_density: 12.5 * (1.0 + region_id as f32),
             ..ResolvedConfig::default()
         }
     }
@@ -172,8 +173,15 @@ pub fn overlay_config(axis_name: &str) -> Option<ResolvedConfig> {
 }
 
 /// The compatibility overlay applied to a chain, independently derived:
-/// lexical namespace order over the chain's semantics, wholesale replacement,
-/// so the lexically **last** declared overlay present wins.
+/// lexical namespace order over the chain's semantics, each overlay applied
+/// **relative to its `ResolvedConfig::default()` origin** (wayfinder ticket
+/// 126): only the fields an overlay sets away from the default replace the
+/// base, so base-only settings survive and the lexically **last** overlay
+/// wins every field the overlays share.
+///
+/// Every declared overlay ([`overlay_config`]) differs from the default origin
+/// in `line_width` alone — asserted below — so the field-wise fold reduces to
+/// carrying the base and taking each overlay's `line_width` in order.
 #[must_use]
 pub fn expected_compat_config(
     base: &ResolvedConfig,
@@ -185,9 +193,19 @@ pub fn expected_compat_config(
         .filter_map(|(name, _)| overlay_config(name).map(|config| (*name, config)))
         .collect();
     overlays.sort_by(|a, b| a.0.cmp(b.0));
-    overlays
-        .last()
-        .map_or_else(|| base.clone(), |(_, config)| config.clone())
+    let origin = ResolvedConfig::default();
+    let mut expected = base.clone();
+    for (name, overlay) in overlays {
+        assert!(
+            ResolvedConfig {
+                line_width: origin.line_width,
+                ..overlay.clone()
+            } == origin,
+            "overlay `{name}` must differ from the default origin only in line_width"
+        );
+        expected.line_width = overlay.line_width;
+    }
+    expected
 }
 
 /// Every ordered chain a parent can carry, in canonical axis order.

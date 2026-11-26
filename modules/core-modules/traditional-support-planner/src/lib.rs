@@ -77,7 +77,8 @@ pub struct SupportPlanner {
     /// Base fill pattern recorded on every body entry.
     support_base_pattern: String,
     /// Distance in mm from column tops to add intermediate model layers.
-    support_top_z_distance_mm: f32,
+    /// Orca key `support_top_z_distance`.
+    support_top_z_distance: f32,
     /// Support layer height in mm (0.0 = use model layer height).
     support_layer_height_mm: f32,
     /// Packet 239c: support rows may leave the object layer grid. When true,
@@ -117,7 +118,7 @@ impl PrepassModule for SupportPlanner {
         let support_interface_bottom_layers =
             config.require_int("support_interface_bottom_layers")? as i32;
         let support_base_pattern = config.require_string("support_base_pattern")?.to_string();
-        let support_top_z_distance_mm = config.require_float("support_top_z_distance_mm")? as f32;
+        let support_top_z_distance = config.require_float("support_top_z_distance")? as f32;
         // `0.0` is the sentinel for "same as the model layer height" (see the
         // manifest declaration), so the zero value must flow through.
         let support_layer_height_mm = config.require_float("support_layer_height_mm")? as f32;
@@ -162,7 +163,7 @@ impl PrepassModule for SupportPlanner {
             support_interface_top_layers,
             support_interface_bottom_layers,
             support_base_pattern,
-            support_top_z_distance_mm,
+            support_top_z_distance,
             support_layer_height_mm,
             independent_support_layer_height,
             support_object_xy_distance,
@@ -408,7 +409,7 @@ impl SupportPlanner {
         // The candidate's layer is the first layer that *contains* the
         // overhang, so the overhanging surface sits at the bottom of that
         // layer — i.e. at the top of the layer below it. Support must stop
-        // `support_top_z_distance_mm` below that plane.
+        // `support_top_z_distance` below that plane.
         //
         // The gap is measured by walking actual layer Z rather than dividing by
         // `effective_layer_height`: that field is derived per global layer from
@@ -416,7 +417,7 @@ impl SupportPlanner {
         // the guest view. Dividing by it yielded an offset of zero here (so
         // support fused to the model) and tens of layers in the tree planner.
         let overhang_plane_z = layer_plan.layers[contact_layer.saturating_sub(1) as usize].z;
-        let target_top_z = overhang_plane_z - self.support_top_z_distance_mm;
+        let target_top_z = overhang_plane_z - self.support_top_z_distance;
         let mut emit_top_layer = contact_layer.saturating_sub(1);
         while emit_top_layer > 0 && layer_plan.layers[emit_top_layer as usize].z > target_top_z {
             emit_top_layer -= 1;
