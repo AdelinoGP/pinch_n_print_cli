@@ -334,7 +334,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `wave-overhangs` |
 | `bridge_speed` | float | `25.0` | >= 1.0 | — | `wave-overhangs` |
 | `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | — | `wave-overhangs` |
-| `internal_bridge_flow` | float | `1.0` | >= 0.0 | — | `wave-overhangs` |
+| `internal_bridge_flow` | float | `1.0` | [0.0, 2.0] | — | `wave-overhangs` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | — | `wave-overhangs` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `wave-overhangs` |
 | `thick_bridges` | bool | `false` | — | — | `wave-overhangs` |
@@ -442,7 +442,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
 | `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
 | `prime_tower_speed` | float | `90.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
-| `skirt_speed` | float | `50.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `skirt_speed` | float | `50.0` | >= 0 (0 = use the default layer extrusion speed; canonical min 0) | — | `feedrate.rs::FeedrateConfig` |
 | `sparse_infill_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `support_interface_speed` | float | `80.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `support_speed` | float | `80.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
@@ -450,8 +450,8 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `top_surface_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `travel_speed` | float | `120.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | — | `feedrate.rs::FeedrateConfig` |
-| `wipe_speed` | float | `96.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
-| `wipe_tower_max_purge_speed` | float | `90.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `wipe_speed` | float | `96.0` | >= 0 (canonical min 0; canonical coFloatOrPercent over travel_speed) | — | `feedrate.rs::FeedrateConfig` |
+| `wipe_tower_max_purge_speed` | float | `90.0` | >= 10.0 (canonical min 10) | — | `feedrate.rs::FeedrateConfig` |
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | — | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
@@ -481,9 +481,15 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `support_top_z_distance` | float | `0.2` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |
 | `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | — | `resolved_config.rs::ResolvedConfig` |
+| `bottom_surface_filament_id` | int | `0` | — (canonical coInt, 1-based tool for bottom-surface roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `gcode_add_line_number` | bool | `false` | — (prefix every exported G-code line with N<line> (canonical PostProcessor.cpp::gcode_add_line_number); false = byte-identical output (wayfinder ticket 91 / P84)) | — | `run.rs::DEFAULT_GCODE_ADD_LINE_NUMBER` |
+| `inner_wall_filament_id` | int | `0` | — (canonical coInt, 1-based tool for inner-wall roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
+| `internal_solid_filament_id` | int | `0` | — (canonical coInt, 1-based tool for internal-solid roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
+| `outer_wall_filament_id` | int | `0` | — (canonical coInt, 1-based tool for outer-wall roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `post_process` | list | `[]` | — (commands run against the exported G-code in order (canonical PostProcessor.cpp::run_post_process_scripts); each gets the <output>.pp working-copy path as its final argument; empty = byte-identical output. Slice config only — a value carried by model metadata is refused (DEV-206) (wayfinder ticket 92 / P85)) | — | `run.rs::DEFAULT_POST_PROCESS` |
+| `sparse_infill_filament_id` | int | `0` | — (canonical coInt, 1-based tool for sparse-infill roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | — | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
+| `top_surface_filament_id` | int | `0` | — (canonical coInt, 1-based tool for top-surface roles; 0 = inherit (wayfinder ticket 46 / P39)) | — | `resolved_config.rs::HOST_RUNTIME_KEYS` |
 | `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | — | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
 | `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | — | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
 <!-- END GENERATED: host-speeds -->
