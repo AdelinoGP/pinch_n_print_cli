@@ -3,16 +3,18 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 151, 156 (reconcile post-merge `support_base_pattern` references from `origin/master` first)
+Blocked by: —
 Map: ../map.md
 
 ## Question
 
 Author a complex implementation packet for the missing support base-pattern
-feature. The Orca `support_base_pattern` enum must remain **unimplemented as an
-input key**: under the map's holder-only rule and ruling Q3, do not restore a
-manifest declaration, a 3MF object-metadata alias, or a capability string that
-merely records the selected value.
+feature. The Orca `support_base_pattern` key is declared on master and records
+the selected pattern as a `traditional-base-pattern:<value>` capability; the
+missing piece is the claim-holder/module seam that selects and runs real support
+body fillers. Under the map's holder-only rule and ruling Q3, do not re-litigate
+the key's removal or restore a 3MF object-metadata alias; implement the holder
+and algorithm dispatch.
 
 Re-derive the owner and seam at authoring time. The current tree has live
 `support_base_pattern_spacing` reads in the `tree-support` and
@@ -45,3 +47,11 @@ features cannot be separated.
 The packet is authored, preflighted, linked from this ticket and the map, and
 its implementation scope names the selected holder/module seam plus the
 unimplemented canonical values.
+
+## Ruling
+
+User ruling 2026-11-26 (ticket 153, from the ticket-152 audit): master's
+`support_base_pattern` manifest declaration and `traditional-base-pattern`
+capability stay. The packet owns the missing holder/algorithm seam, not the key's
+removal. The restored capability pin is
+`traditional_family_tdd::base_interface_obstacle`.
