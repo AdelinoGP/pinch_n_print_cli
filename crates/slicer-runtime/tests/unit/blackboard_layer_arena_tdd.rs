@@ -368,6 +368,13 @@ fn prepared_surface_fixture() -> SurfaceClassificationIR {
                 }],
             )]),
         )]),
+        // Since ticket 142 the host populator fills `PreparedRegionData.overhang_areas`
+        // from this map (clipped to the region polygons), not from the legacy
+        // quartile bands above.
+        overhang_areas: HashMap::from([(
+            "cube".into(),
+            HashMap::from([(7, vec![rect(5.0, 5.0, 15.0, 15.0)])]),
+        )]),
         prev_layer_boundaries: HashMap::from([(
             "cube".into(),
             HashMap::from([(7, vec![rect(0.0, 0.0, 9.0, 9.0)])]),

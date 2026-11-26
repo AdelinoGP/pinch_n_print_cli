@@ -123,11 +123,15 @@ fn layer_at(index: u32, z: f32, object_id: &str) -> GlobalLayer {
 #[test]
 fn layer_slice_builtin_produces_real_polygons_from_mesh() {
     let mesh = tetra_mesh_ir("obj-a");
-    let layer = layer_at(0, 0.1, "obj-a");
+    // `layer.z` is the layer's print top; the canonical slice plane is its
+    // midpoint (`layer_sample_plane_z`: z - height/2). A 0.2 mm first layer has
+    // print top 0.2, so the tetra is sampled at z = 0.1. The old 0.1 top sampled
+    // the tetra exactly at its z = 0 base, where the cross-section is degenerate.
+    let layer = layer_at(0, 0.2, "obj-a");
 
     let slice = execute_prepass_slice_single_layer(&mesh, &layer, None).expect("slice ok");
     assert_eq!(slice.global_layer_index, 0);
-    assert!((slice.z - 0.1).abs() < 1e-6);
+    assert!((slice.z - 0.2).abs() < 1e-6);
     assert_eq!(slice.regions.len(), 1);
     let r = &slice.regions[0];
     assert_eq!(r.object_id, "obj-a");

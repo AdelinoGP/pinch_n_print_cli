@@ -4,6 +4,8 @@
 // version 3 (AGPLv3).
 //
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
+// (merge_segmented_layers) and src/libslic3r/PrintObjectSlice.cpp
+// (apply_mm_segmentation, apply_fuzzy_skin_segmentation).
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
@@ -46,6 +48,60 @@ pub mod width_limit;
 // ---------------------------------------------------------------------------
 
 use std::sync::Arc;
+
+/// Canonical `EPSILON` (`libslic3r.h`), in millimetres. `scaled<float>(k * EPSILON)`
+/// in the C++ is `k * ORCA_EPSILON_MM` mm here; `SCALED_EPSILON` is
+/// `ORCA_EPSILON_MM` (1 PnP unit).
+const ORCA_EPSILON_MM: f64 = 1e-4;
+
+/// Canonical unprintable-remainder filter for the region left after painted
+/// regions are subtracted from it (#7109).
+///
+/// `apply_mm_segmentation` and `apply_fuzzy_skin_segmentation`
+/// (`PrintObjectSlice.cpp`) both trim a parent region by the painted
+/// segmentation and then run
+/// `opening(union_ex(remaining), scaled(5 * EPSILON), scaled(5 * EPSILON))`.
+/// The segmentation output does not match the region outline exactly (it is
+/// built from independently preprocessed and offset input), so the subtraction
+/// leaves sub-resolution needles along shared boundaries. Opening by 0.0005 mm
+/// removes every feature narrower than 0.001 mm (10 PnP units) and leaves
+/// printable geometry in place. Canonical's default `jtMiter` / miter limit 3
+/// is [`crate::polygon_ops::OffsetJoinType::Miter`] here.
+fn filter_unprintable_base_remainder(
+    polygons: &[slicer_ir::ExPolygon],
+) -> Vec<slicer_ir::ExPolygon> {
+    if polygons.is_empty() {
+        return Vec::new();
+    }
+    crate::polygon_ops::opening(
+        &crate::polygon_ops::union_ex(polygons),
+        5.0 * ORCA_EPSILON_MM,
+        crate::polygon_ops::OffsetJoinType::Miter,
+    )
+}
+
+/// Canonical dimple removal after a top/bottom paint projection is appended to
+/// an existing side-segmented colour region (#7235).
+///
+/// `merge_segmented_layers` (`MultiMaterialSegmentation.cpp`) runs
+/// `offset2_ex(union_ex(merged), SCALED_EPSILON, -SCALED_EPSILON)` only when
+/// that colour's side segmentation was non-empty before the append; canonical
+/// `closing_ex(d)` is exactly `offset2_ex(+d, -d)`.
+fn remove_top_bottom_merge_dimples(polygons: &[slicer_ir::ExPolygon]) -> Vec<slicer_ir::ExPolygon> {
+    crate::polygon_ops::closing_ex(
+        &crate::polygon_ops::union_ex(polygons),
+        ORCA_EPSILON_MM,
+        crate::polygon_ops::OffsetJoinType::Miter,
+    )
+}
+
+// Canonical's third guard, `closing_ex(.., scaled(10 * EPSILON))` on a region
+// whose `ByRegion::needs_merge` is set (`apply_mm_segmentation` /
+// `apply_fuzzy_skin_segmentation`), has no PnP call site: it fires only when two
+// parent LayerRegions write into the same PrintRegion id. A painted PnP region's
+// id is minted per parent (`try_paint_variant_region_id`) and
+// `register_paint_variant_region_id` rejects cross-chain collisions, so no
+// region is ever assembled from two parents.
 
 /// Errors from `execute_paint_segmentation`.
 #[derive(Debug)]
@@ -897,10 +953,23 @@ pub fn execute_paint_segmentation(
                     std::slice::from_ref(&original.polygons),
                     &inputs,
                 );
-                for (chain, polygons) in &composed[0] {
-                    if !chain.is_empty() && polygons.is_empty() {
+                // Canonical #7109: the BASE chain is `original - claimed`, the
+                // same subtraction `apply_mm_segmentation` /
+                // `apply_fuzzy_skin_segmentation` open by 5 * EPSILON.
+                let split_by_paint = composed[0]
+                    .iter()
+                    .any(|(chain, polygons)| !chain.is_empty() && !polygons.is_empty());
+                for (chain, composed_polygons) in &composed[0] {
+                    if !chain.is_empty() && composed_polygons.is_empty() {
                         continue;
                     }
+                    let filtered;
+                    let polygons = if chain.is_empty() && split_by_paint {
+                        filtered = filter_unprintable_base_remainder(composed_polygons);
+                        &filtered
+                    } else {
+                        composed_polygons
+                    };
                     let mut region = original.clone();
                     region.variant_chain = chain.clone();
                     region.polygons = polygons.clone();
@@ -1728,9 +1797,17 @@ pub fn execute_paint_segmentation(
                     match existing_idx {
                         Some(idx) => {
                             let region = &mut working[l].regions[idx];
+                            // Canonical `merge_segmented_layers` closes the merged
+                            // colour by `SCALED_EPSILON` only when its side
+                            // segmentation was non-empty before the append (#7235).
+                            let side_was_empty = region.polygons.is_empty();
                             let mut combined = region.polygons.clone();
                             combined.extend(polys.iter().cloned());
-                            region.polygons = union_ex(&combined);
+                            region.polygons = if side_was_empty {
+                                union_ex(&combined)
+                            } else {
+                                remove_top_bottom_merge_dimples(&combined)
+                            };
                             if !top_clip.is_empty() {
                                 let mut t = region.top_solid_fill.clone();
                                 t.extend(top_clip);
@@ -1785,6 +1862,30 @@ pub fn execute_paint_segmentation(
                     region.top_solid_fill.clear();
                     region.bottom_solid_fill.clear();
                 }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Canonical #7109: the BASE remainder of an object whose layer was split
+    // by paint (Voronoi residual cells, then trimmed by the Phase 6/7
+    // top/bottom projections) is opened by 5 * EPSILON so the sub-resolution
+    // needles the subtraction leaves along shared boundaries do not survive.
+    // See `filter_unprintable_base_remainder`.
+    // -----------------------------------------------------------------------
+    for s in working.iter_mut() {
+        let painted_objects: std::collections::BTreeSet<slicer_ir::ObjectId> = s
+            .regions
+            .iter()
+            .filter(|region| !region.variant_chain.is_empty() && !region.polygons.is_empty())
+            .map(|region| region.object_id.clone())
+            .collect();
+        if painted_objects.is_empty() {
+            continue;
+        }
+        for region in &mut s.regions {
+            if region.variant_chain.is_empty() && painted_objects.contains(&region.object_id) {
+                region.polygons = filter_unprintable_base_remainder(&region.polygons);
             }
         }
     }
@@ -4837,5 +4938,191 @@ mod shell_config_resolver_tests {
         let chain = material_chain(1);
         let params = resolve_shell_params(&region_map, "obj-a", &chain);
         assert_eq!(params.top, 6);
+    }
+}
+
+#[cfg(test)]
+mod canonical_trim_guard_tests {
+    use super::{filter_unprintable_base_remainder, remove_top_bottom_merge_dimples};
+    use crate::polygon_ops::union_ex;
+    use slicer_ir::{ExPolygon, Point2, Polygon};
+
+    fn ring(points: &[(i64, i64)]) -> Polygon {
+        Polygon {
+            points: points.iter().map(|&(x, y)| Point2 { x, y }).collect(),
+        }
+    }
+
+    fn doubled_area(points: &[Point2]) -> i128 {
+        let n = points.len();
+        (0..n)
+            .map(|i| {
+                let (a, b) = (points[i], points[(i + 1) % n]);
+                i128::from(a.x) * i128::from(b.y) - i128::from(b.x) * i128::from(a.y)
+            })
+            .sum()
+    }
+
+    fn cross(a: Point2, b: Point2, c: Point2) -> i128 {
+        i128::from(b.x - a.x) * i128::from(c.y - a.y)
+            - i128::from(b.y - a.y) * i128::from(c.x - a.x)
+    }
+
+    fn within_box(a: Point2, b: Point2, p: Point2) -> bool {
+        a.x.min(b.x) <= p.x && p.x <= a.x.max(b.x) && a.y.min(b.y) <= p.y && p.y <= a.y.max(b.y)
+    }
+
+    /// Independent strict-simplicity predicate (the typed-projection contract in
+    /// `docs/03_wit_and_manifest.md`): no vertex lies on a non-adjacent edge and
+    /// no two non-adjacent edges properly cross.
+    fn strictly_simple(points: &[Point2]) -> bool {
+        let n = points.len();
+        if n < 3 {
+            return false;
+        }
+        for i in 0..n {
+            let (a, b) = (points[i], points[(i + 1) % n]);
+            for (k, &p) in points.iter().enumerate() {
+                if k == i || k == (i + 1) % n {
+                    continue;
+                }
+                if cross(a, b, p) == 0 && within_box(a, b, p) {
+                    return false;
+                }
+            }
+            for j in (i + 2)..n {
+                if i == 0 && j == n - 1 {
+                    continue;
+                }
+                let (c, d) = (points[j], points[(j + 1) % n]);
+                let (d1, d2) = (cross(a, b, c), cross(a, b, d));
+                let (d3, d4) = (cross(c, d, a), cross(c, d, b));
+                if d1.signum() * d2.signum() < 0 && d3.signum() * d4.signum() < 0 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// The `hole_void_classic` layer-5 BASE remainder the lightning typed
+    /// projection rejected (`lightning_migration_tdd::typed_projection_is_atomic_and_neutral`):
+    /// after the top/bottom patch was subtracted, a needle at most 2 units wide
+    /// runs from `(2800000,-950731)` down `x≈2799998..2800000` and back up the
+    /// right edge, so that vertex sits on the non-adjacent edge
+    /// `(2800000,-2049991)->(2800000,2049984)`.
+    fn hole_void_classic_layer5_remainder() -> ExPolygon {
+        ExPolygon {
+            contour: ring(&[
+                (-2695202, -2050000),
+                (-2695602, -2045942),
+                (2800000, -950731),
+                (2799998, -2049999),
+                (2800000, -2049991),
+                (2800000, 2049984),
+                (2799999, 2049998),
+                (2799987, 2050000),
+                (-2799984, 2050000),
+                (-2799998, 2049999),
+                (-2799999, 2049998),
+                (-2800000, 2049984),
+                (-2800000, -2049984),
+                (-2799999, -2049998),
+                (-2799987, -2050000),
+            ]),
+            holes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn unprintable_remainder_filter_removes_the_subtraction_needle() {
+        let input = hole_void_classic_layer5_remainder();
+        assert!(
+            !strictly_simple(&input.contour.points),
+            "fixture must reproduce the rejected self-touching ring"
+        );
+        // Needle triangle (2800000,-950731)/(2799998,-2049999)/(2800000,-2049991).
+        let needle_doubled = cross(
+            input.contour.points[2],
+            input.contour.points[3],
+            input.contour.points[4],
+        )
+        .abs();
+        let input_doubled = doubled_area(&input.contour.points);
+
+        let output = filter_unprintable_base_remainder(std::slice::from_ref(&input));
+
+        assert_eq!(output.len(), 1, "the printable body stays one polygon");
+        let contour = &output[0].contour.points;
+        assert!(output[0].holes.is_empty());
+        assert!(
+            strictly_simple(contour),
+            "the opened remainder must be strictly simple: {contour:?}"
+        );
+        let output_doubled = doubled_area(contour);
+        assert!(output_doubled > 0, "contour stays CCW");
+        // Opening by 5 units with miter limit 3 restores every edge and convex
+        // corner of the body, so beyond the needle it may only lose Clipper's
+        // integer rounding: at most a 1-unit band along the perimeter (doubled
+        // area 2 * perimeter * 1). Losing a real feature (a corner, the diagonal
+        // cut) would exceed this; keeping the needle fails strictness above.
+        let perimeter: f64 = {
+            let p = &input.contour.points;
+            (0..p.len())
+                .map(|i| {
+                    let (a, b) = (p[i], p[(i + 1) % p.len()]);
+                    ((b.x - a.x) as f64).hypot((b.y - a.y) as f64)
+                })
+                .sum()
+        };
+        let rounding_band_doubled = (2.0 * perimeter).ceil() as i128;
+        // An exact opening is a subset of its input; at integer resolution a
+        // rounded corner vertex may still step out by one unit, so anything the
+        // output gains must also fit in the rounding band.
+        let gained_doubled: i128 =
+            crate::polygon_ops::difference_ex(&output, std::slice::from_ref(&input))
+                .iter()
+                .map(|piece| {
+                    doubled_area(&piece.contour.points)
+                        - piece
+                            .holes
+                            .iter()
+                            .map(|hole| doubled_area(&hole.points).abs())
+                            .sum::<i128>()
+                })
+                .sum();
+        assert!(
+            gained_doubled <= rounding_band_doubled,
+            "an opening only gains integer rounding (gained {gained_doubled}, band {rounding_band_doubled})"
+        );
+        let lost = input_doubled - output_doubled;
+        assert!(
+            lost >= needle_doubled && lost <= needle_doubled + rounding_band_doubled,
+            "opening must drop the needle and otherwise only rounding \
+             (lost {lost}, needle {needle_doubled}, rounding band {rounding_band_doubled}; doubled units²)"
+        );
+    }
+
+    #[test]
+    fn merge_dimple_removal_closes_a_one_unit_slit() {
+        // Side-segmented colour and its top/bottom projection meet across a
+        // 1-unit slit: a plain union keeps two pieces, canonical #7235 closing
+        // by SCALED_EPSILON (1 unit) fuses them.
+        let side = ExPolygon {
+            contour: ring(&[(0, 0), (5000, 0), (5000, 10000), (0, 10000)]),
+            holes: Vec::new(),
+        };
+        let top_bottom = ExPolygon {
+            contour: ring(&[(5001, 0), (10000, 0), (10000, 10000), (5001, 10000)]),
+            holes: Vec::new(),
+        };
+        let merged = vec![side, top_bottom];
+        assert_eq!(union_ex(&merged).len(), 2, "plain union keeps the slit");
+
+        let closed = remove_top_bottom_merge_dimples(&merged);
+
+        assert_eq!(closed.len(), 1, "closing fuses the slit: {closed:?}");
+        assert_eq!(doubled_area(&closed[0].contour.points), 2 * 10000 * 10000);
+        assert!(closed[0].holes.is_empty());
     }
 }
