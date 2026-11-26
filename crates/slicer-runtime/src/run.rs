@@ -24,6 +24,7 @@ pub const DEFAULT_GCODE_ADD_LINE_NUMBER: bool = false;
 /// `host_keys_doc_lock` test.
 pub const DEFAULT_POST_PROCESS: &[&str] = &[];
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
@@ -162,6 +163,39 @@ fn resolved_host_options(
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
     (relative, parse_support_tool_selection(&map))
+}
+
+/// Build the `(claim, holder)` list validated at startup: the global defaults
+/// plus every distinct non-empty override carried by a resolved target stack,
+/// so an object/paint/tool-scoped typo fails the same gate as a global one
+/// (ticket 152, A-ac035ed8).
+fn configured_fill_holders<'a>(
+    default: &'a ResolvedConfig,
+    targets: &'a BTreeMap<String, ResolvedConfig>,
+) -> Vec<(&'static str, &'a str)> {
+    let mut holders: Vec<(&'static str, &'a str)> = vec![
+        ("claim:top-fill", default.top_fill_holder.as_str()),
+        ("claim:bottom-fill", default.bottom_fill_holder.as_str()),
+        ("claim:bridge-fill", default.bridge_fill_holder.as_str()),
+        ("claim:sparse-fill", default.sparse_fill_holder.as_str()),
+    ];
+    for config in targets.values() {
+        for (claim, holder) in [
+            ("claim:top-fill", config.top_fill_holder.as_str()),
+            ("claim:bottom-fill", config.bottom_fill_holder.as_str()),
+            ("claim:bridge-fill", config.bridge_fill_holder.as_str()),
+            ("claim:sparse-fill", config.sparse_fill_holder.as_str()),
+        ] {
+            if !holder.is_empty()
+                && !holders.iter().any(|(known_claim, known_holder)| {
+                    *known_claim == claim && *known_holder == holder
+                })
+            {
+                holders.push((claim, holder));
+            }
+        }
+    }
+    holders
 }
 
 use crate::config_resolution::{validate_support_layer_heights, ConfigBoundsIndex};
@@ -1994,24 +2028,8 @@ fn run_slice_shared(
             claim_holders,
             access_audits: Vec::new(),
         };
-        let configured_fill_holders = [
-            (
-                "claim:top-fill",
-                default_resolved_config.top_fill_holder.as_str(),
-            ),
-            (
-                "claim:bottom-fill",
-                default_resolved_config.bottom_fill_holder.as_str(),
-            ),
-            (
-                "claim:bridge-fill",
-                default_resolved_config.bridge_fill_holder.as_str(),
-            ),
-            (
-                "claim:sparse-fill",
-                default_resolved_config.sparse_fill_holder.as_str(),
-            ),
-        ];
+        let configured_fill_holders =
+            configured_fill_holders(&default_resolved_config, &resolved_configs_map);
         let report =
             validate_startup_dag_with_configured_holders(&request, &configured_fill_holders);
 
@@ -2915,9 +2933,9 @@ mod tests {
         run_post_process_scripts,
     };
     use slicer_ir::resolved_config::ResolvedFloatOrPercent;
-    use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
+    use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity, ResolvedConfig};
     use slicer_scheduler::validation::ModuleAccessAudit;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -3293,6 +3311,36 @@ mod tests {
         assert_eq!(tools.support_tool, 1);
         assert_eq!(tools.interface_tool, 2);
         assert_eq!(tools.tool_count, 3);
+    }
+
+    #[test]
+    fn configured_fill_holders_include_scoped_overrides() {
+        let default = ResolvedConfig::default();
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "object:obj-a".to_string(),
+            ResolvedConfig {
+                top_fill_holder: "com.example.missing".to_string(),
+                ..ResolvedConfig::default()
+            },
+        );
+        let pairs = super::configured_fill_holders(&default, &targets);
+        assert!(
+            pairs.iter().any(|(claim, holder)| {
+                *claim == "claim:top-fill" && *holder == "com.example.missing"
+            }),
+            "an object-scoped holder override must be validated: {pairs:?}"
+        );
+        assert_eq!(
+            pairs
+                .iter()
+                .filter(|(claim, holder)| {
+                    *claim == "claim:top-fill" && *holder == default.top_fill_holder.as_str()
+                })
+                .count(),
+            1,
+            "the global holder must appear exactly once"
+        );
     }
 
     #[test]
