@@ -1,8 +1,8 @@
 # 152 — Deep audit of non-rename behavioural and "canonicity" commits on `orca-feature-gaps`
 
 Type: research
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (2026-11-26)
 Blocked by: —
 Map: ../map.md
 
