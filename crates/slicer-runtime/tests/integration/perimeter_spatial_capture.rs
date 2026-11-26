@@ -44,7 +44,7 @@ mod perimeter_spatial_tests {
 
     const FIXTURE_FORMAT_VERSION: &str = "perimeter-spatial-self-baseline-v1";
     const INPUT_FIXTURE_FORMAT_VERSION: &str = "perimeter-spatial-input-v1";
-    const INPUT_CONFIG: &str = "{\n  \"first_layer_height\": 0.2,\n  \"layer_height\": 0.2,\n  \"top_shell_layers\": 3,\n  \"bottom_shell_layers\": 3,\n  \"only_one_wall_top\": true\n}\n";
+    const INPUT_CONFIG: &str = "{\n  \"initial_layer_print_height\": 0.2,\n  \"layer_height\": 0.2,\n  \"top_shell_layers\": 3,\n  \"bottom_shell_layers\": 3,\n  \"only_one_wall_top\": true\n}\n";
 
     struct DiagnosticLayerStageRunner {
         inner: Box<dyn slicer_runtime::LayerStageRunner + Sync>,
@@ -580,7 +580,7 @@ mod perimeter_spatial_tests {
                  coordinate_integer_scale=1\n\
                  coordinate_provenance=source fixture vertices remain integer-scaled input\n\
                  layer_height_f32_bits=0x3f800000\n\
-                 first_layer_height_f32_bits=0x3f800000\n"
+                 initial_layer_print_height_f32_bits=0x3f800000\n"
             ),
         )
         .map_err(|e| format!("write perimeter-spatial provenance: {e}"))?;
@@ -641,7 +641,7 @@ mod perimeter_spatial_tests {
              coordinates_unit=millimetres\n\
              coordinate_integer_scale=1\n\
              layer_height_f32_bits=0x3f800000\n\
-             first_layer_height_f32_bits=0x3f800000\n"
+             initial_layer_print_height_f32_bits=0x3f800000\n"
         );
         std::fs::write(
             fixture_root().join(format!("{mode}.provenance.txt")),

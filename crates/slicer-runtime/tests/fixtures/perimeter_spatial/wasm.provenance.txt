@@ -9,4 +9,4 @@ baseline_note=native_indexed and native_legacy baselines are byte-identical on t
 coordinates_unit=millimetres
 coordinate_integer_scale=1
 layer_height_f32_bits=0x3f800000
-first_layer_height_f32_bits=0x3f800000
+initial_layer_print_height_f32_bits=0x3f800000
