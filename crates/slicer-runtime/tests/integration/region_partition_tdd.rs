@@ -13,7 +13,7 @@
 //! - `sparse_infill_area` is the remainder of `perimeter.infill_areas` after
 //!   subtracting the three solid/bridge polygons.
 
-use slicer_core::polygon_ops::intersection;
+use slicer_core::polygon_ops::{difference, intersection};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -432,9 +432,11 @@ fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
 /// - the shell-band marker, still the shrunk propagated half, still excluding
 ///   the exposed seed — the marker's own invariant is unchanged by conversion;
 /// - converted islands, which are `difference(infill_areas, solids)` and so lie
-///   strictly OUTSIDE `top_solid_fill`. Some of them fall in the exposed half —
-///   correctly: they are genuine sub-threshold sparse islands there, not the
-///   exposed top surface, which stays in `top_solid_fill`.
+///   strictly OUTSIDE `top_solid_fill`. Since master's t166 miter opening
+///   replaced the round-join opening, the exposed half carries no corner
+///   fillets, so the converted content now sits in the propagated half. The
+///   test therefore asserts the conversion non-vacuously against
+///   `top_solid_fill` and checks the exposed half only when it is non-empty.
 ///
 /// The load-bearing assertion is the last one: whatever lands in the exposed
 /// half must not overlap the exposed top surface. That is the invariant the
@@ -510,13 +512,25 @@ fn converted_islands_join_the_shell_band_marker_in_the_internal_bucket() {
         ex_area_mm2(lower)
     );
 
-    // The exposed half now carries island geometry, and only island geometry.
+    // Conversion must contribute geometry outside the shell-band marker, which
+    // is a subset of `top_solid_fill`. This replaces the older "the exposed
+    // half must be non-empty" expectation: master's t166 miter opening removed
+    // the round-join corner fillets that used to be the exposed half's only
+    // islands, so the converted content moved to the propagated half. The
+    // load-bearing invariant is the disjointness check below, which holds
+    // wherever the converted islands land.
+    let converted = difference(lower, &region.top_solid_fill);
+    assert!(
+        ex_area_mm2(&converted) > 0.1,
+        "conversion must contribute geometry outside top_solid_fill; got {:.4} mm2. \
+         Zero means converted islands stopped landing in this bucket.",
+        ex_area_mm2(&converted)
+    );
+
+    // The exposed half may be empty since t166; when it is not, whatever lands
+    // there must be island geometry, never the exposed top surface itself.
     let exposed_half = square(0.0, 0.0, 5.0, 10.0);
     let in_exposed = intersection(lower, &[exposed_half]);
-    assert!(
-        !in_exposed.is_empty(),
-        "sub-threshold islands in the exposed half must land in internal_solid_fill"
-    );
 
     // The invariant that matters, and the one the sibling test's `is_empty()`
     // used to carry: what lands in the exposed half is island geometry, never
