@@ -35,9 +35,10 @@
 //! follow the placed model. Identity scenes additionally require the shifted
 //! raw-vertex union, which the world union equals there.
 //!
-//! Every fixture pre-seeds `build_volume` with the correct world-union value,
-//! which is what the production early return (`dx == dy == dz == 0`) relies on:
-//! that branch does not recompute `build_volume`.
+//! A fixture may pre-seed any `build_volume`; the function must refresh it to
+//! the post-placement world union on every successful placement, including an
+//! exactly-zero shift. The zero-shift witness starts from a deliberately stale
+//! box and requires the recompute.
 
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, ValueTree};
@@ -2103,36 +2104,48 @@ fn io_placement_controls() {
         "a stale pre-placement build_volume must be rejected for a live transform"
     );
 
-    // The production early return (`dx == dy == dz == 0`) does not recompute
-    // `build_volume`; a fixture pre-seeded with the correct world union must
-    // pass unchanged.
+    // A zero-shift placement must still refresh `build_volume`: seed a stale
+    // box and require the recompute (the old early return kept it).
     let mut already_placed = before.clone();
     let (min, max) = union_aabb(&already_placed.objects).expect("placeable");
     let shift = placement_from_union(min, max, bed_center);
     apply_translation(&mut already_placed, shift.dx, shift.dy, shift.dz);
-    let mut early_return_after = already_placed.clone();
-    let early_placement = place_bare_mesh_on_bed(&mut early_return_after, bed_center);
+    let stale_box = BoundingBox3 {
+        min: Point3 {
+            x: -9.0e3,
+            y: -9.0e3,
+            z: -9.0e3,
+        },
+        max: Point3 {
+            x: 9.0e3,
+            y: 9.0e3,
+            z: 9.0e3,
+        },
+    };
+    already_placed.build_volume = stale_box;
+    let mut zero_shift_after = already_placed.clone();
+    let zero_shift_placement = place_bare_mesh_on_bed(&mut zero_shift_after, bed_center);
     assert_eq!(
-        early_placement,
+        zero_shift_placement,
         Some(BedPlacement {
             dx: 0.0,
             dy: 0.0,
             dz: 0.0,
         }),
-        "the already-placed scene must hit the zero-translation early return"
+        "the already-placed scene must produce an exactly-zero shift"
     );
-    assert_eq!(
-        early_return_after, already_placed,
-        "the early return must not recompute or mutate the mesh"
+    assert_ne!(
+        zero_shift_after.build_volume, stale_box,
+        "a zero-shift placement must still refresh a stale build_volume"
     );
     check_placement(
         &already_placed,
         bed_center,
-        &early_return_after,
-        early_placement,
+        &zero_shift_after,
+        zero_shift_placement,
         limits,
     )
-    .expect("the pre-seeded build_volume must satisfy the identity-scene build_volume contract");
+    .expect("the refreshed build_volume must satisfy the identity-scene contract");
 
     run_placement_shrink_probe(limits);
 }

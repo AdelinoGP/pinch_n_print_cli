@@ -92,8 +92,11 @@ recorded IDs; the lane still executes every other selected record.
   exact prefix and validates/records the tail fragments. The review round also replaced the uniform
   half-anchor envelope with derived family-specific corner-join windows (`contour_env = 0.086579` mm,
   `max_clearance_dev`/`max_bbox_excess` = 0) and reclassified the sliver emission as a candidate
-  observation rather than a proven equivalence (canonical `tryExPolygonOffset` uses a different
-  erode-dilate step). The 1.19/0.17 boundary control is retained and measures 4 bands / 8 rings with no
+  observation. Canonical's emission policy was then verified against
+  `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): every contour and hole is appended
+  with no filter and the brim width uses the same quantisation, so the policy matches; the exact tail
+  multiset is not claimed because canonical's `-1.3s/+0.3s` erode-dilate schedule differs from PnP's
+  per-band `-depth` offsets. The 1.19/0.17 boundary control is retained and measures 4 bands / 8 rings with no
   zero-offset ring.
 - **Wipe-tower bed correction** (packet `## Deviations` item 2): `generate_purge_paths` does not read
   `bed_shape`; the production convex/concave bed check lives in `WipeTower::run_finalization`. The
@@ -106,8 +109,12 @@ recorded IDs; the lane still executes every other selected record.
   defect is contract-level. Because placement folds the shift into `transform.matrix`, the former
   raw-vertex `compute_bounding_box_union` preserved the pre-placement box: a confirmed SUT defect,
   fixed with `compute_world_bounding_box_union` and pinned by
-  `identity_matrix_placement_updates_build_volume_to_the_world_union`. The property now asserts the
-  world union unconditionally and counts live-transform scenes.
+  `identity_matrix_placement_updates_build_volume_to_the_world_union`. The
+  recompute is unconditional (the old zero-shift early return is gone), pinned by
+  `zero_shift_placement_still_refreshes_build_volume`, and the CLI consumer path
+  is exercised by `pnp_cli::scad_placement_refreshes_build_volume_to_world_union`.
+  The property now asserts the world union unconditionally and counts
+  live-transform scenes.
 
 ## 6. Executed verification
 
@@ -120,10 +127,13 @@ All commands ran on the Windows host against this tree; plain Cargo runs are log
 | The 12 exact deterministic controls (`E` list in `packet.spec.md`) | PASS, `1 passed; 0 failed` each |
 | Each of the 11 `P` selectors at `--tier routine` | PASS, 64/64 accepted, 0 rejects, 0 rejected calls |
 | Each of the 11 `P` selectors at `--tier extended` | PASS, 256/256 accepted, 0 rejects |
-| Combined 11-record routine selection (`M` line 1) | PASS, 35 s warm wall |
-| Combined 11-record extended selection (`M` line 2) | PASS, 42 s warm wall |
+| Combined 11-record routine selection (`M` line 1) | PASS, 30 s warm wall |
+| Combined 11-record extended selection (`M` line 2) | PASS, 34 s warm wall |
 | Retained-seed replay `H-SKIRT-BRIM --tier routine --seed 4285591042002023685` | PASS, 64/64 |
-| Existing baselines: 8 `slicer-model-io` (plus the new `build_volume` regression), 10 `slicer-gcode` (incl. the two named regressions), 2 `overhang-classifier-default`, 5 module-kernel, 2 `skirt-brim` (plus `skirt_brim_corner_join_witness`), 2 `wipe-tower` | PASS, each `1 passed; 0 failed` |
+| Existing baselines: 9 `slicer-model-io` (incl. the two `build_volume` regressions), 10 `slicer-gcode` (incl. the two named regressions), 2 `overhang-classifier-default`, 5 module-kernel, 2 `skirt-brim` (plus `skirt_brim_corner_join_witness`), 2 `wipe-tower` | PASS |
+| `zero_shift_placement_still_refreshes_build_volume` | PASS: a stale `[-9,9]` box on an already-centred mesh is refreshed on an exactly-zero placement |
+| `pnp_cli::scad_placement_refreshes_build_volume_to_world_union` (`--features scad`) | PASS: the CLI consumer path asserts `build_volume` follows the placed geometry |
+| Blast radius: `cargo test -p slicer-gcode` (18 binaries), `-p pnp-cli --test e2e_integration_tdd` (8 tests), `m73_progress_tdd` (10), `slicer-runtime --test visual_debug_postpass_tap_tdd` (1) | PASS (the runtime binary first failed to link with `LNK1318` at 0.02 GB free; after pruning `target/debug/incremental`, `target/release` and `*.pdb` it linked and passed) |
 | `cargo xtask check-literals` | PASS, 0 violations |
 | `cargo xtask check-test-quality --report` | PASS, 0 findings (in-scope files only; module `src/**` is out of scope, see §8) |
 | `cargo xtask check-fmt` | PASS, 62 packages clean |
@@ -139,19 +149,19 @@ Proptest 1.11, warm binaries. Per-record libtest walls from the combined selecti
 
 | ID | routine cases / wall | extended cases / wall |
 | --- | --- | --- |
-| `H-IO-ID` | 64 / 0.06 s | 256 / 0.14 s |
-| `H-IO-EXTENT` | 64 / 0.05 s | 256 / 0.12 s |
-| `H-IO-PLACEMENT` | 64 / 0.04 s | 256 / 0.15 s |
-| `H-GCODE-FEEDRATE` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-GCODE-EMIT` | 64 / 0.06 s | 256 / 0.20 s |
-| `H-GCODE-SERIALIZE` | 64 / 0.06 s | 256 / 0.19 s |
-| `H-GCODE-TEMPLATE` | 64 / 0.06 s | 256 / 0.19 s |
-| `H-COOLING` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-OVERHANG-SPEED` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-SKIRT-BRIM` | 64 / 0.63 s | 256 / 2.98 s |
-| `H-WIPE-TOWER` | 64 / 0.04 s | 256 / 0.11 s |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.18 s |
+| `H-IO-EXTENT` | 64 / 0.03 s | 256 / 0.10 s |
+| `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.09 s |
+| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.18 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.29 s | 256 / 0.17 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.04 s | 256 / 0.17 s |
+| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.11 s |
+| `H-SKIRT-BRIM` | 64 / 0.57 s | 256 / 2.14 s |
+| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.10 s |
 
-Combined selection: 11 records in 35 s (routine) and 42 s (extended) warm wall, including the
+Combined selection: 11 records in 30 s (routine) and 34 s (extended) warm wall, including the
 per-record compile/link checks the executor performs. Every record reported `outcome = passed`,
 `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, `local/global rejects 0` and
 `call_counts_complete = true`; `shrink_completed` is null (Proptest 1.11 cannot report completion).
@@ -229,7 +239,8 @@ for module `src/**`.
 | --- | --- |
 | `cargo build --workspace` | PASS, 233 s cold |
 | `cargo check --workspace --all-targets` | PASS, 85 s warm |
-| `cargo clippy --workspace --all-targets -- -D warnings` | PASS, 79 s warm |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS, 79 s warm; re-run after the post-review edits, PASS |
+| Post-review `cargo build/check/clippy --workspace --all-targets`, feature check/clippy x7, `check-fmt` (62 packages), `check-literals`, `check-test-quality`, `build-guests --check` | PASS |
 | Feature-enabled `cargo check`/`cargo clippy` for all seven owners, `--all-targets`, `-D warnings` | PASS |
 | `cargo xtask check-literals` | PASS, 0 violations in 0 files |
 | `cargo xtask check-test-quality --report` | PASS, 0 findings (in-scope files; module `src/**` out of scope) |
@@ -250,6 +261,10 @@ and `target/debug/incremental` were pruned (free space 73.7 GB -> 111.1 GB) and 
 - `cargo xtask test --summary --properties --tier extended` -> `VERDICT: PASS`, rc 0, 1255 s
   (20.9 min), 89 end events, every one `outcome = passed`, all eleven packet IDs present.
   The all-record binary count is 89 in both lanes, consistent with the four skipped SCAD records.
+  Both lanes were executed on the review tree (`8840ea2e`); after the post-review fixes the
+  eleven-record routine and extended selections were re-run on the final tree (`30 s` / `34 s`,
+  all 11 `passed`) together with the blast-radius suites above. The full 93-record lanes were not
+  repeated for the two-comment/one-branch post-review edits, and that is stated rather than implied.
 
 
 
@@ -262,7 +277,8 @@ and `target/debug/incremental` were pruned (free space 73.7 GB -> 111.1 GB) and 
 | 2 | H-GCODE-SERIALIZE | absolute-mode Gcode retract/unretract emitted `E-<length>`/`E<length>` deltas and never updated the accumulator; absolute Moves/G92 did not maintain it | Move sets it, G92 resets it in both modes, retract/unretract update and emit the updated absolute E, parallel seeder runs in both modes; `absolute_mode_gcode_retract_emits_updated_absolute_e_position` (`tests/gcode_relative_extrusion_tdd.rs`) |
 | 3 | H-OVERHANG-SPEED | `calculate_speed`'s `>= last` branch returned the raw section speed, skipping round and cap (1.75 where 2.0 was expected) | `sections[len-1].1.round().min(original_speed)`; `calculate_speed_last_boundary_rounds_and_caps_last_section_speed` (`tests/basic_tdd.rs`) |
 | 4 | H-GCODE-SERIALIZE oracle | RepRapFirmware renderer truncated `256 C` to `255 C` via a `u8` cast (test oracle, not production) | oracle renders the integer Celsius value; recorded here, no production regression |
-| 5 | H-SKIRT-BRIM model | The oracle asserted `2 * floor(brim_width/spacing/2)` rings unconditionally, and its nearest-vertex window hid a one-anchor-wide geometric term; at `line_width = 1/8` the last band is one spacing wide and clipper splits it into 2 contour lobes plus 3 sliver holes (measured input: `line_width 0.125`, `brim_width 56.6875`, `1/16 x 3/16` mm rectangle at `(-64,-64)` -> 693 rings, 690 clean) | oracle keeps the exact `2*(bands-1)` prefix, records `tail_fragments`, derives family-specific corner-join windows (`contour_env = 0.086579`), reports `max_clearance_dev`/`max_bbox_excess` outside those windows (0.0), and pins the corner vertex plus a half-anchor rejection in `skirt_brim_corner_join_witness`. Production unchanged; the sliver emission is recorded as a **candidate observation** (canonical `tryExPolygonOffset` differs in its `-1.3s/+0.3s` erode-dilate step, so equivalence is unmeasured) |
+| 5 | H-SKIRT-BRIM model | The oracle asserted `2 * floor(brim_width/spacing/2)` rings unconditionally, and its nearest-vertex window hid a one-anchor-wide geometric term; at `line_width = 1/8` the last band is one spacing wide and clipper splits it into 2 contour lobes plus 3 sliver holes (measured input: `line_width 0.125`, `brim_width 56.6875`, `1/16 x 3/16` mm rectangle at `(-64,-64)` -> 693 rings, 690 clean) | oracle keeps the exact `2*(bands-1)` prefix, records `tail_fragments`, derives family-specific corner-join windows (`contour_env = 0.086579`), reports `max_clearance_dev`/`max_bbox_excess` outside those windows (0.0), and pins the corner vertex plus a half-anchor rejection in `skirt_brim_corner_join_witness`. Production unchanged. Canonical emission policy verified against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): every contour **and hole** is appended with no filter, and the brim width uses the same quantisation. The exact tail multiset is **not claimed** because canonical erodes `-1.3s`/dilates `+0.3s` with `douglas_peucker` between passes; the sliver stays a candidate observation |
+
 | 6 | H-IO-PLACEMENT | `place_bare_mesh_on_bed` recomputed `build_volume` from raw vertices after folding the placement into `transform.matrix`, leaving the pre-placement box (confirmed SUT defect) | `compute_world_bounding_box_union`; `identity_matrix_placement_updates_build_volume_to_the_world_union`; the property asserts the world union unconditionally |
 
 Each named regression was verified to fail with the fix stashed and pass with it (counterfactual
@@ -280,5 +296,6 @@ deviations).
 
 No universal uuid5 injectivity; no concave-bed containment; no fan-speed monotonicity; no route
 optimality; no canonical rectangle/tessellation claim for the PnP skirt/brim/wipe-tower simplifications;
+no equality of the thin-tail sliver multiset with canonical (only the emission policy is verified);
 no global shrink minimality; no production multi-input caller for `check_basename_collisions`; no
 OrcaSlicer parity claim for the ADR-0052 factor clamp or the PnP template warn-and-pass policy.

@@ -393,14 +393,16 @@ than the prose):
    the fragment count without inventing a bound. The measured failing input
    (`line_width 0.125`, `brim_width 56.6875`, a `1/16 x 3/16` mm rectangle at
    `(-64,-64)`) yields 693 rings (690 clean + 2 contour lobes + 3 sliver holes of
-   0.0004-0.0016 mm2). The sliver emission is recorded as a **candidate
-   observation, not a proven equivalence**: canonical
-   `Brim.cpp::tryExPolygonOffset` appends every contour and hole Clipper2
-   returns with no area filter, but it erodes `-1.3*spacing` and dilates
-   `+0.3*spacing` per iteration with `douglas_peucker` between passes while
-   `SkirtBrim::generate` does one `-depth` offset per band, so whether canonical
-   reaches these slivers is unmeasured. No production fix or regression was
-   needed for this family.
+   0.0004-0.0016 mm2). Canonical's emission policy is verified against
+   `Brim.cpp::tryExPolygonOffset` (current upstream `main`, read 2026-11-26):
+   after a first `-0.5*spacing` offset it appends **every contour and hole** of
+   each Clipper2 result with no area or vertex filter, and its brim width uses
+   the same `floor(width/flow/2)*flow*2` quantisation. PnP therefore matches the
+   *emission policy*; the exact tail ring multiset is **not claimed equivalent**
+   because canonical then applies `-1.3*spacing` / `+0.3*spacing` open-close with
+   `douglas_peucker` between passes while `SkirtBrim::generate` applies one
+   `-depth` offset per band. The slivers stay a recorded candidate observation;
+   no production fix or regression was needed for this family.
 
 2. **H-WIPE-TOWER bed containment is not in `generate_purge_paths`.** The
    bed-polygon check (`point_in_polygon`) lives in
@@ -427,12 +429,14 @@ than the prose):
    formerly failing input: an identity-matrix object at
    x[-500,-490], y[-500,-490], z[-10,0] placed at (125,125) reported
    `build_volume.min.x = -500`, `max.z = 0` instead of x[120,130], y[120,130],
-   z[0,10]. The property asserts the post-placement world union for every scene,
-   keeps the identity-scene shifted-raw-union equivalence, counts live-transform
-   cases, and adds a generated all-nonfinite-X `None` mode. The exactly-zero
-   early return still does not recompute `build_volume`; loaders supply a correct
-   world-space box there because their objects carry identity transforms
-   (raw == world at load).
+   z[0,10]. The recompute now runs on **every** successful placement, including
+   an exactly-zero shift, so a stale caller-supplied box is refreshed rather than
+   preserved; `bed_placement_tdd::
+   zero_shift_placement_still_refreshes_build_volume` pins that path, and the
+   property starts its zero-shift witness from a deliberately stale box. The
+   property asserts the post-placement world union for every scene, keeps the
+   identity-scene shifted-raw-union equivalence, and counts live-transform
+   scenes. A generated all-nonfinite-X `None` mode covers the finite-X gate.
 
 4. **Authoring preflight row 1 ("Symbols PASS") is inaccurate for the
    skirt/brim seam**; it is left in place as authored history and superseded by

@@ -3203,9 +3203,6 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
         dy: bed_center.1 - (min.y + max.y) / 2.0,
         dz: -min.z,
     };
-    if placement.dx == 0.0 && placement.dy == 0.0 && placement.dz == 0.0 {
-        return Some(placement);
-    }
 
     for object in &mut mesh.objects {
         let m = &mut object.transform.matrix;
@@ -3234,9 +3231,19 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
     // fixture convention), so the loop above folds the shift into
     // `transform.matrix` and leaves the raw vertices untouched. A raw-vertex
     // recompute (`compute_bounding_box_union`) would therefore keep the
-    // pre-placement box; world AABBs are the contract `visual_debug` and
-    // `bed_placement_tdd` rely on.
-    mesh.build_volume = compute_world_bounding_box_union(&mesh.objects).unwrap_or_default();
+    // pre-placement box; world AABBs are the contract `bed_placement_tdd`
+    // relies on. The recompute runs even for an exactly-zero shift so a stale
+    // caller-supplied box is refreshed on every successful placement.
+    if let Some(union) = compute_world_bounding_box_union(&mesh.objects) {
+        mesh.build_volume = union;
+    } else {
+        // Unreachable in the declared domain: the finite-X gate that produced
+        // `Some(placement)` above still holds after a finite rigid shift.
+        debug_assert!(
+            false,
+            "a finite placement produced no finite world AABB union"
+        );
+    }
     Some(placement)
 }
 

@@ -264,6 +264,35 @@ fn identity_matrix_placement_updates_build_volume_to_the_world_union() {
 }
 
 #[test]
+fn zero_shift_placement_still_refreshes_build_volume() {
+    // Formerly failing input: an already-centred identity mesh whose
+    // `build_volume` was stale, placed with an exactly-zero translation. The
+    // old early return skipped the recompute and left the stale box; the
+    // world-space contract is refreshed on every successful placement.
+    let vertices = vec![p3(-1.0, -1.0, 0.0), p3(1.0, -1.0, 0.0), p3(-1.0, 1.0, 2.0)];
+    let mut mesh = mesh_of(vec![object("centred", vertices)]);
+    mesh.objects[0].transform = identity_transform();
+    mesh.build_volume = BoundingBox3 {
+        min: p3(-9.0, -9.0, -9.0),
+        max: p3(9.0, 9.0, 9.0),
+    };
+
+    let placement = place_bare_mesh_on_bed(&mut mesh, (0.0, 0.0)).expect("placeable");
+    assert_eq!(
+        (placement.dx, placement.dy, placement.dz),
+        (0.0, 0.0, 0.0),
+        "the test input must be exactly centred so the old early return fired"
+    );
+    let (lo, hi) = world_aabb_transformed(&mesh);
+    assert_eq!(
+        mesh.build_volume,
+        BoundingBox3 { min: lo, max: hi },
+        "a zero-shift placement must still refresh build_volume; the old early return kept \
+         the stale [-9,9] box"
+    );
+}
+
+#[test]
 fn bed_centre_is_read_from_the_bed_shape_polygon() {
     // Default 250 x 250 square from `ResolvedConfig::bed_shape`.
     let square = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0];

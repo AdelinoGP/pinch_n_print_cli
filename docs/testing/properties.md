@@ -258,19 +258,19 @@ libtest times from the combined selections.
 
 | ID | routine cases / wall | extended cases / wall |
 | --- | --- | --- |
-| `H-IO-ID` | 64 / 0.06 s | 256 / 0.14 s |
-| `H-IO-EXTENT` | 64 / 0.05 s | 256 / 0.12 s |
-| `H-IO-PLACEMENT` | 64 / 0.04 s | 256 / 0.15 s |
-| `H-GCODE-FEEDRATE` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-GCODE-EMIT` | 64 / 0.06 s | 256 / 0.20 s |
-| `H-GCODE-SERIALIZE` | 64 / 0.06 s | 256 / 0.19 s |
-| `H-GCODE-TEMPLATE` | 64 / 0.06 s | 256 / 0.19 s |
-| `H-COOLING` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-OVERHANG-SPEED` | 64 / 0.04 s | 256 / 0.10 s |
-| `H-SKIRT-BRIM` | 64 / 0.63 s | 256 / 2.98 s |
-| `H-WIPE-TOWER` | 64 / 0.04 s | 256 / 0.11 s |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.18 s |
+| `H-IO-EXTENT` | 64 / 0.03 s | 256 / 0.10 s |
+| `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.09 s |
+| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.18 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.29 s | 256 / 0.17 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.04 s | 256 / 0.17 s |
+| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.11 s |
+| `H-SKIRT-BRIM` | 64 / 0.57 s | 256 / 2.14 s |
+| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.10 s |
 
-The 11-record combined selection took 35 s (routine) and 42 s (extended) warm wall. Every record
+The 11-record combined selection took 30 s (routine) and 34 s (extended) warm wall. Every record
 reported `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, zero local/global rejects,
 `call_counts_complete = true` and `outcome = passed`; `shrink_completed` is null because Proptest 1.11
 cannot report completion. Profiles: 64/32/64 and 256/128/256, zero rejection/regeneration budgets,
@@ -9203,10 +9203,11 @@ One rigid whole-scene translation: `dx = bed_center.x - (min.x+max.x)/2`, `dy` l
 derived from the union of per-object world AABBs (zero matrix = identity). After placement the world
 `z_min` is 0, the whole XY AABB centre is `bed_center`, every pair of objects keeps its AABB min/max
 differences, and no object is individually re-centred or re-dropped. `None` is returned for an empty or
-unplaceable world (no object with a finite-X AABB). `build_volume` is asserted only for the zero-matrix
-mode (the shifted raw-vertex union); for live transforms the production computes raw-vertex bounds, and the
-property records/classifies that observation instead of equating it to the world union. The early return
-for an exactly-zero translation does not recompute `build_volume`; fixtures pre-seed the correct value.
+unplaceable world (no object with a finite-X AABB). The post-placement `build_volume` is asserted as the
+**world-space** AABB union for every scene (Deviation 3: the former raw-vertex recompute was a confirmed
+SUT defect, now fixed by `compute_world_bounding_box_union`); identity-mode scenes additionally equal the
+shifted raw-vertex union. The recompute is unconditional, including an exactly-zero shift, and the
+zero-shift witness starts from a deliberately stale box.
 
 ### Domain
 
@@ -9256,8 +9257,12 @@ command, an executable direct reproduction, captured SDK logs and `shrink_comple
 ### Acceptance
 
 Maps to AC-3, AC-N1 and AC-N4. Passes over 64 routine cases with zero rejects. `io_placement_controls`
-rejects per-object centring, a Z-only drop, a non-rigid per-object scale and a fabricated empty-world
-placement. The two `bed_placement_tdd` baselines pass unchanged.
+rejects per-object centring, a Z-only drop, a non-rigid per-object scale, a stale pre-placement
+`build_volume` and a fabricated empty-world placement; the zero-shift witness requires a deliberately
+stale box to be refreshed. The named regressions
+`identity_matrix_placement_updates_build_volume_to_the_world_union` and
+`zero_shift_placement_still_refreshes_build_volume` pass, as does the CLI consumer-path test
+`pnp_cli::scad_placement_refreshes_build_volume_to_world_union`, and the model-io baselines pass.
 ## H-WIPE-TOWER
 
 Registry record: `id = "H-WIPE-TOWER"`, `package = "wipe-tower"`, `target_kind = "lib"`,
@@ -9426,11 +9431,13 @@ rings; every fragment is validated (closed, >= 3 distinct vertices, non-zero are
 clearance window), the fragment count is recorded as `tail_fragments`, and no bound is invented. The
 measured failing input (`line_width 0.125`, `brim_width 56.6875`, 1/16 x 3/16 mm rectangle at (-64,-64))
 yields 693 rings: 690 clean rings plus 2 contour lobes and 3 sliver holes of 0.0004-0.0016 mm2 area, all at
-the band-344 hole boundary. The sliver emission is a **candidate observation, not a proven defect**:
-canonical `Brim.cpp::tryExPolygonOffset` appends every contour and hole Clipper2 returns with no area
-filter, so it would emit these rings if Clipper2 returned them -- but canonical erodes `-1.3*spacing` and
-dilates `+0.3*spacing` per iteration with `douglas_peucker` between passes, while `SkirtBrim::generate` does
-one `-depth` offset per band, so whether canonical reaches these slivers is unmeasured.
+the band-344 hole boundary. The sliver emission is a **recorded candidate observation**. Canonical's emission policy is verified
+against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): after a first `-0.5*spacing`
+offset it appends every contour **and hole** of each Clipper2 result with no area/vertex filter, and its
+brim width uses the same `floor(width/flow/2)*flow*2` quantisation, so PnP matches the emission policy.
+The exact tail ring multiset is not claimed equivalent: canonical applies `-1.3*spacing` /
+`+0.3*spacing` open-close with `douglas_peucker` between passes while `SkirtBrim::generate` applies one
+`-depth` offset per band.
 
 **Corner-join windows (derived, measured).** The brim's outer boundary offset decimates the reconstruction
 contour's 90-degree corner arc against `OFFSET_SHORTEST_EDGE_FACTOR * quantised`, which can place a ring

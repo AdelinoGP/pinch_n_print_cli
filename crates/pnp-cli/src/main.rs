@@ -1378,6 +1378,46 @@ mod scad_placement_tests {
     }
 
     #[test]
+    fn scad_placement_refreshes_build_volume_to_world_union() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
+        let unplaced = load_scad(&scad);
+        let unplaced_box = unplaced.build_volume;
+
+        let placed = place_model_on_bed(unplaced, &scad, None);
+        let (min, max) = mesh_aabb(&placed);
+        let bv_min = [
+            placed.build_volume.min.x,
+            placed.build_volume.min.y,
+            placed.build_volume.min.z,
+        ];
+        let bv_max = [
+            placed.build_volume.max.x,
+            placed.build_volume.max.y,
+            placed.build_volume.max.z,
+        ];
+
+        for axis in 0..3 {
+            assert!(
+                (bv_min[axis] - min[axis]).abs() <= EPS_MM,
+                "placed build_volume.min[{axis}] must follow the world geometry: expected {} got {}",
+                min[axis],
+                bv_min[axis]
+            );
+            assert!(
+                (bv_max[axis] - max[axis]).abs() <= EPS_MM,
+                "placed build_volume.max[{axis}] must follow the world geometry: expected {} got {}",
+                max[axis],
+                bv_max[axis]
+            );
+        }
+        assert_ne!(
+            placed.build_volume, unplaced_box,
+            "the consumer path must refresh build_volume after placement, not keep the loaded box"
+        );
+    }
+
+    #[test]
     fn scad_placement_preserves_disconnected_offsets() {
         let dir = tempfile::tempdir().expect("tempdir");
         let scad = write_fixture(dir.path(), "two_body.scad", TWO_BODY);
