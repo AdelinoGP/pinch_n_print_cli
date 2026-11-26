@@ -265,7 +265,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
             .all(|object| object.first_layer_height == first.first_layer_height)
         {
             binding_source.insert(
-                "first_layer_height".to_owned(),
+                "initial_layer_print_height".to_owned(),
                 ConfigValue::Float(first.first_layer_height),
             );
         }
@@ -294,7 +294,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
             .all(|object| object.first_layer_height == first.first_layer_height)
         {
             pipeline_source.insert(
-                "first_layer_height".to_owned(),
+                "initial_layer_print_height".to_owned(),
                 ConfigValue::Float(first.first_layer_height),
             );
         }

@@ -53,8 +53,11 @@ fn module_dir() -> PathBuf {
 /// test.
 fn write_base_config(dir: &Path) -> PathBuf {
     let path = dir.join("config.json");
-    fs::write(&path, r#"{"layer_height": 0.2, "first_layer_height": 0.2}"#)
-        .expect("write base config");
+    fs::write(
+        &path,
+        r#"{"layer_height": 0.2, "initial_layer_print_height": 0.2}"#,
+    )
+    .expect("write base config");
     path
 }
 

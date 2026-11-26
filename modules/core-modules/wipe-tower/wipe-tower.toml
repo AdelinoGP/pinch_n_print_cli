@@ -59,7 +59,6 @@ group   = "Wipe Tower"
 type    = "float"
 default = 45.0
 min     = 1.0
-max     = 50.0
 display = "Wipe Tower Purge Volume"
 group   = "Wipe Tower"
 

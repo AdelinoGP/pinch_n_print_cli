@@ -134,7 +134,10 @@ fn fixture_mesh() -> Arc<MeshIR> {
 fn config_source() -> HashMap<String, ConfigValue> {
     HashMap::from([
         ("layer_height".to_string(), ConfigValue::Float(0.2)),
-        ("first_layer_height".to_string(), ConfigValue::Float(0.2)),
+        (
+            "initial_layer_print_height".to_string(),
+            ConfigValue::Float(0.2),
+        ),
         (
             "sparse_infill_density".to_string(),
             ConfigValue::Float(BASE_INFILL_DENSITY),

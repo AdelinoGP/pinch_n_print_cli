@@ -205,12 +205,11 @@ is the authoritative catalog of their defaults and ranges.
 | `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
 | `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
 | `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
-| `slowdown_for_curled_perimeters` | bool | `true` | — | — | `overhang-classifier-default` |
+| `slowdown_for_curled_perimeters` | bool | `false` | — | — | `overhang-classifier-default` |
 | `thin_wall_speed` | float | `30.0` | — | — | `overhang-classifier-default` |
 | `close_fan_the_first_x_layers` | int | `1` | >= 0.0 | — | `part-cooling` |
 | `enable_overhang_bridge_fan` | bool | `true` | — | — | `part-cooling` |
 | `fan_max_speed` | int | `255` | [0.0, 255.0] | — | `part-cooling` |
-| `fan_min_speed` | int | `51` | [0.0, 255.0] | — | `part-cooling` |
 | `overhang_fan_speed` | int | `100` | [0.0, 100.0] | — | `part-cooling` |
 | `slow_down_for_layer_cooling` | bool | `true` | — | — | `part-cooling` |
 | `slow_down_layer_time` | float | `5.0` | >= 0.0 | — | `part-cooling` |
@@ -252,7 +251,7 @@ is the authoritative catalog of their defaults and ranges.
 | `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-planner-default` |
 | `brim_object_gap` | float | `0.1` | [0.0, 2.0] | — | `skirt-brim` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | — | `skirt-brim` |
-| `first_layer_height` | float | `0.3` | [0.01, 1.0] | — | `skirt-brim` |
+| `initial_layer_print_height` | float | `0.2` | [0.01, 1.0] | — | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `skirt-brim` |
 | `min_skirt_length` | float | `0.0` | [0.0, 10000.0] | — | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | — | `skirt-brim` |
@@ -357,7 +356,7 @@ is the authoritative catalog of their defaults and ranges.
 | `grab_length` | float | `0.0` | >= 0.0 | — | `wipe-tower` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `wipe-tower` |
 | `prime_tower_width` | float | `60.0` | [1.0, 100.0] | — | `wipe-tower` |
-| `prime_volume` | float | `45.0` | [1.0, 50.0] | — | `wipe-tower` |
+| `prime_volume` | float | `45.0` | >= 1.0 | — | `wipe-tower` |
 | `printable_area` | float-list | `—` | — | — | `wipe-tower` |
 | `retract_length` | float | `2.0` | [0.0, 20.0] | — | `wipe-tower` |
 | `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | — | `wipe-tower` |
@@ -553,7 +552,6 @@ upstream or has no upstream equivalent.
 | `brim_object_gap` | `skirt-brim` | `0.1` | `0.0` |
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `fan_max_speed` | `part-cooling` | `255` | `100.0` |
-| `fan_min_speed` | `part-cooling` | `51` | `20.0` |
 | `filament_max_volumetric_speed` | `resolved_config.rs::ResolvedConfig` | `0.0` | `2.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `infill_shift_step` | `rectilinear-infill` | `0.0` | `0.4` |
@@ -566,6 +564,7 @@ upstream or has no upstream equivalent.
 | `printable_height` | `resolved_config.rs::ResolvedConfig` | `250.0` | `100.0` |
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
+| `slowdown_for_curled_perimeters` | `overhang-classifier-default` | `false` | `1.0` |
 | `support_angle` | `traditional-support` | `60.0` | `0.0` |
 | `support_interface_spacing` | `traditional-support` | `0.4` | `0.5` |
 | `support_interface_spacing` | `tree-support` | `0.4` | `0.5` |

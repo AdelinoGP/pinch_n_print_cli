@@ -12,7 +12,7 @@ use slicer_sdk::traits::LayerPlanningObject;
 fn make_config(layer_height: f64, first_layer_height: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("layer_height", layer_height)
-        .float("first_layer_height", first_layer_height)
+        .float("initial_layer_print_height", first_layer_height)
         .build()
 }
 
@@ -624,7 +624,7 @@ fn explicit_schedule_mixed_with_uniform_object_catches_up() {
 fn explicit_schedule_with_raft_offsets_tops() {
     let config = ConfigViewBuilder::new()
         .float("layer_height", 0.2)
-        .float("first_layer_height", 0.2)
+        .float("initial_layer_print_height", 0.2)
         .int("support_raft_layers", 1)
         .build();
     let module = DefaultLayerPlanner::from_config(&config).unwrap();

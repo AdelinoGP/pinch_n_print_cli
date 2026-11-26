@@ -72,16 +72,17 @@ display = "Line Width"
 group   = "Skirt/Brim"
 
 # First-layer height: the brim/skirt flow spacing is
-# `line_width - first_layer_height x (1 - pi/4)` (canonical
-# `Flow::rounded_rectangle_extrusion_spacing`). Declared here so the module's
-# config view carries it (module views expose declared keys, not typed globals);
-# the default mirrors `layer-planner-default`'s declaration.
-[config.schema.first_layer_height]
+# `line_width - initial_layer_print_height x (1 - pi/4)` (canonical
+# `Flow::rounded_rectangle_extrusion_spacing`). This is the host's typed
+# `initial_layer_print_height`; declaring it here is what lets the module view
+# carry it (module views expose declared keys only). The manifest default is
+# documentation only — `ResolvedConfig` supplies the live value.
+[config.schema.initial_layer_print_height]
 type    = "float"
-default = 0.3
+default = 0.2
 min     = 0.01
 max     = 1.0
-display = "First Layer Height"
+display = "Initial Layer Height"
 group   = "Skirt/Brim"
 
 # Canonical `brim_object_gap` (OrcaSlicer default 0.1 mm): the brim ring starts
