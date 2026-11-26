@@ -429,8 +429,9 @@ Layer::PerimetersPostProcess
            Unflagged segments on the same loop retain their original XY path.
 
 Layer::Infill
-  Input:  SliceIR (each region's four canonical pairwise-disjoint fill polygons,
-                   populated by the host at Layer::Perimeters commit)
+  Input:  SliceIR (each region's five canonical pairwise-disjoint fill polygons —
+                   bridge, bottom, top, internal, sparse — populated by the host
+                   at Layer::Perimeters commit)
   Output: InfillIR
   Purpose: Infill pattern generation (rectilinear, gyroid, TPMS, lightning, etc.).
            Each fill claim holder reads exactly one of:
