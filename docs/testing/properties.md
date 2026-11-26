@@ -258,19 +258,19 @@ libtest times from the combined selections.
 
 | ID | routine cases / wall | extended cases / wall |
 | --- | --- | --- |
-| `H-IO-ID` | 64 / 0.04 s | 256 / 0.11 s |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.13 s |
 | `H-IO-EXTENT` | 64 / 0.04 s | 256 / 0.10 s |
 | `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
-| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.08 s |
-| `H-GCODE-EMIT` | 64 / 0.04 s | 256 / 0.17 s |
-| `H-GCODE-SERIALIZE` | 64 / 0.09 s | 256 / 0.18 s |
-| `H-GCODE-TEMPLATE` | 64 / 0.07 s | 256 / 0.17 s |
-| `H-COOLING` | 64 / 0.04 s | 256 / 0.08 s |
-| `H-OVERHANG-SPEED` | 64 / 0.05 s | 256 / 0.34 s |
-| `H-SKIRT-BRIM` | 64 / 0.51 s | 256 / 1.60 s |
-| `H-WIPE-TOWER` | 64 / 0.05 s | 256 / 0.09 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.05 s | 256 / 0.16 s |
+| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-SKIRT-BRIM` | 64 / 0.44 s | 256 / 1.58 s |
+| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.09 s |
 
-The 11-record combined selection took 36 s (routine) and 32 s (extended) warm wall. Every record
+The 11-record combined selection took 46 s (routine) and 30 s (extended) warm wall. Every record
 reported `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, zero local/global rejects,
 `call_counts_complete = true` and `outcome = passed`; `shrink_completed` is null because Proptest 1.11
 cannot report completion. Profiles: 64/32/64 and 256/128/256, zero rejection/regeneration budgets,
@@ -9214,8 +9214,9 @@ zero-shift witness starts from a deliberately stale box.
 0..=`max_objects` objects with 0..=`max_vertices_per_object` dyadic vertices, zero-matrix identity or a
 bounded live affine transform (`no_shrink` mode), and a finite dyadic `bed_center` bounded by
 `max_translation_mm`. A construction-first box family (`analytical_meshes(SolidKind::Box, ...)`) supplies
-nonempty worlds; included modes are empty, single, multi, already placed, below-bed/off-centre, and one
-empty object beside a nonempty object.
+nonempty worlds; included modes are empty, single, multi, already placed, below-bed/off-centre, one
+empty object beside a nonempty object, an all-nonfinite-X world, and a finite-X world with a non-finite Y
+extent (the two `None` negative modes).
 
 ### Strategy
 
@@ -9434,7 +9435,8 @@ yields 693 rings: 690 clean rings plus 2 contour lobes and 3 sliver holes of 0.0
 the band-344 hole boundary. The sliver emission is a **recorded candidate observation**. Canonical's
 **append step** is verified against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26):
 after a first `-0.5*spacing` offset it appends every contour **and hole** of each Clipper2 result with no
-area/vertex filter, and its brim width uses the same `floor(width/flow/2)*flow*2` quantisation. That is
+area/vertex filter, and `Brim.cpp::outer_inner_brim_area` uses the same
+`floor(width/flow/2)*flow*2` brim-width quantisation. That is
 not the full emission pipeline: canonical Douglas-Peucker-simplifies each result at
 `0.0125 / SCALING_FACTOR` immediately before appending, and `Brim.cpp::makeBrimInfillImpl` unions the
 loops with `union_pt_chained_outside_in`; PnP does neither, and a 3-vertex sliver under 0.0125 mm high is
@@ -9484,13 +9486,14 @@ recorded in the file header and the evidence doc.
 
 ### Acceptance
 
-Maps to AC-10, AC-N3 and AC-N4. Routine 64 and extended 256 cases pass with zero rejects; the extended lane
-exercised 25 thin-tail cases and recorded 4 tail fragments, and the 1.19/0.17 boundary control asserts the
-measured 4 bands / 8 rings, offsets 1.1531/0.2635 .. 0.7718/0.6448, innermost hole 0.6448 and **no**
-zero-offset ring (the authored note is classified as a mis-prediction). `skirt_brim_controls` calls the same
-boundary helper, rejects an off-by-one count, inward skirt order, an open loop, lost whole-bbox enclosure, a
-dropped brim loop and a fabricated rectangle-shape equality, and `skirt_brim_corner_join_witness` pins the
-corner-join geometry and the half-anchor rejection. Final runs: routine `decimation_classified=0`; `thin_tail`/`tail_fragments` are single-run samples, not
-bounds (across the observed runs, routine `thin_tail` 1-4 / `tail_fragments` 0, extended 20-27 / 0-7),
-`max_clearance_dev=0`, `max_bbox_excess=0`, `enclosed_loops` 57 routine / 238 extended. The two
-`skirt_brim_tdd` baselines pass unchanged. No production code changed for this family.
+Maps to AC-10, AC-N3 and AC-N4. Routine 64 and extended 256 cases pass with zero rejects; `thin_tail` and
+`tail_fragments` are **single-run samples, not bounds** (across the observed runs, routine `thin_tail` 1-4 /
+`tail_fragments` 0, extended `thin_tail` 20-27 / `tail_fragments` 0-7), and the 1.19/0.17 boundary control
+asserts the measured 4 bands / 8 rings, offsets 1.1531/0.2635 .. 0.7718/0.6448, innermost hole 0.6448 and
+**no** zero-offset ring (the authored note is classified as a mis-prediction). `skirt_brim_controls` calls
+the same boundary helper, rejects an off-by-one count, inward skirt order, an open loop, lost whole-bbox
+enclosure, a dropped brim loop and a fabricated rectangle-shape equality, and
+`skirt_brim_corner_join_witness` pins the corner-join geometry and the half-anchor rejection. Final runs:
+routine `decimation_classified=0`; `max_clearance_dev=0`, `max_bbox_excess=0`, `enclosed_loops` 52-57
+routine / 207-238 extended. The two `skirt_brim_tdd` baselines pass unchanged. No production code changed
+for this family.

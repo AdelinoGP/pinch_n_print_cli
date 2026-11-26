@@ -88,8 +88,9 @@
 //! `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): after a
 //! first `-0.5 * spacing` offset it appends every contour **and every hole** of
 //! each Clipper2 result (`polygons_append(loops, to_polygons(islands_ex))`)
-//! with no area, vertex or `has_inner_brim` filter, and its brim width uses the
-//! same `floor(width/flow/2)*flow*2` quantisation. That is **not** the whole
+//! with no area, vertex or `has_inner_brim` filter, and
+//! `Brim.cpp::outer_inner_brim_area` uses the same
+//! `floor(width/flow/2)*flow*2` brim-width quantisation. That is **not** the whole
 //! emission pipeline: canonical calls `poly_ex.douglas_peucker(resolution)`
 //! with `resolution = 0.0125 / SCALING_FACTOR` immediately before each append,
 //! and `makeBrimInfillImpl` then unions the loops with

@@ -3170,7 +3170,10 @@ pub struct BedPlacement {
 /// objects are preserved, so multi-object scenes keep their arrangement.
 ///
 /// Returns the applied translation, or `None` when the mesh has no finite
-/// geometry to place.
+/// geometry to place. "No finite geometry" means no object passes the
+/// finite-X world-AABB gate, or the accepted objects' union has a non-finite
+/// Y/Z extent or a non-finite negative/positive Z bound. `None` leaves the mesh
+/// unchanged.
 pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Option<BedPlacement> {
     let mut min = Point3 {
         x: f32::INFINITY,
@@ -3197,26 +3200,29 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
     if !any {
         return None;
     }
+    // The finite-X gate accepts an object whose Y/Z extent is non-finite (for
+    // example one vertex with `y = +inf`, or a `min.z = -inf`). Such a world
+    // has no finite box to place: shifting it would only propagate the
+    // infinity into every vertex, so return `None` before any mutation.
+    if !min.y.is_finite() || !max.y.is_finite() || !min.z.is_finite() || !max.z.is_finite() {
+        return None;
+    }
 
     // Compute the midpoints in f64: `(min + max)` overflows f32 when both
     // extremes share a sign and exceed about 1.7e38, which would produce an
     // infinite shift. A non-finite shift cannot place the model without
-    // destroying finiteness, so it returns `None` before any mutation.
+    // destroying finiteness, so it returns `None` before any mutation. The
+    // narrowed f32 values are checked too, so a midpoint that is finite in f64
+    // but outside the f32 range also returns `None`.
     let midpoint_x = (f64::from(min.x) + f64::from(max.x)) / 2.0;
     let midpoint_y = (f64::from(min.y) + f64::from(max.y)) / 2.0;
-    let (dx, dy, dz) = (
-        f64::from(bed_center.0) - midpoint_x,
-        f64::from(bed_center.1) - midpoint_y,
-        -f64::from(min.z),
-    );
+    let dx = (f64::from(bed_center.0) - midpoint_x) as f32;
+    let dy = (f64::from(bed_center.1) - midpoint_y) as f32;
+    let dz = (-f64::from(min.z)) as f32;
     if !dx.is_finite() || !dy.is_finite() || !dz.is_finite() {
         return None;
     }
-    let placement = BedPlacement {
-        dx: dx as f32,
-        dy: dy as f32,
-        dz: dz as f32,
-    };
+    let placement = BedPlacement { dx, dy, dz };
 
     // An exactly-zero shift is a no-op for the geometry. Skipping the loop
     // preserves bit patterns (notably `-0.0` vertices, which `+0.0` would
@@ -3256,9 +3262,11 @@ pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Opti
     if let Some(union) = compute_world_bounding_box_union(&mesh.objects) {
         mesh.build_volume = union;
     } else {
-        // The finite-placement guard above makes this unreachable in-domain
-        // (a finite shift of a finite AABB stays finite). Keep a derived
-        // post-shift box instead of panicking or leaving a stale value.
+        // `compute_world_bounding_box_union` only returns `None` when no
+        // object has a finite-X AABB, and the finite-X gate that produced the
+        // placement still holds after a finite shift, so this arm is a
+        // defensive fallback. Keep a derived post-shift box instead of
+        // panicking or leaving a stale value.
         debug_assert!(
             false,
             "a finite placement produced no finite world AABB union"

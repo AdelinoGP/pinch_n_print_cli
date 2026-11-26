@@ -39,6 +39,13 @@
 //! the post-placement world union on every successful placement, including an
 //! exactly-zero shift. The zero-shift witness starts from a deliberately stale
 //! box and requires the recompute.
+//!
+//! The placement domain also carries two negative modes. `PlacementMode::
+//! NonFiniteXWorld` fails the finite-X AABB gate on every object.
+//! `PlacementMode::NonFiniteYWorld` has finite X but a non-finite Y extent, so
+//! no finite box exists. Both must return `None` and leave the mesh untouched;
+//! the checker accepts either no world AABB or a non-finite Y/Z extent as the
+//! `None` condition.
 
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, ValueTree};
@@ -551,9 +558,12 @@ enum PlacementMode {
     /// A non-printable world whose every object is rejected by the finite-X
     /// AABB gate (a negative mode: `place_bare_mesh_on_bed` must return `None`).
     NonFiniteXWorld,
+    /// A world with finite X but a non-finite Y extent: the finite-X gate
+    /// accepts it, but there is no finite box to place (another negative mode).
+    NonFiniteYWorld,
 }
 
-const PLACEMENT_MODES: [PlacementMode; 7] = [
+const PLACEMENT_MODES: [PlacementMode; 8] = [
     PlacementMode::EmptyWorld,
     PlacementMode::Identity,
     PlacementMode::LiveTransform,
@@ -561,6 +571,7 @@ const PLACEMENT_MODES: [PlacementMode; 7] = [
     PlacementMode::AlreadyPlaced,
     PlacementMode::BelowBed,
     PlacementMode::NonFiniteXWorld,
+    PlacementMode::NonFiniteYWorld,
 ];
 
 #[derive(Debug, Clone)]
@@ -801,6 +812,25 @@ fn placement_case_strategy(
                 }
             })
             .boxed(),
+        PlacementMode::NonFiniteYWorld => (
+            prop::sample::select(vec![f32::INFINITY, f32::NEG_INFINITY]).no_shrink(),
+            bed,
+        )
+            .prop_map(move |(infinity, bed_center)| {
+                // Negative mode: finite X, but one infinite Y makes the world
+                // AABB non-finite, so there is no finite box to place.
+                let mut vertices = control_box([0.0, 0.0, 0.0], [4.0, 3.0, 2.0]);
+                vertices[0].y = infinity;
+                PlacementCase {
+                    mode,
+                    objects: vec![ObjectFixture {
+                        vertices,
+                        transform: zero_transform(),
+                    }],
+                    bed_center,
+                }
+            })
+            .boxed(),
     }
 }
 
@@ -887,6 +917,11 @@ fn fixtures_union(objects: &[ObjectFixture]) -> Aabb {
 }
 
 /// Documented placement formula on the `f32` world AABB.
+///
+/// This is the independent oracle for production's `f64` midpoint plus one
+/// narrowing cast. The two agree bit-for-bit on the generated domain (dyadic
+/// vertices and bed centres), not on arbitrary `f32` inputs; the property
+/// compares them exactly because the domain makes the arithmetic exact.
 fn placement_from_union(min: Point3, max: Point3, bed_center: (f32, f32)) -> BedPlacement {
     BedPlacement {
         dx: bed_center.0 - (min.x + max.x) / 2.0,
@@ -1047,6 +1082,21 @@ fn check_placement(
         }
         return Ok(());
     };
+    // The finite-X gate can accept an object whose Y/Z extent is non-finite
+    // (for example one vertex with `y = +inf`). There is no finite box to
+    // place, so production returns `None` and must not touch the mesh.
+    if !min.y.is_finite() || !max.y.is_finite() || !min.z.is_finite() || !max.z.is_finite() {
+        if placement.is_some() {
+            return Err(
+                "a world with a non-finite Y/Z extent must return None, not a placement"
+                    .to_string(),
+            );
+        }
+        if after != before {
+            return Err("a None placement must not mutate the mesh".to_string());
+        }
+        return Ok(());
+    }
     let expected = placement_from_union(min, max, bed_center);
     let Some(actual) = placement else {
         return Err(format!(
@@ -1243,8 +1293,10 @@ fn validate_placement_case(case: &PlacementCase, limits: PlacementLimits) -> Res
             nonempty_objects += 1;
         }
         for vertex in &object.vertices {
-            if case.mode != PlacementMode::NonFiniteXWorld
-                && (!vertex.x.is_finite() || !vertex.y.is_finite() || !vertex.z.is_finite())
+            if !matches!(
+                case.mode,
+                PlacementMode::NonFiniteXWorld | PlacementMode::NonFiniteYWorld
+            ) && (!vertex.x.is_finite() || !vertex.y.is_finite() || !vertex.z.is_finite())
             {
                 return Err("placement fixture generated a non-finite coordinate".to_string());
             }
@@ -1309,6 +1361,19 @@ fn validate_placement_case(case: &PlacementCase, limits: PlacementLimits) -> Res
                 return Err(
                     "non-finite-X mode must leave every object without a finite-X world AABB"
                         .to_string(),
+                );
+            }
+        }
+        PlacementMode::NonFiniteYWorld => {
+            if nonempty_objects == 0 {
+                return Err("non-finite-Y mode needs a nonempty object".to_string());
+            }
+            let Some((min, max)) = fixtures_union(&case.objects) else {
+                return Err("non-finite-Y mode must keep a finite-X world AABB".to_string());
+            };
+            if min.y.is_finite() && max.y.is_finite() && min.z.is_finite() && max.z.is_finite() {
+                return Err(
+                    "non-finite-Y mode must make the world Y or Z extent non-finite".to_string(),
                 );
             }
         }
@@ -1430,6 +1495,10 @@ fn probe_placement_case(mode: PlacementMode, count: usize, offset: i64) -> Place
             vertices: vec![point3(f32::INFINITY, 0.0, 0.0), point3(0.0, 1.0, 1.0)],
             transform: zero_transform(),
         }],
+        PlacementMode::NonFiniteYWorld => vec![ObjectFixture {
+            vertices: vec![point3(0.0, f32::INFINITY, 0.0), point3(1.0, 0.0, 1.0)],
+            transform: zero_transform(),
+        }],
     };
     PlacementCase {
         mode,
@@ -1444,7 +1513,7 @@ fn probe_placement_strategy(
 ) -> BoxedStrategy<PlacementCase> {
     if matches!(
         mode,
-        PlacementMode::EmptyWorld | PlacementMode::NonFiniteXWorld
+        PlacementMode::EmptyWorld | PlacementMode::NonFiniteXWorld | PlacementMode::NonFiniteYWorld
     ) {
         return Just(probe_placement_case(mode, 0, 0)).boxed();
     }
@@ -1469,7 +1538,9 @@ fn run_placement_shrink_probe(limits: PlacementLimits) {
             |case| validate_placement_case(case, limits),
             !matches!(
                 mode,
-                PlacementMode::EmptyWorld | PlacementMode::NonFiniteXWorld
+                PlacementMode::EmptyWorld
+                    | PlacementMode::NonFiniteXWorld
+                    | PlacementMode::NonFiniteYWorld
             ),
         );
     }
@@ -1562,6 +1633,13 @@ fn placement_structural_witnesses(limits: PlacementLimits) {
     nonfinite_x[0].x = f32::INFINITY;
     let nonfinite_x = mesh_from_parts(vec![(nonfinite_x, zero_transform())]);
     run_placement_production_witness("all-nonfinite-X world", nonfinite_x, bed_center, limits);
+
+    // Finite X, non-finite Y: the finite-X gate accepts the object, but there
+    // is no finite box to place, so the seam must return None untouched.
+    let mut nonfinite_y = control_box([0.0, 0.0, 0.0], [4.0, 3.0, 2.0]);
+    nonfinite_y[0].y = f32::INFINITY;
+    let nonfinite_y = mesh_from_parts(vec![(nonfinite_y, zero_transform())]);
+    run_placement_production_witness("non-finite-Y world", nonfinite_y, bed_center, limits);
 }
 
 #[test]

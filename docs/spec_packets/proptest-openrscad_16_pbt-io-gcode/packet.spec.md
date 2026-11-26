@@ -81,9 +81,9 @@ Oracle: for the zero matrix, `z_i = v.z`; otherwise compute the exact real value
 
 ### H-IO-PLACEMENT: rigid whole-scene translation with derived tolerances
 
-Owner: `slicer-model-io`, `property_io`, `proptest_place_bare_mesh_on_bed`, calling the real `place_bare_mesh_on_bed`. Generate 0..=`max_objects` objects with 0..=`max_vertices_per_object` dyadic vertices, zero-matrix (identity convention) or a bounded live affine transform selected with `no_shrink()`, and a finite dyadic `bed_center`. Use `analytical_meshes(SolidKind::Box, ...)` or an equivalent construction-first box family for nonempty worlds; include an empty world, one empty object beside a nonempty object, a single object, multiple objects, an already-placed world, and a below-bed/off-centre world.
+Owner: `slicer-model-io`, `property_io`, `proptest_place_bare_mesh_on_bed`, calling the real `place_bare_mesh_on_bed`. Generate 0..=`max_objects` objects with 0..=`max_vertices_per_object` dyadic vertices, zero-matrix (identity convention) or a bounded live affine transform selected with `no_shrink()`, and a finite dyadic `bed_center`. Use `analytical_meshes(SolidKind::Box, ...)` or an equivalent construction-first box family for nonempty worlds; include an empty world, one empty object beside a nonempty object, a single object, multiple objects, an already-placed world, a below-bed/off-centre world, an all-nonfinite-X world, and a finite-X world with a non-finite Y extent (the two `None` negative modes).
 
-Oracle: independently compute each object's world AABB using the documented zero-matrix-is-identity convention, union them, and derive `dx = bed_center.0 - (min.x+max.x)/2`, `dy = bed_center.1 - (min.y+max.y)/2`, `dz = -min.z`. Compare the returned `BedPlacement` to that formula on the f32 values. After placement, require: the new world `z_min` is `0` within a derived envelope; the new XY AABB centre is `bed_center` within `2 * ulp(max(|coordinate|, |bed_center|))`; every pair of objects preserves its AABB min/max differences within `4 * EPSILON * max_abs` (the bound covers `fl(a+t) - fl(b+t) - (a-b)`); and no object is individually re-centred or re-dropped. For zero-matrix objects only, assert `mesh.build_volume` equals the union of the shifted raw vertices. For live-transform objects the authored note said `build_volume` is computed from raw vertices and the observation must be classified; **Deviation 3 supersedes that**: the raw-vertex recompute was a confirmed SUT defect, production now computes `compute_world_bounding_box_union`, and the property asserts the post-placement world union for every scene (identity scenes additionally satisfy the shifted raw union). `None` is expected when no object yields the function's finite-X AABB gate (an empty or all-nonfinite-X world); non-finite Y/Z are outside the valid domain. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, and a fabricated placement for an empty world. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, and a fabricated placement for an empty world.
+Oracle: independently compute each object's world AABB using the documented zero-matrix-is-identity convention, union them, and derive `dx = bed_center.0 - (min.x+max.x)/2`, `dy = bed_center.1 - (min.y+max.y)/2`, `dz = -min.z`. Compare the returned `BedPlacement` to that formula on the f32 values. After placement, require: the new world `z_min` is `0` within a derived envelope; the new XY AABB centre is `bed_center` within `2 * ulp(max(|coordinate|, |bed_center|))`; every pair of objects preserves its AABB min/max differences within `4 * EPSILON * max_abs` (the bound covers `fl(a+t) - fl(b+t) - (a-b)`); and no object is individually re-centred or re-dropped. For zero-matrix objects only, assert `mesh.build_volume` equals the union of the shifted raw vertices. For live-transform objects the authored note said `build_volume` is computed from raw vertices and the observation must be classified; **Deviation 3 supersedes that**: the raw-vertex recompute was a confirmed SUT defect, production now computes `compute_world_bounding_box_union`, and the property asserts the post-placement world union for every scene (identity scenes additionally satisfy the shifted raw union). `None` is expected for an empty world, for a world whose every object fails the finite-X AABB gate, and for an accepted world whose union has a non-finite Y/Z extent (the finite-X gate does not constrain Y/Z); every `None` path must leave the mesh untouched. Shrinking removes objects/vertices and simplifies transforms; it retains the empty/nonempty, identity/live-transform and placeable/unplaceable modes. Deterministic controls reject per-object centring, a translation-only XY shift without Z drop, a non-rigid per-object scale, a stale pre-placement `build_volume`, and a fabricated placement for an empty world.
 
 ### H-GCODE-FEEDRATE: role table, factor clamp, conversion and rounding
 
@@ -396,8 +396,9 @@ than the prose):
    0.0004-0.0016 mm2). Canonical's **append step** is verified against
    `Brim.cpp::tryExPolygonOffset` (current upstream `main`, read 2026-11-26):
    after a first `-0.5*spacing` offset it appends **every contour and hole** of
-   each Clipper2 result with no area or vertex filter, and its brim width uses
-   the same `floor(width/flow/2)*flow*2` quantisation. That is not the whole
+   each Clipper2 result with no area or vertex filter, and
+   `Brim.cpp::outer_inner_brim_area` uses the same
+   `floor(width/flow/2)*flow*2` brim-width quantisation. That is not the whole
    pipeline: canonical Douglas-Peucker-simplifies each result at
    `0.0125 / SCALING_FACTOR` immediately before appending, and
    `Brim.cpp::makeBrimInfillImpl` then unions the loops with
@@ -446,7 +447,9 @@ than the prose):
    (`extreme_same_sign_extents_do_not_overflow_the_midpoint`). The property
    asserts the post-placement world union for every scene, keeps the
    identity-scene shifted-raw-union equivalence, and counts live-transform
-   scenes. A generated all-nonfinite-X `None` mode covers the finite-X gate.
+   scenes. Generated all-nonfinite-X and finite-X/non-finite-Y `None` modes cover
+   both rejection paths; a non-finite shift (including one outside the f32
+   range after narrowing) returns `None` before any mutation.
 
 4. **Authoring preflight row 1 ("Symbols PASS") is inaccurate for the
    skirt/brim seam**; it is left in place as authored history and superseded by
@@ -472,3 +475,18 @@ than the prose):
    `fine`/`coarse` counters keep it non-vacuous, and `skirt_brim_controls`
    rejects both a shrunk loop and a 25%-inflated witness, so the check is
    falsifiable.
+
+## Closure review
+
+The full packet-scope review at `e694bd79` returned **APPROVED WITH NOTES**; its notes were applied
+in the follow-up commits. A delta review of `b630c7b9..ec2de14c` then returned **CHANGES
+REQUESTED** on two text/accuracy findings (the canonical skirt/brim claim and a mislabelled
+control) plus four low notes; all were fixed in `984a0a3c`. A delta re-review of
+`ec2de14c..984a0a3c` returned **APPROVED WITH NOTES** with two low findings (the finite-X /
+non-finite-Y `None` branch was untested, and one charter paragraph still quoted single-run samples
+as bounds); both are fixed in the final commit. No acceptance criterion or production behaviour
+changed after the reviewed delta except those fixes. Every command in the evidence's executed-
+verification table was re-run on the final tree: the eleven-record routine and extended selections
+pass with all eleven records `passed`, the workspace build/check/clippy and the seven feature
+check/clippy runs pass, and `check-literals`, `check-test-quality`, `check-fmt` (62 packages) and
+`build-guests --check` are clean.

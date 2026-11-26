@@ -94,7 +94,8 @@ recorded IDs; the lane still executes every other selected record.
   `max_clearance_dev`/`max_bbox_excess` = 0) and reclassified the sliver emission as a candidate
   observation. Canonical's **append step** was then checked against
   `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): every contour and hole is appended
-  with no area/vertex filter and the brim width uses the same quantisation. The append step is not the
+  with no area/vertex filter and `Brim.cpp::outer_inner_brim_area` uses the same brim-width
+  quantisation. The append step is not the
   whole pipeline, though: canonical Douglas-Peucker-simplifies each result at
   `0.0125 / SCALING_FACTOR` before appending and `Brim.cpp::makeBrimInfillImpl` unions the loops with
   `union_pt_chained_outside_in`, neither of which PnP does. Whether canonical emits a sub-0.0125 mm
@@ -132,14 +133,16 @@ All commands ran on the Windows host against this tree; plain Cargo runs are log
 | The 12 exact deterministic controls (`E` list in `packet.spec.md`) | PASS, `1 passed; 0 failed` each |
 | Each of the 11 `P` selectors at `--tier routine` | PASS, 64/64 accepted, 0 rejects, 0 rejected calls |
 | Each of the 11 `P` selectors at `--tier extended` | PASS, 256/256 accepted, 0 rejects |
-| Combined 11-record routine selection (`M` line 1) | PASS, 36 s warm wall |
-| Combined 11-record extended selection (`M` line 2) | PASS, 32 s warm wall |
+| Combined 11-record routine selection (`M` line 1) | PASS, 46 s warm wall |
+| Combined 11-record extended selection (`M` line 2) | PASS, 30 s warm wall |
 | Retained-seed replay `H-SKIRT-BRIM --tier routine --seed 4285591042002023685` | PASS, 64/64 |
-| Existing baselines: 10 `slicer-model-io` (incl. the three `build_volume` regressions), 10 `slicer-gcode` (incl. the two named regressions), 2 `overhang-classifier-default`, 5 module-kernel, 2 `skirt-brim` (plus `skirt_brim_corner_join_witness`), 2 `wipe-tower` | PASS |
+| Existing baselines: 11 `slicer-model-io` (incl. the four `build_volume` regressions), 10 `slicer-gcode` (incl. the two named regressions), 2 `overhang-classifier-default`, 5 module-kernel, 2 `skirt-brim` (plus `skirt_brim_corner_join_witness`), 2 `wipe-tower` | PASS |
 | `zero_shift_placement_still_refreshes_build_volume` | PASS: a stale `[-9,9]` box on an already-centred mesh is refreshed on an exactly-zero placement, and a `-0.0` vertex keeps its bit pattern |
 | `extreme_same_sign_extents_do_not_overflow_the_midpoint` | PASS: every vertex at `x = +2e38` yields a finite shift and a refreshed box; the old `(min+max)/2` f32 expression overflowed to `-inf` |
+| `non_finite_y_world_returns_none_without_mutation` | PASS: finite X with one `y = +inf` vertex returns `None` and leaves vertices and `build_volume` untouched; the pre-fix seam shifted by `-inf` and returned `Some` |
 | Counterfactual: `zero_shift_placement_still_refreshes_build_volume` with the old early return restored | FAILS as intended: `left: [-9,9]` stale box vs `right:` the world union (`target/test-output-p16-n2-counterfactual.log`); the restored fix passes |
 | Counterfactual: `extreme_same_sign_extents_do_not_overflow_the_midpoint` with the old f32 midpoint | FAILS as intended on the unreachable arm (`target/test-output-p16-l1-counterfactual.log`); the restored fix passes |
+| Counterfactual: `non_finite_y_world_returns_none_without_mutation` with the `ec2de14c` loader | FAILS as intended: the old seam returned `Some(BedPlacement { dx: 122.0, dy: -inf, dz: -1.0 })` (`target/test-output-p16-lb-counterfactual.log`); the restored fix returns `None` |
 | `pnp_cli::scad_placement_refreshes_build_volume_to_world_union` (`--features scad`) | PASS: the CLI consumer path asserts `build_volume` follows the placed geometry |
 | Blast radius: `cargo test -p slicer-gcode` (18 binaries), `-p pnp-cli --test e2e_integration_tdd` (8 tests), `m73_progress_tdd` (10), `slicer-runtime --test visual_debug_postpass_tap_tdd` (1) | PASS (the runtime binary first failed to link with `LNK1318` at 0.02 GB free; after pruning `target/debug/incremental`, `target/release` and `*.pdb` it linked and passed) |
 | `cargo xtask check-literals` | PASS, 0 violations |
@@ -157,19 +160,19 @@ Proptest 1.11, warm binaries. Per-record libtest walls from the combined selecti
 
 | ID | routine cases / wall | extended cases / wall |
 | --- | --- | --- |
-| `H-IO-ID` | 64 / 0.04 s | 256 / 0.11 s |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.13 s |
 | `H-IO-EXTENT` | 64 / 0.04 s | 256 / 0.10 s |
 | `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
-| `H-GCODE-FEEDRATE` | 64 / 0.02 s | 256 / 0.08 s |
-| `H-GCODE-EMIT` | 64 / 0.04 s | 256 / 0.17 s |
-| `H-GCODE-SERIALIZE` | 64 / 0.09 s | 256 / 0.18 s |
-| `H-GCODE-TEMPLATE` | 64 / 0.07 s | 256 / 0.17 s |
-| `H-COOLING` | 64 / 0.04 s | 256 / 0.08 s |
-| `H-OVERHANG-SPEED` | 64 / 0.05 s | 256 / 0.34 s |
-| `H-SKIRT-BRIM` | 64 / 0.51 s | 256 / 1.60 s |
-| `H-WIPE-TOWER` | 64 / 0.05 s | 256 / 0.09 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.05 s | 256 / 0.16 s |
+| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-SKIRT-BRIM` | 64 / 0.44 s | 256 / 1.58 s |
+| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.09 s |
 
-Combined selection: 11 records in 36 s (routine) and 32 s (extended) warm wall, including the
+Combined selection: 11 records in 46 s (routine) and 30 s (extended) warm wall, including the
 per-record compile/link checks the executor performs. Every record reported `outcome = passed`,
 `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, `local/global rejects 0` and
 `call_counts_complete = true`; `shrink_completed` is null (Proptest 1.11 cannot report completion).
@@ -179,8 +182,8 @@ with zero rejection/regeneration budgets, `rng_algorithm = "chacha"`, `isolation
 `packet.spec.md` § Registry.
 
 Measured populations (final runs): `H-IO-ID` all five path/collision modes; `H-IO-EXTENT`
-identity/affine/flat/NaN/infinity; `H-IO-PLACEMENT` empty/single/multi/already-placed/below-bed/live transform/all-nonfinite-X
-(7 modes; extended 35 live-transform and 46 non-finite-X cases in the implementing run); `H-GCODE-FEEDRATE` every role, both clamp ends and the overflow probe;
+identity/affine/flat/NaN/infinity; `H-IO-PLACEMENT` empty/single/multi/already-placed/below-bed/live-transform/all-nonfinite-X/
+non-finite-Y (8 modes; the run asserts at least one live-transform scene); `H-GCODE-FEEDRATE` every role, both clamp ends and the overflow probe;
 `H-GCODE-EMIT` empty/skipped/side-entry/annotation-only layers, tool changes, singleton and
 zero-length entities and all three negative modes; `H-GCODE-SERIALIZE` both modes and flavors, Gcode
 and firmware retracts, G92 resets and the formatting probe; `H-GCODE-TEMPLATE` all malformed shapes
@@ -249,7 +252,7 @@ for module `src/**`.
 | `cargo build --workspace` | PASS, 233 s cold |
 | `cargo check --workspace --all-targets` | PASS, 85 s warm |
 | `cargo clippy --workspace --all-targets -- -D warnings` | PASS, 79 s warm; re-run after the post-review edits, PASS |
-| Post-review `cargo build/check/clippy --workspace --all-targets`, feature check/clippy x7, `check-fmt` (62 packages), `check-literals`, `check-test-quality`, `build-guests --check` | PASS |
+| Post-review `cargo build/check/clippy --workspace --all-targets`, feature check/clippy x7, `check-fmt` (62 packages), `check-literals`, `check-test-quality`, `build-guests --check` | PASS; re-run after each review round, including the final one |
 | Feature-enabled `cargo check`/`cargo clippy` for all seven owners, `--all-targets`, `-D warnings` | PASS |
 | `cargo xtask check-literals` | PASS, 0 violations in 0 files |
 | `cargo xtask check-test-quality --report` | PASS, 0 findings (in-scope files; module `src/**` out of scope) |
@@ -270,9 +273,10 @@ and `target/debug/incremental` were pruned (free space 73.7 GB -> 111.1 GB) and 
   rc 0, 1412 s (23.5 min), 89 end events, every one `outcome = passed`, all eleven packet IDs
   present. The skirt line recorded `thin_tail=26`, `max_bbox_excess=0.000000`,
   `max_clearance_dev=0.000000` on that run.
-- Earlier lanes on the pre-fix review tree (1056 s / 1255 s) are superseded by these final-tree
-  numbers. The all-record binary count is 89 in every lane, consistent with
-  the four skipped SCAD records, and the eleven-record selections also pass in 36 s / 32 s.
+- The all-record lanes ran at `4b7062a9` (622 s / 1412 s). The later review-round deltas change the
+  placement seam and its property only (plus comments/docs), so the eleven-record selections are the
+  final-tree evidence for them: both pass in 46 s / 30 s, with all eleven records `passed`. The
+  all-record binary count is 89 in every lane, consistent with the four skipped SCAD records.
 
 
 
@@ -285,10 +289,10 @@ and `target/debug/incremental` were pruned (free space 73.7 GB -> 111.1 GB) and 
 | 2 | H-GCODE-SERIALIZE | absolute-mode Gcode retract/unretract emitted `E-<length>`/`E<length>` deltas and never updated the accumulator; absolute Moves/G92 did not maintain it | Move sets it, G92 resets it in both modes, retract/unretract update and emit the updated absolute E, parallel seeder runs in both modes; `absolute_mode_gcode_retract_emits_updated_absolute_e_position` (`tests/gcode_relative_extrusion_tdd.rs`) |
 | 3 | H-OVERHANG-SPEED | `calculate_speed`'s `>= last` branch returned the raw section speed, skipping round and cap (1.75 where 2.0 was expected) | `sections[len-1].1.round().min(original_speed)`; `calculate_speed_last_boundary_rounds_and_caps_last_section_speed` (`tests/basic_tdd.rs`) |
 | 4 | H-GCODE-SERIALIZE oracle | RepRapFirmware renderer truncated `256 C` to `255 C` via a `u8` cast (test oracle, not production) | oracle renders the integer Celsius value; recorded here, no production regression |
-| 5 | H-SKIRT-BRIM model | The oracle asserted `2 * floor(brim_width/spacing/2)` rings unconditionally, and its nearest-vertex window hid a one-anchor-wide geometric term; at `line_width = 1/8` the last band is one spacing wide and clipper splits it into 2 contour lobes plus 3 sliver holes (measured input: `line_width 0.125`, `brim_width 56.6875`, `1/16 x 3/16` mm rectangle at `(-64,-64)` -> 693 rings, 690 clean) | oracle keeps the exact `2*(bands-1)` prefix, records `tail_fragments`, derives family-specific corner-join windows (`contour_env = 0.086579`), reports `max_clearance_dev`/`max_bbox_excess` outside those windows (0.0), and pins the corner vertex plus a half-anchor rejection in `skirt_brim_corner_join_witness`. Production unchanged. Canonical's **append step** was checked against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): every contour **and hole** is appended with no area/vertex filter, and the brim width uses the same quantisation. The append step is not the whole pipeline: canonical Douglas-Peucker-simplifies each result at `0.0125 / SCALING_FACTOR` before appending and `Brim.cpp::makeBrimInfillImpl` unions the loops (`union_pt_chained_outside_in`), which PnP does not, so emission of a sub-0.0125 mm sliver is **unmeasured and not claimed**. The exact tail multiset is likewise **not claimed** because canonical erodes `-1.3s`/dilates `+0.3s` with `douglas_peucker` between passes; the sliver stays a candidate observation |
+| 5 | H-SKIRT-BRIM model | The oracle asserted `2 * floor(brim_width/spacing/2)` rings unconditionally, and its nearest-vertex window hid a one-anchor-wide geometric term; at `line_width = 1/8` the last band is one spacing wide and clipper splits it into 2 contour lobes plus 3 sliver holes (measured input: `line_width 0.125`, `brim_width 56.6875`, `1/16 x 3/16` mm rectangle at `(-64,-64)` -> 693 rings, 690 clean) | oracle keeps the exact `2*(bands-1)` prefix, records `tail_fragments`, derives family-specific corner-join windows (`contour_env = 0.086579`), reports `max_clearance_dev`/`max_bbox_excess` outside those windows (0.0), and pins the corner vertex plus a half-anchor rejection in `skirt_brim_corner_join_witness`. Production unchanged. Canonical's **append step** was checked against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26): every contour **and hole** is appended with no area/vertex filter, and `Brim.cpp::outer_inner_brim_area` uses the same brim-width quantisation. The append step is not the whole pipeline: canonical Douglas-Peucker-simplifies each result at `0.0125 / SCALING_FACTOR` before appending and `Brim.cpp::makeBrimInfillImpl` unions the loops (`union_pt_chained_outside_in`), which PnP does not, so emission of a sub-0.0125 mm sliver is **unmeasured and not claimed**. The exact tail multiset is likewise **not claimed** because canonical erodes `-1.3s`/dilates `+0.3s` with `douglas_peucker` between passes; the sliver stays a candidate observation |
 
 | 6 | H-IO-PLACEMENT | `place_bare_mesh_on_bed` recomputed `build_volume` from raw vertices after folding the placement into `transform.matrix`, leaving the pre-placement box (confirmed SUT defect); its exactly-zero early return then skipped the recompute entirely, so an already-placed mesh kept any stale caller box | `compute_world_bounding_box_union` and an unconditional recompute; `identity_matrix_placement_updates_build_volume_to_the_world_union` (raw box) and `zero_shift_placement_still_refreshes_build_volume` (stale `[-9,9]` box on an exact-zero shift; fails on the old early return because the returned box would still be `[-9,9]`); the property asserts the world union unconditionally |
-| 7 | H-IO-PLACEMENT (review hardening of the N2 fix) | The unconditional shift computed `(min.x + max.x) / 2.0` in f32; an extreme same-sign AABB (all vertices at `x = +2e38`) overflows to `+inf`, so `dx = -inf`, the shifted world is non-finite and the unreachable arm fires (debug panic; release kept the caller box) | f64 midpoints plus an explicit non-finite-shift `None` guard before any mutation; `extreme_same_sign_extents_do_not_overflow_the_midpoint` fails on the old expression and passes on the f64 one; zero shifts skip the vertex loop so `-0.0` bit patterns survive |
+| 7 | H-IO-PLACEMENT (review hardening of the N2 fix) | The unconditional shift computed `(min.x + max.x) / 2.0` in f32; an extreme same-sign AABB (all vertices at `x = +2e38`) overflows to `+inf`, so `dx = -inf`, the shifted world is non-finite and the unreachable arm fires (debug panic; release kept the caller box). The finite-X gate also accepts a world whose Y extent is non-finite, which produced an infinite shift | f64 midpoints fix the same-sign overflow (`extreme_same_sign_extents_do_not_overflow_the_midpoint`); a pre-mutation guard returns `None` when the accepted union has a non-finite Y/Z extent or the narrowed shift leaves the f32 range (`non_finite_y_world_returns_none_without_mutation`); zero shifts skip the vertex loop so `-0.0` bit patterns survive |
 
 Each named regression was verified to fail with the fix stashed and pass with it (counterfactual
 check recorded by the implementing step). The three output-changing fixes are not exercised

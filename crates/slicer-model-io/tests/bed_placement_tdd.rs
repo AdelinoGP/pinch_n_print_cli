@@ -333,6 +333,39 @@ fn extreme_same_sign_extents_do_not_overflow_the_midpoint() {
 }
 
 #[test]
+fn non_finite_y_world_returns_none_without_mutation() {
+    // Finite X (the AABB gate accepts the object) but a non-finite Y extent:
+    // there is no finite box to place. The seam must return `None` before any
+    // mutation, not shift the vertices by an infinite amount.
+    let vertices = vec![
+        p3(0.0, f32::INFINITY, 0.0),
+        p3(4.0, 3.0, 2.0),
+        p3(2.0, 1.0, 1.0),
+    ];
+    let mut mesh = mesh_of(vec![object("nonfinite-y", vertices.clone())]);
+    mesh.objects[0].transform = identity_transform();
+    let stale = BoundingBox3 {
+        min: p3(-9.0, -9.0, -9.0),
+        max: p3(9.0, 9.0, 9.0),
+    };
+    mesh.build_volume = stale;
+
+    let placement = place_bare_mesh_on_bed(&mut mesh, (125.0, 125.0));
+    assert_eq!(
+        placement, None,
+        "a non-finite Y extent has no finite placement"
+    );
+    assert_eq!(
+        mesh.objects[0].mesh.vertices, vertices,
+        "a None placement must not mutate the vertices"
+    );
+    assert_eq!(
+        mesh.build_volume, stale,
+        "a None placement must not rewrite build_volume"
+    );
+}
+
+#[test]
 fn bed_centre_is_read_from_the_bed_shape_polygon() {
     // Default 250 x 250 square from `ResolvedConfig::bed_shape`.
     let square = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0];
