@@ -254,17 +254,16 @@ environmental disk-space failure, not a property failure (all eleven packet reco
 own selections and the 78 completed records reported `outcome = passed`). `target/property-testing`
 and `target/debug/incremental` were pruned (free space 73.7 GB -> 111.1 GB) and the lane was re-run:
 
-- `cargo xtask test --summary --properties --tier routine` -> `VERDICT: PASS`, rc 0, 1056 s
-  (17.6 min), 89 end events recorded, every one `outcome = passed` (the four `requires_scad`
-  records are skipped without `--with-scad`). The CI-style positive assertion was reproduced
-  locally: all eleven packet IDs appear in `target/test-output.log`.
-- `cargo xtask test --summary --properties --tier extended` -> `VERDICT: PASS`, rc 0, 1255 s
-  (20.9 min), 89 end events, every one `outcome = passed`, all eleven packet IDs present.
-  The all-record binary count is 89 in both lanes, consistent with the four skipped SCAD records.
-  Both lanes were executed on the review tree (`8840ea2e`); after the post-review fixes the
-  eleven-record routine and extended selections were re-run on the final tree (`30 s` / `34 s`,
-  all 11 `passed`) together with the blast-radius suites above. The full 93-record lanes were not
-  repeated for the two-comment/one-branch post-review edits, and that is stated rather than implied.
+- `cargo xtask test --summary --properties --tier routine` on the final tree -> `VERDICT: PASS`,
+  rc 0, 622 s (10.4 min), 89 end events, every one `outcome = passed`, all eleven packet IDs
+  present (the four `requires_scad` records are skipped without `--with-scad`).
+- `cargo xtask test --summary --properties --tier extended` on the final tree -> `VERDICT: PASS`,
+  rc 0, 1412 s (23.5 min), 89 end events, every one `outcome = passed`, all eleven packet IDs
+  present. The skirt line recorded `thin_tail=26`, `max_bbox_excess=0.000000`,
+  `max_clearance_dev=0.000000` on that run.
+- The same two lanes had passed on the review tree (`8840ea2e`) in 1056 s / 1255 s; the final-tree
+  numbers above supersede them. The all-record binary count is 89 in every lane, consistent with
+  the four skipped SCAD records, and the eleven-record selections also pass in 30 s / 34 s.
 
 
 
