@@ -1280,87 +1280,145 @@ fn density_config(bridge_density: f64, internal_bridge_density: f64) -> slicer_i
         .build()
 }
 
-/// Unanchored bridge square — waves are impossible, so every component takes
-/// the conventional rectilinear fallback whose spacing the density keys drive.
-fn unanchored_bridge_region(internal: bool) -> SliceRegionView {
+/// Unanchored mixed bridge region: two disjoint 10x10 mm squares.
+///
+/// Only the second square is a member of `internal_bridge_areas`; the first is
+/// the external remainder. No previous-layer boundary and no solid fill means
+/// waves are impossible, so both groups take the conventional rectilinear
+/// fallback whose spacing the bridging keys drive. Selection must therefore be
+/// per polygon by `internal_bridge_areas` membership — a region-wide flag could
+/// not express this fixture at all (ticket 152).
+fn mixed_bridge_region() -> SliceRegionView {
+    let external = rect_mm(0.0, 0.0, 10.0, 10.0);
+    let internal = rect_mm(20.0, 0.0, 30.0, 10.0);
     let mut region = SliceRegionViewBuilder::new()
         .object_id("obj")
         .region_id(1)
         .z(LAYER_HEIGHT_MM)
         .effective_layer_height(LAYER_HEIGHT_MM)
         .is_bridge(true)
-        .is_internal_bridge(internal)
         .bridge_orientation_deg(0.0)
-        .bridge_areas(vec![rect_mm(0.0, 0.0, 10.0, 10.0)])
+        .bridge_areas(vec![external, internal.clone()])
+        .internal_bridge_areas(vec![internal])
         .build();
     region.set_held_claims(vec!["claim:bridge-fill".to_string()]);
     region
 }
 
-fn fallback_path_count(config: &slicer_ir::ConfigView, internal: bool) -> usize {
+/// Run the module over [`mixed_bridge_region`] and partition the emitted bridge
+/// paths by role: `BridgeInfill` is the external group, `InternalBridgeInfill`
+/// is the internal group.
+///
+/// The role split is itself part of the contract under test — an
+/// internal-bridge polygon must never be emitted as an external bridge — and
+/// both groups must be non-empty, so a count comparison cannot pass vacuously
+/// by comparing two empty vectors.
+fn fallback_group_paths(
+    config: &slicer_ir::ConfigView,
+) -> (Vec<ExtrusionPath3D>, Vec<ExtrusionPath3D>) {
     let module = WaveOverhangs::from_config(config).expect("config");
-    let region = unanchored_bridge_region(internal);
+    let region = mixed_bridge_region();
     let mut output = InfillOutputBuilder::new();
     module
         .run_infill(1, &[region], &paint_view(), &mut output, config)
         .expect("run_infill must succeed");
-    output.solid_paths().len()
+
+    let mut external = Vec::new();
+    let mut internal = Vec::new();
+    for path in output.solid_paths() {
+        match path.role {
+            ExtrusionRole::BridgeInfill => external.push(path.clone()),
+            ExtrusionRole::InternalBridgeInfill => internal.push(path.clone()),
+            ref other => panic!("unexpected role {other:?} on an unanchored bridge region"),
+        }
+    }
+    assert!(
+        !external.is_empty(),
+        "external bridge group emitted no fallback fill"
+    );
+    assert!(
+        !internal.is_empty(),
+        "internal bridge group emitted no fallback fill"
+    );
+    (external, internal)
+}
+
+/// `(external, internal)` path counts from [`fallback_group_paths`].
+fn fallback_group_counts(config: &slicer_ir::ConfigView) -> (usize, usize) {
+    let (external, internal) = fallback_group_paths(config);
+    (external.len(), internal.len())
 }
 
 /// Canonical `Fill::make_fills` overrides an internal bridge's density from
 /// `internal_bridge_density`, not from `bridge_density` — the two are separate
-/// decision points on the same surface class. The fallback fill must make the
-/// same split: halving the internal key must space an internal bridge's lines,
-/// and halving the external key must leave it untouched.
+/// decision points on the same surface class. Both groups print from one
+/// region here, so the test also proves the split is per polygon by
+/// `internal_bridge_areas` membership: halving the internal key must space the
+/// internal group's lines and leave the external group untouched.
 #[test]
 fn internal_bridge_density_drives_internal_bridge_fallback_spacing() {
-    let full = fallback_path_count(&density_config(1.0, 1.0), true);
-    let half_internal = fallback_path_count(&density_config(1.0, 0.5), true);
-    let half_external = fallback_path_count(&density_config(0.5, 1.0), true);
+    let (external_full, internal_full) = fallback_group_counts(&density_config(1.0, 1.0));
+    let (external_half_internal, internal_half_internal) =
+        fallback_group_counts(&density_config(1.0, 0.5));
+    let (_, internal_half_external) = fallback_group_counts(&density_config(0.5, 1.0));
 
     assert!(
-        full > 4,
-        "100% density must fill the bridge, got {full} paths"
+        internal_full > 4,
+        "100% density must fill the internal bridge, got {internal_full} paths"
     );
-    let ratio = half_internal as f32 / full as f32;
+    assert!(
+        external_full > 4,
+        "100% density must fill the external bridge, got {external_full} paths"
+    );
+    let ratio = internal_half_internal as f32 / internal_full as f32;
     assert!(
         (0.4..=0.65).contains(&ratio),
         "50% internal_bridge_density must roughly halve internal bridge lines: \
-         {half_internal} of {full} (ratio {ratio})"
+         {internal_half_internal} of {internal_full} (ratio {ratio})"
     );
     assert_eq!(
-        half_external, full,
+        internal_half_external, internal_full,
         "bridge_density must not drive an internal bridge's spacing"
+    );
+    assert_eq!(
+        external_half_internal, external_full,
+        "internal_bridge_density must not drive the external bridge group's spacing"
     );
 }
 
 /// The external twin of the split: `bridge_density` drives an external bridge,
-/// and `internal_bridge_density` must not.
+/// and neither key may reach the other group.
 #[test]
 fn bridge_density_drives_external_bridge_fallback_spacing() {
-    let full = fallback_path_count(&density_config(1.0, 1.0), false);
-    let half_external = fallback_path_count(&density_config(0.5, 1.0), false);
-    let half_internal = fallback_path_count(&density_config(1.0, 0.5), false);
+    let (external_full, internal_full) = fallback_group_counts(&density_config(1.0, 1.0));
+    let (external_half_external, internal_half_external) =
+        fallback_group_counts(&density_config(0.5, 1.0));
+    let (external_half_internal, _) = fallback_group_counts(&density_config(1.0, 0.5));
 
     assert!(
-        full > 4,
-        "100% density must fill the bridge, got {full} paths"
+        external_full > 4,
+        "100% density must fill the external bridge, got {external_full} paths"
     );
-    let ratio = half_external as f32 / full as f32;
+    let ratio = external_half_external as f32 / external_full as f32;
     assert!(
         (0.4..=0.65).contains(&ratio),
         "50% bridge_density must roughly halve external bridge lines: \
-         {half_external} of {full} (ratio {ratio})"
+         {external_half_external} of {external_full} (ratio {ratio})"
     );
     assert_eq!(
-        half_internal, full,
+        external_half_internal, external_full,
         "internal_bridge_density must not drive an external bridge's spacing"
+    );
+    assert_eq!(
+        internal_half_external, internal_full,
+        "bridge_density must not drive the internal bridge group's spacing"
     );
 }
 
 /// `thick_internal_bridges` selects the round-thread bridging flow for an
 /// internal bridge (canonical `is_thick_bridge`), which widens line spacing;
-/// its external twin `thick_bridges` must not affect that surface.
+/// its external twin `thick_bridges` must not affect that surface, and neither
+/// setting may disturb the other group.
 #[test]
 fn thick_internal_bridges_drives_internal_bridge_fallback_spacing() {
     let base = |thick_internal: bool, thick_external: bool| {
@@ -1393,18 +1451,107 @@ fn thick_internal_bridges_drives_internal_bridge_fallback_spacing() {
             .build()
     };
 
-    let thin = fallback_path_count(&base(false, false), true);
-    let thick = fallback_path_count(&base(true, false), true);
-    let external_thick = fallback_path_count(&base(false, true), true);
+    let (external_thin, internal_thin) = fallback_group_counts(&base(false, false));
+    let (external_thick_internal, internal_thick_internal) =
+        fallback_group_counts(&base(true, false));
+    let (external_thick_external, internal_thick_external) =
+        fallback_group_counts(&base(false, true));
 
-    assert!(thin > 0 && thick > 0, "both settings must fill the bridge");
     assert!(
-        thick < thin,
+        internal_thin > 0 && internal_thick_internal > 0,
+        "both settings must fill the internal bridge"
+    );
+    assert!(
+        internal_thick_internal < internal_thin,
         "thick_internal_bridges must widen internal bridge spacing: \
-         thick {thick} vs thin {thin}"
+         thick {internal_thick_internal} vs thin {internal_thin}"
     );
     assert_eq!(
-        external_thick, thin,
+        internal_thick_external, internal_thin,
         "thick_bridges must not drive an internal bridge's spacing"
     );
+    assert_eq!(
+        external_thick_internal, external_thin,
+        "thick_internal_bridges must not drive the external bridge group's spacing"
+    );
+    assert!(
+        external_thick_external < external_thin,
+        "thick_bridges must widen external bridge spacing: \
+         thick {external_thick_external} vs thin {external_thin}"
+    );
+}
+
+/// `internal_bridge_flow` is an independent decision point on the same surface
+/// class. With thin bridges the emitted `flow_factor` is the key verbatim, so
+/// changing it must move every internal path's flow factor, leave every
+/// external path's flow factor alone, and leave both line counts unchanged.
+#[test]
+fn internal_bridge_flow_drives_internal_group_flow_only() {
+    let base = |internal_flow: f64| {
+        ConfigViewBuilder::new()
+            .float("nozzle_diameter", f64::from(NOZZLE_MM))
+            .float("layer_height", f64::from(LAYER_HEIGHT_MM))
+            .float("bridge_speed", f64::from(BRIDGE_SPEED))
+            .float("bridge_line_width", f64::from(NOZZLE_MM))
+            .float("bridge_flow", 1.0)
+            .float("bridge_density", 1.0)
+            .float("internal_bridge_density", 1.0)
+            .float("internal_bridge_flow", internal_flow)
+            .bool("thick_bridges", false)
+            .bool("thick_internal_bridges", false)
+            .int("wall_loops", 3)
+            // Remaining required reads at their manifest defaults.
+            .string("wave_overhang_pattern", "smart")
+            .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
+            .float(
+                "wave_overhang_flow_mm3_per_mm",
+                f64::from(WAVE_FLOW_MM3_PER_MM),
+            )
+            .float("wave_overhang_line_spacing", 0.35)
+            .float("wave_overhang_perimeter_overlap", 0.1)
+            .float("wave_overhang_minimum_width", 0.7)
+            .float("wave_overhang_min_new_area", 0.01)
+            .float("wave_overhang_min_length", 0.0)
+            .int("wave_overhang_max_iterations", 0)
+            .float("wave_overhang_anchor_depth_mm", 0.0)
+            .build()
+    };
+
+    let (external_full, internal_full) = fallback_group_paths(&base(1.0));
+    let (external_reduced, internal_reduced) = fallback_group_paths(&base(0.8));
+
+    assert_eq!(
+        external_reduced.len(),
+        external_full.len(),
+        "internal_bridge_flow must not change the external group's line count"
+    );
+    assert_eq!(
+        internal_reduced.len(),
+        internal_full.len(),
+        "internal_bridge_flow must not change the internal group's line count"
+    );
+    for path in &internal_full {
+        assert!(
+            path.points
+                .iter()
+                .all(|point| (point.flow_factor - 1.0).abs() < 1e-6),
+            "the internal group's flow factor must be the internal_bridge_flow key"
+        );
+    }
+    for path in &internal_reduced {
+        assert!(
+            path.points
+                .iter()
+                .all(|point| (point.flow_factor - 0.8).abs() < 1e-6),
+            "a changed internal_bridge_flow must reach every internal path"
+        );
+    }
+    for path in &external_reduced {
+        assert!(
+            path.points
+                .iter()
+                .all(|point| (point.flow_factor - 1.0).abs() < 1e-6),
+            "internal_bridge_flow must not drive the external group's flow"
+        );
+    }
 }

@@ -286,7 +286,7 @@ fn internal_bridge_uses_internal_role_settings() {
         .effective_layer_height(0.2)
         .z(1.0)
         .is_bridge(true)
-        .is_internal_bridge(true)
+        .internal_bridge_areas(vec![bridge.clone()])
         .bridge_areas(vec![bridge])
         .bridge_orientation_deg(0.0)
         .build();
@@ -511,11 +511,16 @@ fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
 /// Run the module over a single 10×10 mm bridge region and return the bridge
 /// paths it emitted, using the caller's config.
 ///
-/// `internal` selects the internal-bridge flag, which is what steers
-/// `internal_bridge_density` / `thick_internal_bridges` against their external
-/// twins inside `run_infill`.
+/// `internal` makes the region's bridge polygon a member of
+/// `internal_bridge_areas`, which is what steers `internal_bridge_density` /
+/// `thick_internal_bridges` against their external twins inside `run_infill`.
 fn bridge_paths_for(config: &ConfigView, internal: bool) -> Vec<slicer_ir::ExtrusionPath3D> {
     let bridge = rect_expoly_mm(0, 0, 10, 10);
+    let internal_areas = if internal {
+        vec![bridge.clone()]
+    } else {
+        Vec::new()
+    };
     let mut region = SliceRegionViewBuilder::new()
         .object_id("test_object")
         .region_id(0)
@@ -524,8 +529,8 @@ fn bridge_paths_for(config: &ConfigView, internal: bool) -> Vec<slicer_ir::Extru
         .z(1.0)
         .has_nonplanar(false)
         .is_bridge(true)
-        .is_internal_bridge(internal)
         .bridge_areas(vec![bridge])
+        .internal_bridge_areas(internal_areas)
         .bridge_orientation_deg(0.0)
         .build();
     region.set_held_claims(vec!["claim:bridge-fill".into()]);

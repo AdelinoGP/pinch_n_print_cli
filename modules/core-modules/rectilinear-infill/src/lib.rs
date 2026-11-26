@@ -452,11 +452,12 @@ impl LayerModule for RectilinearInfill {
                     slicer_sdk::host::ClipOperation::Difference,
                 )
             };
-            let mut bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> = vec![(
-                external_bridge,
-                region.is_internal_bridge(),
-                region.bridge_orientation_deg(),
-            )];
+            // `external_bridge` is `bridge_areas − internal_bridge_areas`, so it
+            // is never an internal bridge: the group is external by
+            // construction. Internal membership is carried per polygon by
+            // `internal_bridge_areas` below, not by a region-wide flag.
+            let mut bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> =
+                vec![(external_bridge, false, region.bridge_orientation_deg())];
             for (index, area) in internal_bridge_areas.iter().enumerate() {
                 bridge_groups.push((
                     slicer_sdk::host::clip_polygons(

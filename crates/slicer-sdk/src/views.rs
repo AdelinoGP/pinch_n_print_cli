@@ -51,7 +51,6 @@ pub struct SliceRegionView {
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
-    is_internal_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     bridge_areas: Vec<ExPolygon>,
     /// Per-layer internal (over-sparse-infill) bridge polygons.
@@ -123,7 +122,6 @@ impl Default for SliceRegionView {
             bottom_solid_fill: Vec::new(),
             internal_solid_fill: Vec::new(),
             is_bridge: false,
-            is_internal_bridge: false,
             bridge_areas: Vec::new(),
             internal_bridge_areas: Vec::new(),
             internal_bridge_angles_deg: Vec::new(),
@@ -280,12 +278,6 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_is_bridge(&mut self, is_bridge: bool) {
         self.is_bridge = is_bridge;
-    }
-
-    /// Override the internal-bridge classification flag for legacy module APIs.
-    #[doc(hidden)]
-    pub fn set_is_internal_bridge(&mut self, is_internal_bridge: bool) {
-        self.is_internal_bridge = is_internal_bridge;
     }
 
     /// Override the bridge areas (host-only, for testing).
@@ -457,11 +449,6 @@ impl SliceRegionView {
     /// a different fill strategy.
     pub fn is_bridge(&self) -> bool {
         self.is_bridge
-    }
-
-    /// Returns the legacy internal-bridge classification flag.
-    pub fn is_internal_bridge(&self) -> bool {
-        self.is_internal_bridge
     }
 
     /// Returns the object ID this region belongs to.
