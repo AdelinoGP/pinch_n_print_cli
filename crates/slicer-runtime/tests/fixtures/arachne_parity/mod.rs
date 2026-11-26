@@ -97,14 +97,21 @@ pub const UNITS_PER_MM_F64: f64 = UNITS_PER_MM;
 // TDD-red that fails to compile until the gap is closed.
 // ===========================================================================
 
-/// A single 10 mm square region with a concentric 9 mm square hole. Used to probe OrcaSlicer's
-/// "odd-after-enclosing" region ordering (`WallToolPaths::getRegionOrder`,
-/// `WallToolPaths::getRegionOrder`): the emitted wall regions must be ordered so that
-/// an inner (odd) region follows the enclosing even region. The PnP pipeline
-/// flattens the per-inset buckets in source order and performs no such
-/// reordering (G12).
+/// A single solid 10 mm square. At the 0.4 mm default bead width it fills with
+/// five nested closed walls (`inset_idx` 0..=4), each spatially adjacent to the
+/// next, so OrcaSlicer's "odd-after-enclosing" region ordering
+/// (`WallToolPaths::getRegionOrder`) forces every outer-wall line to precede
+/// every inner-wall line.
+///
+/// This must stay a single boundary. It used to be `annulus_mm(10.0, 9.0)`, but
+/// that fixture only produced inner walls because the pre-t169 `polygon_ops`
+/// offset silently dropped its (CCW-wound) hole, turning the ring into this
+/// solid square. With the hole kept, the 0.5 mm ring holds one bead and the
+/// "all outer before all inner" assertion is not canonical for a ring anyway:
+/// `getRegionOrder` only constrains spatially adjacent lines, so each boundary's
+/// own outer/inner pair is ordered but the two boundaries interleave.
 pub fn ex_polygons_concentric_islands_mm() -> Vec<ExPolygon> {
-    vec![annulus_mm(10.0, 9.0)]
+    vec![square_mm(10.0)]
 }
 
 /// Builds the canonical Arachne beading-strategy stack via

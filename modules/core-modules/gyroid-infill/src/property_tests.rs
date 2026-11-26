@@ -1750,6 +1750,34 @@ struct ExpectedInterval {
     high_axis: Option<BoundaryAxis>,
 }
 
+/// Boundary class of a subject vertex that lies exactly on a modelled clip
+/// edge line, or `None` for a vertex on no edge.
+///
+/// Clipper decides inclusion per integer scanline row, so a subject that only
+/// *touches* an edge at a vertex (zero-length exact contact) or grazes it at a
+/// shallow angle can still legitimately return a span starting up to
+/// `band / |Δnormal|` of subject parameter before the contact. Treating such a
+/// vertex as a plain subject endpoint (`band / length`) would forbid that. When
+/// the vertex lies on both a vertical and a horizontal edge line the axis with
+/// the smaller normal delta wins, because it has the larger (worse) term.
+fn vertex_boundary_axis(
+    point: Point2,
+    x_boundaries: &[i64],
+    y_boundaries: &[i64],
+    delta_x: f64,
+    delta_y: f64,
+) -> Option<BoundaryAxis> {
+    let on_vertical = x_boundaries.contains(&point.x);
+    let on_horizontal = y_boundaries.contains(&point.y);
+    match (on_vertical, on_horizontal) {
+        (true, false) => Some(BoundaryAxis::Vertical),
+        (false, true) => Some(BoundaryAxis::Horizontal),
+        (true, true) if delta_x <= delta_y => Some(BoundaryAxis::Vertical),
+        (true, true) => Some(BoundaryAxis::Horizontal),
+        (false, false) => None,
+    }
+}
+
 /// Exact kept parameter intervals of one straight subject segment.
 fn expected_segment_intervals(
     case: &ClipCase,
@@ -1761,8 +1789,22 @@ fn expected_segment_intervals(
     if start == end {
         return Vec::new();
     }
-    let mut criticals: Vec<(Frac, Option<BoundaryAxis>)> =
-        vec![(Frac::zero(), None), (Frac::one(), None)];
+    // A segment end that sits exactly on a modelled clip edge is a boundary
+    // contact, not a plain subject endpoint: the reported cut there carries the
+    // edge's tangential ill-conditioning, so it takes that edge's axis. See
+    // `vertex_boundary_axis`.
+    let delta_x = (end.x - start.x).unsigned_abs() as f64;
+    let delta_y = (end.y - start.y).unsigned_abs() as f64;
+    let mut criticals: Vec<(Frac, Option<BoundaryAxis>)> = vec![
+        (
+            Frac::zero(),
+            vertex_boundary_axis(start, x_boundaries, y_boundaries, delta_x, delta_y),
+        ),
+        (
+            Frac::one(),
+            vertex_boundary_axis(end, x_boundaries, y_boundaries, delta_x, delta_y),
+        ),
+    ];
     let add_roots = |origin: i64,
                      target: i64,
                      boundaries: &[i64],
@@ -1888,7 +1930,18 @@ fn endpoint_parameter_term(
         Some(BoundaryAxis::Horizontal) => delta_y.max(1.0),
         None => length.max(1.0),
     };
-    let uncapped = CLIP_BAND_UNITS / scale;
+    // The derivation above assumes the reported point lies ON the subject. It
+    // does not: the cut is an integer point, up to `SUBJECT_PROJECTION_UNITS`
+    // (the same bound `project_point` uses to attribute it to a segment) off the
+    // subject line. The oracle recovers a parameter by projecting that point onto
+    // the subject, so the off-subject displacement shifts the recovered
+    // parameter by at most `SUBJECT_PROJECTION_UNITS / length`. A subject
+    // endpoint (`None`) is an exact subject vertex and carries no such shift.
+    let projection = match axis {
+        Some(_) => SUBJECT_PROJECTION_UNITS / length.max(1.0),
+        None => 0.0,
+    };
+    let uncapped = CLIP_BAND_UNITS / scale + projection;
     if uncapped >= 1.0 {
         EndpointTerm {
             term: 1.0,
@@ -2312,6 +2365,32 @@ fn check_clip_results(
                     (high + high_term.term).min(1.0),
                 ));
             }
+            // A kept interval of a NEIGHBOURING segment that begins (ends) at the
+            // shared vertex pulls the band window across that vertex: the cut
+            // sits in this segment's tail (head), up to this segment's own band
+            // term before (after) the vertex. Without this, a subject that only
+            // touches a clip edge at a vertex has an empty expected set here and
+            // no window at all for a cut the integer rounding legitimately puts
+            // a few units earlier.
+            if let Some(next) = expected.get(index + 1) {
+                for interval in next
+                    .iter()
+                    .filter(|interval| interval.low.cmp_frac(&Frac::zero()) == Ordering::Equal)
+                {
+                    let term = endpoint_parameter_term(interval.low_axis, delta_x, delta_y, length);
+                    dilated.push(((1.0 - term.term).max(0.0), 1.0));
+                }
+            }
+            if index > 0 {
+                for interval in expected[index - 1]
+                    .iter()
+                    .filter(|interval| interval.high.cmp_frac(&Frac::one()) == Ordering::Equal)
+                {
+                    let term =
+                        endpoint_parameter_term(interval.high_axis, delta_x, delta_y, length);
+                    dilated.push((0.0, term.term.min(1.0)));
+                }
+            }
             let eroded = merge_intervals(eroded);
             let dilated = merge_intervals(dilated);
             let missing = uncovered_length(&eroded, &covered_segment, 1e-9);
@@ -2500,6 +2579,91 @@ fn run_clip_observation(
     let results = PreparedPolylineClip::new(&boundary).clip_batched(&subjects);
     let observation = check_clip_results(case, &subjects, &results)?;
     Ok((raw, observation))
+}
+
+/// Replays one shrunk `ClipSample` through exactly the path the property uses
+/// (`build_clip_case` → `run_clip_observation`), so a seed-dependent oracle
+/// failure becomes a deterministic regression.
+fn replay_clip_sample(sample: &ClipSample) -> Result<(), String> {
+    let limits = checked_clip_limits(&clip_probe_bounds()).expect("M-GYROID-CLIP probe bounds");
+    let case = build_clip_case(&limits, sample).map_err(|error| format!("{error}"))?;
+    run_clip_observation(&case, &limits).map(|_| ())
+}
+
+/// Seed 30 (hole): subject segment 21 runs `(1769,-805)→(1785,-4)`, almost
+/// parallel to the hole's right edge (modelled at x = 1785) and touching it only
+/// at the vertex where segment 22 begins. The cut is returned 23 units earlier,
+/// 0.46 units from the edge, inside the band. The oracle used to give that tail
+/// an empty window (`expected [] dilated []`).
+#[test]
+fn clip_oracle_allows_band_cut_before_a_grazing_vertex_contact_hole() {
+    let sample = ClipSample {
+        topology: ClipTopology::HoledRect,
+        angle: ClipAngle::Rotated,
+        density_ppm: 913_898,
+        width_units: 1_992,
+        size_x_extra: 0,
+        size_y_extra: 0,
+        hole_x_multiple: 3,
+        hole_y_multiple: 2,
+        offset_x: -1,
+        offset_y: 0,
+        phase_quarter: 3,
+        phase_within: 0.447_899_144_262_894_3,
+        phase_negative: true,
+        speed_milli: 250,
+    };
+    replay_clip_sample(&sample).expect("grazing vertex contact within the band must be accepted");
+}
+
+/// Seed 40 (plain rectangle): segment 34 `(9441,3514)→(9386,5248)` ends exactly
+/// on the modelled right edge x = 9386; the cut is returned 2 units earlier.
+#[test]
+fn clip_oracle_allows_band_cut_before_a_grazing_vertex_contact_plain() {
+    let sample = ClipSample {
+        topology: ClipTopology::PlainRect,
+        angle: ClipAngle::Rotated,
+        density_ppm: 774_669,
+        width_units: 3_547,
+        size_x_extra: 1,
+        size_y_extra: 0,
+        hole_x_multiple: 2,
+        hole_y_multiple: 3,
+        offset_x: 0,
+        offset_y: 0,
+        phase_quarter: 3,
+        phase_within: 0.345_561_874_740_964_7,
+        phase_negative: false,
+        speed_milli: 250,
+    };
+    replay_clip_sample(&sample).expect("grazing vertex contact within the band must be accepted");
+}
+
+/// Seed 60: segment 27 `(-940,4513)→(893,4142)` crosses the modelled hole edge
+/// x = -1. The integer cut `(0,4322)` is 0.8 units off the subject; projecting
+/// it back shifts the recovered parameter by 0.000079 more than `band /
+/// |Δnormal|` allowed (the off-subject displacement, bounded by
+/// `SUBJECT_PROJECTION_UNITS / length`, was not part of the term).
+#[test]
+fn clip_oracle_counts_off_subject_projection_at_a_boundary_crossing() {
+    let sample = ClipSample {
+        topology: ClipTopology::HoledRect,
+        angle: ClipAngle::Rotated,
+        density_ppm: 911_190,
+        width_units: 5_017,
+        size_x_extra: 2,
+        size_y_extra: 0,
+        hole_x_multiple: 3,
+        hole_y_multiple: 2,
+        offset_x: -3,
+        offset_y: 0,
+        phase_quarter: 5,
+        phase_within: 0.795_626_958_549_58,
+        phase_negative: false,
+        speed_milli: 250,
+    };
+    replay_clip_sample(&sample)
+        .expect("off-subject cut projection must be within the endpoint term");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
