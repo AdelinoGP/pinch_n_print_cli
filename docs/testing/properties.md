@@ -4324,12 +4324,13 @@ of the object's distinct values. The canonical axis sequence is ascending
 pairs appear in it. Cardinality per parent is `∏ (1 + K_i)` and the empty chain occurs exactly
 once per parent. `RegionKey` equality includes the ordered vector.
 
-Each entry's config is the compatibility authority: the parent's base config, then the declared
-paint-config overlays in **lexical semantic namespace order**, each applied relative to its
-`ResolvedConfig::default()` origin (wayfinder ticket 126: only fields an overlay sets away from the
-default replace the base, so base-only settings survive; the lexically last overlay wins every
-shared field), then the tool overlay last. Chain order does not drive overlay order. The
-interner holds exactly the distinct expected configs, once each.
+Without a host config authority (`execute_region_mapping_with_cap`), each entry inherits its
+parent's base `ActiveRegion.resolved_config` with no ad-hoc compatibility overlay engine
+(wayfinder ticket 162 retired `ResolvedConfig::overlay_onto` / `overlay_resolved`). Scope-stack
+precedence (lexical paint-semantic order with tool last, independent of chain order) is owned by
+`resolve_scope_stack` and witnessed via `authority_precedence_witness` on
+`execute_region_mapping_inner`. The interner holds exactly the distinct expected configs, once
+each.
 
 ### Domain
 
@@ -4355,8 +4356,8 @@ draw.
 
 `crates/slicer-core/tests/property_prepass_common/model.rs`. The expected chain set is an
 **ordinal decode** over the mixed radix `1 + K_i` (digit 0 omits an axis, digit `d > 0` selects
-`values[d - 1]`), not the production recursive enumerator. The expected config is computed from
-the declared base config and the declared overlay table by sorting overlay names lexically. The
+`values[d - 1]`), not the production recursive enumerator. The expected config for the
+non-authority entry point is the parent's declared base config. The
 model never calls `execute_region_mapping_with_cap`'s sorter, enumerator, interner, `config_for`
 or `paint_variant_region_id` to build an expectation.
 

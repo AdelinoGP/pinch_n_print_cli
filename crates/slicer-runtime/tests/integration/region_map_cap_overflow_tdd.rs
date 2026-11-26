@@ -57,7 +57,6 @@ fn region_map_cap_exceeded_named_contributor() {
         &aggregated,
         &objects,
         None,
-        &BTreeMap::new(),
         /* cap = */ 5,
         // No layer-range authority: this fixture exercises the cap guard.
         None,

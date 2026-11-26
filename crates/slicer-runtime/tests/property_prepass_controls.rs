@@ -279,7 +279,6 @@ fn commit_scene() -> (Arc<MeshIR>, Arc<slicer_ir::RegionMapIR>) {
     resolved_configs.insert(OBJECT_ID.to_string(), ResolvedConfig::default());
     let default_config = ResolvedConfig::default();
     let paint_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    let tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
 
     let registry = registry();
     let scoped = scoped_world(&registry);
@@ -294,7 +293,6 @@ fn commit_scene() -> (Arc<MeshIR>, Arc<slicer_ir::RegionMapIR>) {
         &resolved_configs,
         &default_config,
         &paint_configs,
-        &tool_configs,
         Some(RegionResolutionAuthority {
             registry: &registry,
             scoped: &scoped,

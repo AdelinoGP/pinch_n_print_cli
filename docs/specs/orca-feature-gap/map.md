@@ -1582,6 +1582,15 @@ per-key tier table in
   [135](issues/135-author-packet-support-base-pattern-holder.md) (master's
   `support_base_pattern` declaration and capability stay; the packet owns only
   the missing holder/algorithm seam).
+- [162 — Delete the production-dead overlay-composition engine](issues/162-delete-production-dead-overlay-engine.md)
+  — deleted `ResolvedConfig::overlay_onto`, `__drc_overlay_arms!`,
+  `overlay_resolved`, all `host_config: None` overlay branches in
+  `execute_region_mapping_inner`, and the dead `tool_configs` parameter from
+  `prepass.rs` -> `commit_region_mapping_builtin` ->
+  `execute_region_mapping_inner`; migrated the `H-REGIONMAP` precedence
+  witness, the two `algo_region_mapping_tdd` precedence tests, and
+  `region_mapping_paint_semantic_tdd` onto `ScopedConfig` +
+  `resolve_scope_stack`.
 
 
 ## Not yet specified

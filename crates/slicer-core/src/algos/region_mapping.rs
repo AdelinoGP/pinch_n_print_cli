@@ -327,33 +327,6 @@ fn resolved_target_config_for_layer(
     }))
 }
 
-/// Apply a paint-semantic / per-tool `ResolvedConfig` on top of a base config.
-///
-/// Delegates to [`ResolvedConfig::overlay_onto`] with `origin` naming the
-/// config the overlay was *resolved from* (`ResolvedConfig::default()` for the
-/// compatibility path, where overlays are built from defaults). A field is
-/// copied only when it differs from `origin` — i.e. only when the overlay
-/// explicitly set it — which implements the documented
-/// `global < per_object < per_paint_semantic < per_tool` precedence: an
-/// inherited value the overlay never touched cannot clobber a
-/// lower-precedence override, and "override back to the default" is
-/// expressible (wayfinder ticket 126; the old hand-written
-/// compare-against-`default()` diff had both defects, plus a 28-of-83
-/// field allowlist).
-///
-/// The production path does not need this: the runtime precomputes every
-/// target stack with tool-last precedence, and
-/// [`resolved_target_config_for_layer`] returns it whole. This helper keeps
-/// the compatibility entry points (no host authority) faithful to the same
-/// precedence rules.
-fn overlay_resolved(
-    base: ResolvedConfig,
-    overlay: &ResolvedConfig,
-    origin: &ResolvedConfig,
-) -> ResolvedConfig {
-    ResolvedConfig::overlay_onto(base, overlay, origin)
-}
-
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
 /// minted sub-region `RegionKey` instead of stamping the whole object.
 ///
@@ -640,10 +613,13 @@ pub fn execute_region_mapping(
 /// disable modifier stamping and preserve the pre-Packet-68 path (test
 /// fixtures with no modifier data).
 ///
-/// Stamping order per region: `region.resolved_config` → modifier deltas
-/// (priority-ascending) → paint-semantic overlays. Paint overlays therefore
-/// win over modifier deltas, matching the
-/// global → per-object → modifier → paint precedence chain.
+/// This entry point runs without a host config authority (`host_config: None`),
+/// so each region keeps its `region.resolved_config` (plus modifier delta
+/// extensions on minted sub-regions) and `paint_semantic_configs` populates
+/// `RegionPlan.paint_overrides` metadata only. Scope-stack precedence
+/// (`global < per_object < layer_range < modifier < per_paint_semantic <
+/// per_tool`) is owned by [`resolve_scope_stack`] and supplied via
+/// [`execute_region_mapping_inner`]'s `host_config` / `layer_range_authority`.
 pub fn execute_region_mapping_with_cap(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
@@ -659,10 +635,8 @@ pub fn execute_region_mapping_with_cap(
         aggregated_region_split,
         objects,
         None,
-        // No per-tool overlays on the legacy/test entry point.
-        &BTreeMap::new(),
         cap,
-        // No layer-range authority on the compatibility entry point.
+        // No layer-range authority on the standalone entry point.
         None,
     )
 }
@@ -692,12 +666,9 @@ pub fn execute_region_mapping_inner(
     objects: &[ObjectMesh],
     // Host config authority for `RegionPlan.config` (packet 76, 1a). The map
     // contains runtime-pre-resolved object/modifier/paint/tool target stacks.
-    // When `None`, the module-emitted `region.resolved_config` remains the
-    // compatibility base for `execute_region_mapping` test/e2e callers.
+    // When `None`, the module-emitted `region.resolved_config` is kept as the
+    // base with no ad-hoc overlay composition.
     host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
-    // Standalone compatibility configs. Production target stacks already have
-    // tool-last precedence applied by the runtime resolver.
-    tool_configs: &BTreeMap<u32, ResolvedConfig>,
     cap: usize,
     // Layer-range authority for per-layer re-resolution (packet
     // `config-scope-resolution_09`). `None` keeps the precomputed configs.
@@ -958,49 +929,33 @@ pub fn execute_region_mapping_inner(
                 .unwrap_or(&empty_variants);
             let chains = enumerate_canonical_chains(variants_for_obj, &canonical_order);
 
-            // Resolution origin of the compatibility paint/tool overlays: the
-            // legacy entry points have no host global base and build their
-            // overlays from `ResolvedConfig::default()`, so the default is the
-            // correct origin there (wayfinder ticket 126). The production path
-            // never reads this — it returns whole pre-resolved target stacks.
-            let overlay_origin = ResolvedConfig::default();
-
             // `paint_semantic_configs` is keyed by `PaintSemantic`; the chain
-            // fold below matches a chain's semantic *name* against
-            // `paint_semantic_namespace_key` in lexical namespace order.
+            // fold below records matching semantics into
+            // `RegionPlan.paint_overrides` in lexical namespace order.
             for chain in chains {
                 // Modifier deltas are bound to the spatial child entries
                 // below. Keeping every parent chain pure prevents a modifier
                 // from leaking outside its footprint, including across paint
                 // variants.
-                let mut effective = resolved_target_config_for_layer(
+                let chain_tool_index = chain.iter().find_map(|(semantic, value)| {
+                    (semantic == "material")
+                        .then_some(value)
+                        .and_then(|value| match value {
+                            PaintValue::ToolIndex(index) => Some(*index),
+                            _ => None,
+                        })
+                });
+                let effective = resolved_target_config_for_layer(
                     host_config,
                     layer_range_authority,
                     &region.object_id,
                     &[],
                     &chain,
-                    chain.iter().find_map(|(semantic, value)| {
-                        (semantic == "material")
-                            .then_some(value)
-                            .and_then(|value| match value {
-                                PaintValue::ToolIndex(index) => Some(*index),
-                                _ => None,
-                            })
-                    }),
+                    chain_tool_index,
                     layer.z,
                 )?
                 .unwrap_or_else(|| base_config.clone());
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-                // The chain's painted material tool (if any). Captured here so the
-                // per-tool config can be overlaid LAST (highest precedence), after
-                // the paint overlays below.
-                let mut chain_tool_index: Option<u32> = None;
-                // Compatibility overlays are applied in **lexical semantic
-                // namespace order**, not chain order. `docs/02_ir_schemas.md`
-                // § Config Key Namespaces mandates that precedence, and chain
-                // order is priority/name order, which is a different sequence.
-                // The two rules must stay independent: the chain vector is the
-                // region identity, the overlay order is a config rule.
                 let mut configured: Vec<(&PaintSemantic, String)> = paint_semantic_configs
                     .keys()
                     .map(|sem| (sem, paint_semantic_namespace_key(sem)))
@@ -1015,29 +970,6 @@ pub fn execute_region_mapping_inner(
                     }
                     if let Some(sem_cfg) = paint_semantic_configs.get(*sem_key) {
                         paint_overrides.insert((*sem_key).clone(), sem_cfg.clone());
-                        if host_config.is_none() {
-                            effective = overlay_resolved(effective, sem_cfg, &overlay_origin);
-                        }
-                    }
-                }
-                for (sem_name, value) in &chain {
-                    // A material chain entry carries the region's tool selector.
-                    if sem_name == "material" {
-                        if let PaintValue::ToolIndex(n) = value {
-                            chain_tool_index = Some(*n);
-                        }
-                    }
-                }
-
-                // Compatibility callers without the production target map can
-                // still provide a fully resolved tool target. Overlay it last
-                // (highest precedence) against its default origin so inherited
-                // fields do not clobber lower-precedence overrides.
-                if host_config.is_none() {
-                    if let Some(tool_config) =
-                        chain_tool_index.and_then(|index| tool_configs.get(&index))
-                    {
-                        effective = overlay_resolved(effective, tool_config, &overlay_origin);
                     }
                 }
 
@@ -1075,54 +1007,17 @@ pub fn execute_region_mapping_inner(
                             &chain,
                             chain_tool_index,
                             layer.z,
-                        )?;
-                        let child_config = match resolved_child_config {
-                            Some(resolved) => stamp_pre_resolved_sub_region_configs(
-                                base_config.clone(),
-                                resolved,
-                                modifiers,
-                                parent_region_id,
-                                sub_id,
-                            )
-                            .remove(&sub_id)
-                            .expect("modifier config helper always emits the child entry"),
-                            None => {
-                                // Compatibility path: no pre-resolved target
-                                // stack, so compose the child as
-                                // base → modifiers → paint → tool, the same
-                                // precedence the production resolver applies.
-                                let mut child = stamp_modifier_sub_region_configs(
-                                    base_config.clone(),
-                                    parent_region_id,
-                                    sub_id,
-                                    modifiers,
-                                )
-                                .remove(&sub_id)
-                                .expect("modifier config helper always emits the child entry");
-                                if host_config.is_none() {
-                                    // Same lexical-namespace overlay order
-                                    // as the parent chain fold above.
-                                    for (sem_key, namespace) in &configured {
-                                        if !chain.iter().any(|(sem_name, _)| sem_name == namespace)
-                                        {
-                                            continue;
-                                        }
-                                        if let Some(sem_cfg) = paint_semantic_configs.get(*sem_key)
-                                        {
-                                            child =
-                                                overlay_resolved(child, sem_cfg, &overlay_origin);
-                                        }
-                                    }
-                                    if let Some(tool_config) =
-                                        chain_tool_index.and_then(|index| tool_configs.get(&index))
-                                    {
-                                        child =
-                                            overlay_resolved(child, tool_config, &overlay_origin);
-                                    }
-                                }
-                                child
-                            }
-                        };
+                        )?
+                        .unwrap_or_else(|| base_config.clone());
+                        let child_config = stamp_pre_resolved_sub_region_configs(
+                            base_config.clone(),
+                            resolved_child_config,
+                            modifiers,
+                            parent_region_id,
+                            sub_id,
+                        )
+                        .remove(&sub_id)
+                        .expect("modifier config helper always emits the child entry");
 
                         let key = RegionKey {
                             global_layer_index: layer.index,

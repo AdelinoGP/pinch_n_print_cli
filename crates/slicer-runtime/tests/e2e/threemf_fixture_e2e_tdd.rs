@@ -1932,7 +1932,7 @@ fn conflicting_extruder_modifier_priority_wins() {
         sub_cfg.extensions.get("extruder"),
         Some(&ConfigValue::Int(1)),
         "AC-N2: the minted sub-region must carry extruder=Int(1) (modifier B wins \
-         because its higher priority writes last via overlay_resolved). \
+         because its higher priority writes last via stamp_pre_resolved_sub_region_configs). \
          Found extensions={:?}",
         sub_cfg.extensions
     );

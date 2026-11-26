@@ -14,10 +14,12 @@
 //!    either absent or present with exactly one of its distinct values. The
 //!    value sequence within an axis is the canonical
 //!    `Flag(false) < Flag(true) < ToolIndex(n) < Custom(s)` order.
-//! 2. **Config authority** — the parent's base config, then compatibility paint
-//!    overlays in **lexical semantic namespace order** (each replacing the
-//!    config wholesale, matching the compatibility path), then the tool overlay
-//!    last. Chain order does not drive overlay order.
+//! 2. **Config authority** — without a host config authority,
+//!    `execute_region_mapping_with_cap` preserves the parent's base
+//!    `ActiveRegion.resolved_config` across every variant chain (no ad-hoc
+//!    compatibility overlay engine); scope-stack precedence (`fuzzy_skin <
+//!    material < tool`) is owned by `resolve_scope_stack` and exercised via
+//!    [`authority_precedence_witness`].
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -92,8 +94,9 @@ pub const AXIS_POOL: [AxisDecl; 5] = [
     },
 ];
 
-/// Declared paint-config overlays, keyed by the axis they bind to. `line_width`
-/// is the observed field; the values are dyadic so they compare exactly.
+/// Declared paint-semantic metadata configs, keyed by the axis they bind to.
+/// Without a host config authority, `execute_region_mapping_with_cap` records
+/// these in `RegionPlan.paint_overrides` without mutating `RegionPlan.config`.
 pub const OVERLAY_WIDTH_MM: [(&str, f64); 3] = [
     ("com.example.alpha", 1.25),
     ("fuzzy_skin", 0.5),
@@ -170,42 +173,6 @@ pub fn overlay_config(axis_name: &str) -> Option<ResolvedConfig> {
             line_width: *width,
             ..ResolvedConfig::default()
         })
-}
-
-/// The compatibility overlay applied to a chain, independently derived:
-/// lexical namespace order over the chain's semantics, each overlay applied
-/// **relative to its `ResolvedConfig::default()` origin** (wayfinder ticket
-/// 126): only the fields an overlay sets away from the default replace the
-/// base, so base-only settings survive and the lexically **last** overlay
-/// wins every field the overlays share.
-///
-/// Every declared overlay ([`overlay_config`]) differs from the default origin
-/// in `line_width` alone — asserted below — so the field-wise fold reduces to
-/// carrying the base and taking each overlay's `line_width` in order.
-#[must_use]
-pub fn expected_compat_config(
-    base: &ResolvedConfig,
-    chain: &[(String, PaintValue)],
-) -> ResolvedConfig {
-    let mut overlays: Vec<(&str, ResolvedConfig)> = OVERLAY_WIDTH_MM
-        .iter()
-        .filter(|(name, _)| chain.iter().any(|(axis, _)| axis == name))
-        .filter_map(|(name, _)| overlay_config(name).map(|config| (*name, config)))
-        .collect();
-    overlays.sort_by(|a, b| a.0.cmp(b.0));
-    let origin = ResolvedConfig::default();
-    let mut expected = base.clone();
-    for (name, overlay) in overlays {
-        assert!(
-            ResolvedConfig {
-                line_width: origin.line_width,
-                ..overlay.clone()
-            } == origin,
-            "overlay `{name}` must differ from the default origin only in line_width"
-        );
-        expected.line_width = overlay.line_width;
-    }
-    expected
 }
 
 /// Every ordered chain a parent can carry, in canonical axis order.
@@ -303,7 +270,7 @@ pub fn expectation(case: &Case) -> Result<Expectation, String> {
                             region_id: region_id as u64,
                             variant_chain: chain.clone(),
                         },
-                        config: expected_compat_config(&base, chain),
+                        config: base.clone(),
                     });
                 }
             }
@@ -769,62 +736,111 @@ pub fn run_with_cap(case: &Case, cap: usize) -> Result<slicer_ir::RegionMapIR, R
     )
 }
 
-/// Observed `line_width` of the combined `material` + `fuzzy_skin` key on the
-/// compatibility path.
+/// Observed `line_width` of the combined `material` + `fuzzy_skin` key through
+/// the production host config authority (`ScopedConfig` + `resolve_scope_stack`
+/// + `resolved_target_key`).
 ///
 /// The fixture declares material 0.75 mm and fuzzy_skin 0.5 mm. Lexical
-/// semantic namespace order is `fuzzy_skin` then `material`, so the combined
-/// key resolves to 0.75 mm. Passing a tool-0 config adds the tool overlay,
-/// which is applied last and must win (1.0 mm).
-pub fn lexical_overlay_witness(tool_width: Option<f64>) -> Result<f64, String> {
+/// semantic namespace order in `resolve_scope_stack` is `fuzzy_skin` then
+/// `material`, so the combined key resolves to 0.75 mm even though the chain
+/// identity is material-then-fuzzy. Passing a tool-0 scope adds
+/// `ConfigScope::Tool(0)`, which resolves last and must win (1.0 mm).
+pub fn authority_precedence_witness(tool_width: Option<f64>) -> Result<f64, String> {
+    use slicer_config::resolution::resolved_target_key;
+    use slicer_config::{
+        assemble_registry, resolve_scope_stack, ConfigScope, ExpansionContext, HostChannels,
+        ResolutionTarget, ScopeDelta, ScopedConfig,
+    };
+    use slicer_ir::ConfigValue;
+
     let case = material_fuzzy_case();
     let (layer_plan, objects, aggregated) = fixture(&case);
     let stage_invocations: Vec<(StageId, Vec<ModuleInvocation>)> = Vec::new();
     let projection = RegionMappingPlanProjection {
         stage_invocations: &stage_invocations,
     };
-    let configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::from([
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .map_err(|error| format!("host registry assembly failed: {error:?}"))?
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+
+    let mut deltas = BTreeMap::from([
         (
-            PaintSemantic::Material,
-            ResolvedConfig {
-                line_width: 0.75,
-                ..ResolvedConfig::default()
+            ConfigScope::PaintSemantic("material".to_owned()),
+            ScopeDelta {
+                values: BTreeMap::from([("line_width".to_owned(), ConfigValue::Float(0.75))]),
             },
         ),
         (
-            PaintSemantic::FuzzySkin,
-            ResolvedConfig {
-                line_width: 0.5,
-                ..ResolvedConfig::default()
+            ConfigScope::PaintSemantic("fuzzy_skin".to_owned()),
+            ScopeDelta {
+                values: BTreeMap::from([("line_width".to_owned(), ConfigValue::Float(0.5))]),
             },
         ),
     ]);
-    let mut tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
     if let Some(width) = tool_width {
-        tool_configs.insert(
-            0,
-            ResolvedConfig {
-                line_width: width,
-                ..ResolvedConfig::default()
+        deltas.insert(
+            ConfigScope::Tool(0),
+            ScopeDelta {
+                values: BTreeMap::from([("line_width".to_owned(), ConfigValue::Float(width))]),
             },
         );
     }
-    // The compatibility layer (`host_config = None`) is the one that applies
-    // the paint/tool overlays itself, so this witness drives the inner kernel
-    // with an explicit tool config map. `execute_region_mapping_with_cap`
-    // deliberately passes no tool overlays.
+    let scoped = ScopedConfig {
+        deltas,
+        ..ScopedConfig::default()
+    };
+
+    let resolve_target = |paints: &[String], tool_index: Option<u32>| {
+        resolve_scope_stack(
+            &registry,
+            &scoped,
+            &ResolutionTarget {
+                object_id: "obj_0".to_owned(),
+                paint_semantics: paints.to_vec(),
+                tool_index,
+                ..ResolutionTarget::default()
+            },
+            &expansion,
+        )
+        .map_err(|error| format!("scope resolution failed: {error:?}"))
+    };
+
+    let default_config = resolve_target(&[], None)?;
+    let combined_paints = vec!["fuzzy_skin".to_owned(), "material".to_owned()];
+    let resolved_configs = BTreeMap::from([
+        (
+            resolved_target_key("obj_0", &[], &[], None),
+            default_config.clone(),
+        ),
+        (
+            resolved_target_key("obj_0", &[], &["material".to_owned()], Some(0)),
+            resolve_target(&["material".to_owned()], Some(0))?,
+        ),
+        (
+            resolved_target_key("obj_0", &[], &["fuzzy_skin".to_owned()], None),
+            resolve_target(&["fuzzy_skin".to_owned()], None)?,
+        ),
+        (
+            resolved_target_key("obj_0", &[], &combined_paints, Some(0)),
+            resolve_target(&combined_paints, Some(0))?,
+        ),
+    ]);
+
     let map = execute_region_mapping_inner(
         &layer_plan,
         &projection,
-        &configs,
+        &paint_semantic_configs(&case),
         &aggregated,
         &objects,
-        None,
-        &tool_configs,
+        Some((&resolved_configs, &default_config)),
         1_000_000,
         None,
     )
-    .map_err(|error| format!("lexical overlay witness failed: {error:?}"))?;
+    .map_err(|error| format!("authority precedence witness failed: {error:?}"))?;
     let combined = vec![
         ("material".to_string(), PaintValue::ToolIndex(0)),
         ("fuzzy_skin".to_string(), PaintValue::Flag(true)),

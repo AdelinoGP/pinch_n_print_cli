@@ -208,7 +208,6 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
     let default_resolved_config = ResolvedConfig::default();
     let plan = empty_execution_plan();
     let paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    let tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
 
     commit_region_mapping_builtin(
         &plan,
@@ -216,7 +215,6 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
         &resolved_configs,
         &default_resolved_config,
         &paint_semantic_configs,
-        &tool_configs,
         None,
     )
     .expect("commit_region_mapping_builtin must succeed");

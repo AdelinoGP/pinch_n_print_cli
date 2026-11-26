@@ -233,7 +233,6 @@ fn commit_with_authority(
         &resolved_configs,
         &default_resolved_config,
         &std::collections::BTreeMap::new(),
-        &std::collections::BTreeMap::new(),
         Some(RegionResolutionAuthority {
             registry,
             scoped,
@@ -439,7 +438,6 @@ fn commit_stamps_per_object_resolved_config() {
         &mut blackboard,
         &resolved_configs,
         &default_resolved_config,
-        &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
         None,
     )

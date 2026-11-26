@@ -240,7 +240,7 @@ fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<Confi
 }
 
 pub(crate) const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
-pub(crate) const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
 
 fn paint_semantic_name(semantic: &PaintSemantic) -> String {
     match semantic {

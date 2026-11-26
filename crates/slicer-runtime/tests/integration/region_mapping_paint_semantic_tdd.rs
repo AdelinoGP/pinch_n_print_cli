@@ -9,11 +9,18 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
+use slicer_config::resolution::resolved_target_key;
+use slicer_config::{
+    assemble_registry, resolve_scope_stack, ConfigScope, ExpansionContext, HostChannels,
+    ResolutionTarget, ScopeDelta, ScopedConfig,
+};
+use slicer_core::algos::region_mapping::{
+    execute_region_mapping_inner, RegionMappingPlanProjection, DEFAULT_REGION_MAP_CAP,
+};
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, FacetPaintData, GlobalLayer, IndexedTriangleSet, LayerPlanIR,
-    MeshIR, ModuleId, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3,
-    RegionKey, ResolvedConfig, SemVer, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, FacetPaintData, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ModuleId, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue,
+    Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_execution_plan, execute_region_mapping, ExecutionPlan, ExecutionPlanRequest,
@@ -142,13 +149,58 @@ fn region_overlap_applies_override() {
         object_participation: HashMap::new(),
     });
 
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([(
+            ConfigScope::PaintSemantic("fuzzy_skin".to_owned()),
+            ScopeDelta {
+                values: BTreeMap::from([("wall_loops".to_owned(), ConfigValue::Int(5))]),
+            },
+        )]),
+        ..ScopedConfig::default()
+    };
+    let default_config = resolve_scope_stack(
+        &registry,
+        &scoped,
+        &ResolutionTarget {
+            object_id: "obj-a".to_owned(),
+            ..ResolutionTarget::default()
+        },
+        &expansion,
+    )
+    .expect("base target must resolve");
+    let fuzzy_config = resolve_scope_stack(
+        &registry,
+        &scoped,
+        &ResolutionTarget {
+            object_id: "obj-a".to_owned(),
+            paint_semantics: vec!["fuzzy_skin".to_owned()],
+            ..ResolutionTarget::default()
+        },
+        &expansion,
+    )
+    .expect("fuzzy_skin target must resolve");
+    let resolved_configs = BTreeMap::from([
+        (
+            resolved_target_key("obj-a", &[], &[], None),
+            default_config.clone(),
+        ),
+        (
+            resolved_target_key("obj-a", &[], &["fuzzy_skin".to_owned()], None),
+            fuzzy_config.clone(),
+        ),
+    ]);
+
     let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     paint_semantic_configs.insert(
         PaintSemantic::Custom("fuzzy_skin".to_string()),
-        ResolvedConfig {
-            wall_loops: 5,
-            ..ResolvedConfig::default()
-        },
+        fuzzy_config,
     );
 
     let plan = empty_execution_plan();
@@ -157,9 +209,9 @@ fn region_overlap_applies_override() {
         stage_invocations: &si,
     };
 
-    // v2 contract (packet 95): execute_region_mapping populates paint_overrides
-    // by enumerating chains from aggregated_region_split × per-object paint_data.
-    // Both inputs MUST be present for a paint semantic to surface in a chain.
+    // v2 contract (packet 95): region mapping populates paint_overrides by
+    // enumerating chains from aggregated_region_split × per-object paint_data,
+    // and binds RegionPlan.config from the host-resolved target map.
     let mut aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry> = BTreeMap::new();
     aggregated_region_split.insert(
         "fuzzy_skin".to_string(),
@@ -177,14 +229,17 @@ fn region_overlap_applies_override() {
     );
     let objects = vec![object];
 
-    let rm = execute_region_mapping(
+    let rm = execute_region_mapping_inner(
         &layer_plan,
         &projection,
         &paint_semantic_configs,
         &aggregated_region_split,
         &objects,
+        Some((&resolved_configs, &default_config)),
+        DEFAULT_REGION_MAP_CAP,
+        None,
     )
-    .expect("execute_region_mapping must succeed");
+    .expect("execute_region_mapping_inner must succeed");
 
     // The cross-product enumerates two variant chains: BASE (empty) and the
     // fuzzy_skin chain.  paint_overrides is populated on the fuzzy_skin chain.
@@ -311,21 +366,70 @@ fn overlap_precedence_is_deterministic() {
     let sem_aaa = PaintSemantic::Custom("aaa_first".to_string());
     let sem_zzz = PaintSemantic::Custom("zzz_last".to_string());
 
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([
+            (
+                ConfigScope::PaintSemantic("aaa_first".to_owned()),
+                ScopeDelta {
+                    values: BTreeMap::from([("wall_loops".to_owned(), ConfigValue::Int(3))]),
+                },
+            ),
+            (
+                ConfigScope::PaintSemantic("zzz_last".to_owned()),
+                ScopeDelta {
+                    values: BTreeMap::from([("wall_loops".to_owned(), ConfigValue::Int(9))]),
+                },
+            ),
+        ]),
+        ..ScopedConfig::default()
+    };
+    let resolve_target = |paints: &[String]| {
+        resolve_scope_stack(
+            &registry,
+            &scoped,
+            &ResolutionTarget {
+                object_id: "obj-c".to_owned(),
+                paint_semantics: paints.to_vec(),
+                ..ResolutionTarget::default()
+            },
+            &expansion,
+        )
+        .expect("target stack must resolve")
+    };
+    let default_config = resolve_target(&[]);
+    let aaa_cfg = resolve_target(&["aaa_first".to_owned()]);
+    let zzz_cfg = resolve_target(&["zzz_last".to_owned()]);
+    let both_paints = vec!["aaa_first".to_owned(), "zzz_last".to_owned()];
+    let both_cfg = resolve_target(&both_paints);
+    let resolved_configs = BTreeMap::from([
+        (
+            resolved_target_key("obj-c", &[], &[], None),
+            default_config.clone(),
+        ),
+        (
+            resolved_target_key("obj-c", &[], &["aaa_first".to_owned()], None),
+            aaa_cfg.clone(),
+        ),
+        (
+            resolved_target_key("obj-c", &[], &["zzz_last".to_owned()], None),
+            zzz_cfg.clone(),
+        ),
+        (
+            resolved_target_key("obj-c", &[], &both_paints, None),
+            both_cfg,
+        ),
+    ]);
+
     let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    paint_semantic_configs.insert(
-        sem_aaa.clone(),
-        ResolvedConfig {
-            wall_loops: 3,
-            ..ResolvedConfig::default()
-        },
-    );
-    paint_semantic_configs.insert(
-        sem_zzz.clone(),
-        ResolvedConfig {
-            wall_loops: 9,
-            ..ResolvedConfig::default()
-        },
-    );
+    paint_semantic_configs.insert(sem_aaa.clone(), aaa_cfg);
+    paint_semantic_configs.insert(sem_zzz.clone(), zzz_cfg);
 
     let plan = empty_execution_plan();
     let si = plan_stage_invocations(&plan);
@@ -406,24 +510,30 @@ fn overlap_precedence_is_deterministic() {
         );
     };
 
-    let rm1 = execute_region_mapping(
+    let rm1 = execute_region_mapping_inner(
         &layer_plan,
         &projection,
         &paint_semantic_configs,
         &aggregated_region_split,
         &objects,
+        Some((&resolved_configs, &default_config)),
+        DEFAULT_REGION_MAP_CAP,
+        None,
     )
-    .expect("first execute_region_mapping must succeed");
+    .expect("first execute_region_mapping_inner must succeed");
     assert_result(&rm1);
 
-    let rm2 = execute_region_mapping(
+    let rm2 = execute_region_mapping_inner(
         &layer_plan,
         &projection,
         &paint_semantic_configs,
         &aggregated_region_split,
         &objects,
+        Some((&resolved_configs, &default_config)),
+        DEFAULT_REGION_MAP_CAP,
+        None,
     )
-    .expect("second execute_region_mapping must succeed");
+    .expect("second execute_region_mapping_inner must succeed");
     assert_result(&rm2);
 
     assert_eq!(rm1, rm2, "output must be bit-identical across two runs");

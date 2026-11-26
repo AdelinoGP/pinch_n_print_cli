@@ -909,24 +909,10 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     let region_mapping_should_run =
         blackboard.layer_plan().is_some() && blackboard.region_map().is_none();
     let region_mapping_configs = if region_mapping_should_run {
-        use crate::run::RESOLVED_TOOL_PREFIX;
         let expanded_default = default_resolved_config.clone();
         let expanded_objects = resolved_configs.clone();
         let paint_semantic_configs = build_paint_semantic_configs(blackboard, resolved_configs);
-        let tool_configs = resolved_configs
-            .iter()
-            .filter_map(|(key, config)| {
-                key.strip_prefix(RESOLVED_TOOL_PREFIX)
-                    .and_then(|index| index.parse::<u32>().ok())
-                    .map(|index| (index, config.clone()))
-            })
-            .collect();
-        Some((
-            expanded_objects,
-            expanded_default,
-            paint_semantic_configs,
-            tool_configs,
-        ))
+        Some((expanded_objects, expanded_default, paint_semantic_configs))
     } else {
         None
     };
@@ -937,7 +923,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         "host:region_mapping",
         |_bb| region_mapping_should_run,
         |bb| {
-            let (expanded_objects, expanded_default, paint_semantic_configs, tool_configs) =
+            let (expanded_objects, expanded_default, paint_semantic_configs) =
                 region_mapping_configs
                     .as_ref()
                     .expect("computed whenever region_mapping_should_run is true");
@@ -947,7 +933,6 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 expanded_objects,
                 expanded_default,
                 paint_semantic_configs,
-                tool_configs,
                 region_authority,
             )
             .map_err(|source| PrepassExecutionError::RegionMapping { source })

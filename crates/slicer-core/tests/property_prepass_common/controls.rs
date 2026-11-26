@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use super::model::{
-    expected_chains, lexical_overlay_witness, material_fuzzy_case, observe, run_with_cap,
+    authority_precedence_witness, expected_chains, material_fuzzy_case, observe, run_with_cap,
     validate_bounds, verify, AxisDecl, BelowCap, Case, ObjectAxis, ObjectCase, ValueKind,
     AXIS_POOL,
 };
@@ -233,17 +233,18 @@ pub fn order_and_cap_controls() {
         "priority 1000 precedes the tied 1100 pair, which breaks lexically"
     );
 
-    // --- Lexical paint-overlay precedence and tool-last -------------------
-    let without_tool = lexical_overlay_witness(None).expect("overlay witness must run");
+    // --- Lexical paint-semantic precedence and tool-last via host authority
+    let without_tool = authority_precedence_witness(None).expect("authority witness must run");
     assert_eq!(
         without_tool, 0.75,
-        "the combined key must take material's 0.75 mm, because lexical overlay \
+        "the combined key must take material's 0.75 mm, because lexical scope \
          order is fuzzy_skin then material even though the chain is material-then-fuzzy"
     );
-    let with_tool = lexical_overlay_witness(Some(1.0)).expect("tool overlay witness must run");
+    let with_tool =
+        authority_precedence_witness(Some(1.0)).expect("tool authority witness must run");
     assert_eq!(
         with_tool, 1.0,
-        "the tool overlay is applied last and must win over both paint overlays"
+        "the tool scope resolves last and must win over both paint scopes"
     );
 
     // --- Cap boundaries ---------------------------------------------------

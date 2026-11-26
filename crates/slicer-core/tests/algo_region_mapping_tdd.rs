@@ -821,15 +821,20 @@ fn region_mapping_paint_scan() {
     assert_eq!(actual, expected, "variant_chains mismatch");
 }
 
-/// Per-tool geometry: a `tool_config:<n>:<key>` overlay is applied to the
-/// painted variant chain whose material entry carries `ToolIndex(n)`, at highest
-/// precedence (OrcaSlicer filament-override-last). The painted tool-1 region's
-/// `RegionPlan.config` must carry the per-tool `line_width`, while tool-2 (no
-/// override) and the base (empty) chain keep the default. This is the one place
-/// a painted tool is known before perimeter generation, so it is where per-tool
-/// geometry composes — no pipeline reordering required.
+/// Per-tool geometry: a `ConfigScope::Tool(n)` override resolved through
+/// `resolve_scope_stack` binds to the painted variant chain whose material
+/// entry carries `ToolIndex(n)`, at highest precedence (OrcaSlicer
+/// filament-override-last). The painted tool-1 region's `RegionPlan.config`
+/// must carry the per-tool `line_width`, while tool-2 (no override) and the
+/// base (empty) chain keep the global value.
 #[test]
 fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
+    use slicer_config::resolution::resolved_target_key;
+    use slicer_config::{
+        assemble_registry, resolve_scope_stack, ConfigScope, ExpansionContext, HostChannels,
+        ResolutionTarget, ScopeDelta, ScopedConfig,
+    };
+
     let plan = single_region_plan("obj_a");
     let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
     let projection = RegionMappingPlanProjection {
@@ -845,17 +850,70 @@ fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
     )];
     let objects = vec![painted_object("obj_a", &paints)];
 
-    // Per-tool override: tool 1 gets a wider line; tool 2 has no override.
-    let default_line_width = ResolvedConfig::default().line_width;
-    let tool1_width = default_line_width + 0.2;
-    let mut tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
-    tool_configs.insert(
-        1,
-        ResolvedConfig {
-            line_width: tool1_width,
-            ..ResolvedConfig::default()
-        },
-    );
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+
+    let base_line_width = 0.45;
+    let tool1_width = 0.65;
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([
+            (
+                ConfigScope::Global,
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "line_width".to_owned(),
+                        ConfigValue::Float(base_line_width),
+                    )]),
+                },
+            ),
+            (
+                ConfigScope::Tool(1),
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "line_width".to_owned(),
+                        ConfigValue::Float(tool1_width),
+                    )]),
+                },
+            ),
+        ]),
+        ..ScopedConfig::default()
+    };
+
+    let resolve_target = |paints: &[String], tool_index: Option<u32>| {
+        resolve_scope_stack(
+            &registry,
+            &scoped,
+            &ResolutionTarget {
+                object_id: "obj_a".to_owned(),
+                paint_semantics: paints.to_vec(),
+                tool_index,
+                ..ResolutionTarget::default()
+            },
+            &expansion,
+        )
+        .expect("target stack must resolve")
+    };
+    let default_config = resolve_target(&[], None);
+    let material_paints = vec!["material".to_owned()];
+    let resolved_configs = BTreeMap::from([
+        (
+            resolved_target_key("obj_a", &[], &[], None),
+            default_config.clone(),
+        ),
+        (
+            resolved_target_key("obj_a", &[], &material_paints, Some(1)),
+            resolve_target(&material_paints, Some(1)),
+        ),
+        (
+            resolved_target_key("obj_a", &[], &material_paints, Some(2)),
+            resolve_target(&material_paints, Some(2)),
+        ),
+    ]);
 
     let region_map = execute_region_mapping_inner(
         &plan,
@@ -863,10 +921,8 @@ fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
         &configs,
         &agg,
         &objects,
-        None,
-        &tool_configs,
+        Some((&resolved_configs, &default_config)),
         DEFAULT_REGION_MAP_CAP,
-        // No layer-range authority on this tool-precedence fixture.
         None,
     )
     .expect("region mapping must succeed");
@@ -886,29 +942,34 @@ fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
         "tool-1 painted region must carry the tool_config:1 line_width override"
     );
 
-    // Tool 2 (no override) and the base chain keep the default line_width.
+    // Tool 2 (no override) and the base chain keep the global line_width.
     let tool2_key = key_for(vec![("material".to_string(), PaintValue::ToolIndex(2))]);
     assert_eq!(
         region_map.config_for(&tool2_key).line_width,
-        default_line_width,
-        "tool-2 has no override and must keep the default line_width"
+        base_line_width,
+        "tool-2 has no override and must keep the global line_width"
     );
     let base_key = key_for(vec![]);
     assert_eq!(
         region_map.config_for(&base_key).line_width,
-        default_line_width,
-        "the base (unpainted) chain must keep the default line_width"
+        base_line_width,
+        "the base (unpainted) chain must keep the global line_width"
     );
 }
 
 /// Per-tool precedence ORDER: when the SAME key (`line_width`) is set by BOTH a
-/// per-paint-semantic config (`Material`) AND a `tool_config:<n>:<key>` override,
-/// the per-tool value must WIN (precedence `... < per_paint_semantic < per_tool`,
-/// OrcaSlicer filament-override-last). The sibling AC-11 test only proves
-/// override-vs-default; this test proves the override-vs-override ORDER, which is
-/// the actual contract from `design.md` §Selected Approach #3.
+/// per-paint-semantic scope (`material`) AND a per-tool scope (`Tool(1)`), the
+/// per-tool value must WIN (`... < per_paint_semantic < per_tool`, OrcaSlicer
+/// filament-override-last) through `resolve_scope_stack` and bind to the
+/// matching painted chain in `execute_region_mapping_inner`.
 #[test]
 fn region_mapping_per_tool_config_overrides_paint_semantic_on_same_key() {
+    use slicer_config::resolution::resolved_target_key;
+    use slicer_config::{
+        assemble_registry, resolve_scope_stack, ConfigScope, ExpansionContext, HostChannels,
+        ResolutionTarget, ScopeDelta, ScopedConfig,
+    };
+
     let plan = single_region_plan("obj_a");
     let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
     let projection = RegionMappingPlanProjection {
@@ -923,28 +984,85 @@ fn region_mapping_per_tool_config_overrides_paint_semantic_on_same_key() {
     )];
     let objects = vec![painted_object("obj_a", &paints)];
 
-    let default_line_width = ResolvedConfig::default().line_width;
-    // Paint-semantic override for ALL material chains: a DISTINCT line_width.
-    let paint_width = default_line_width + 0.5;
-    // Per-tool override for tool 1 only: yet another DISTINCT line_width.
-    let tool1_width = default_line_width + 0.2;
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
 
-    let mut configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    configs.insert(
+    let base_line_width = 0.45;
+    let paint_width = 0.95;
+    let tool1_width = 0.65;
+
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([
+            (
+                ConfigScope::Global,
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "line_width".to_owned(),
+                        ConfigValue::Float(base_line_width),
+                    )]),
+                },
+            ),
+            (
+                ConfigScope::PaintSemantic("material".to_owned()),
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "line_width".to_owned(),
+                        ConfigValue::Float(paint_width),
+                    )]),
+                },
+            ),
+            (
+                ConfigScope::Tool(1),
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "line_width".to_owned(),
+                        ConfigValue::Float(tool1_width),
+                    )]),
+                },
+            ),
+        ]),
+        ..ScopedConfig::default()
+    };
+
+    let resolve_target = |paints: &[String], tool_index: Option<u32>| {
+        resolve_scope_stack(
+            &registry,
+            &scoped,
+            &ResolutionTarget {
+                object_id: "obj_a".to_owned(),
+                paint_semantics: paints.to_vec(),
+                tool_index,
+                ..ResolutionTarget::default()
+            },
+            &expansion,
+        )
+        .expect("target stack must resolve")
+    };
+    let default_config = resolve_target(&[], None);
+    let material_paints = vec!["material".to_owned()];
+    let resolved_configs = BTreeMap::from([
+        (
+            resolved_target_key("obj_a", &[], &[], None),
+            default_config.clone(),
+        ),
+        (
+            resolved_target_key("obj_a", &[], &material_paints, Some(1)),
+            resolve_target(&material_paints, Some(1)),
+        ),
+        (
+            resolved_target_key("obj_a", &[], &material_paints, Some(2)),
+            resolve_target(&material_paints, Some(2)),
+        ),
+    ]);
+    let configs = BTreeMap::from([(
         PaintSemantic::Material,
-        ResolvedConfig {
-            line_width: paint_width,
-            ..ResolvedConfig::default()
-        },
-    );
-    let mut tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
-    tool_configs.insert(
-        1,
-        ResolvedConfig {
-            line_width: tool1_width,
-            ..ResolvedConfig::default()
-        },
-    );
+        resolve_target(&material_paints, None),
+    )]);
 
     let region_map = execute_region_mapping_inner(
         &plan,
@@ -952,10 +1070,8 @@ fn region_mapping_per_tool_config_overrides_paint_semantic_on_same_key() {
         &configs,
         &agg,
         &objects,
-        None,
-        &tool_configs,
+        Some((&resolved_configs, &default_config)),
         DEFAULT_REGION_MAP_CAP,
-        // No layer-range authority on this precedence fixture.
         None,
     )
     .expect("region mapping must succeed");
