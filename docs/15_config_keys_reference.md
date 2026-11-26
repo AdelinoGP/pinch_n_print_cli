@@ -246,7 +246,7 @@ is the authoritative catalog of their defaults and ranges.
 | `thick_bridges` | bool | `false` | — | — | `rectilinear-infill` |
 | `thick_internal_bridges` | bool | `true` | — | — | `rectilinear-infill` |
 | `top_surface_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
-| `top_surface_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `top_surface_speed` | float | `60.0` | >= 1.0 | — | `rectilinear-infill` |
 | `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-placer` |
 | `staggered_inner_seams` | bool | `false` | — | — | `seam-placer` |
 | `seam_position` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-planner-default` |
