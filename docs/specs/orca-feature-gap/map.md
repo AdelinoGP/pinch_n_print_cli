@@ -1535,6 +1535,12 @@ per-key tier table in
   ramp and `part_cooling_fan_min_pwm` are not ported. The dead `fan_min_speed`
   declaration was removed rather than shipped unread.
 
+- **`is_thin_wall` flag drift under master-era config ([163](issues/163-explain-thin-wall-flag-drift-under-master-config.md)).**
+  With `detect_thin_wall = true` and `small_perimeter_threshold = 0.8`, the
+  merged branch differs from master's old perimeter-spatial baseline by 12
+  point flags, although `classify_narrow_island` is unchanged. This doesn't
+  affect the defaults. The cause is not yet explained.
+
 - **Phase 2 SOTA re-alignment batches for the 52 draft packets (`orca-feature-gaps_01`..`_52`).**
   Every existing draft packet must be re-aligned to the modern two-file layout
   (`packet.spec.md` + `implementation-plan.md`), `docs/22_test_quality.md`,
