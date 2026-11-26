@@ -627,13 +627,40 @@ fn host_speed_keys_are_bounds_checked_without_any_module_declaring_them() {
 
 #[test]
 fn zero_is_rejected_for_a_speed_that_has_no_zero_meaning() {
+    // `top_surface_speed` carries canonical `min = 1` and neither canonical
+    // nor ADR-0072 gives it a zero sentinel, so a 0 would reach the emitter as
+    // F0.
     let bounds = host_speed_bounds();
     let mut source = HashMap::new();
-    source.insert("outer_wall_speed".to_string(), ConfigValue::Float(0.0));
+    source.insert("top_surface_speed".to_string(), ConfigValue::Float(0.0));
 
     let err = resolve_global_config(&source, &bounds)
-        .expect_err("zero outer wall speed must reject — it would emit F0");
-    assert_out_of_range(err, "outer_wall_speed", 0.0, None);
+        .expect_err("zero top surface speed must reject — it would emit F0");
+    assert_out_of_range(err, "top_surface_speed", 0.0, None);
+}
+
+#[test]
+fn zero_is_accepted_for_the_volumetric_auto_speeds() {
+    // ADR-0072: `0` on exactly these three keys selects the emitter-owned
+    // volumetric AUTO speed (`role_base_speed_mm_per_s`,
+    // `crates/slicer-gcode/src/emit.rs`). Canonical declares `min = 1` on all
+    // three, so this floor is the port's deliberate deviation; a `1.0` floor
+    // here rejected the sentinel before the emitter could honour it.
+    let bounds = host_speed_bounds();
+    for key in ["outer_wall_speed", "inner_wall_speed", "gap_infill_speed"] {
+        let mut source = HashMap::new();
+        source.insert(key.to_string(), ConfigValue::Float(0.0));
+        resolve_global_config(&source, &bounds).unwrap_or_else(|e| {
+            panic!("zero must be accepted for volumetric AUTO key `{key}`: {e:?}")
+        });
+
+        // The floor moved to 0, not away: a negative still rejects.
+        let mut negative = HashMap::new();
+        negative.insert(key.to_string(), ConfigValue::Float(-1.0));
+        let err = resolve_global_config(&negative, &bounds)
+            .expect_err("a negative AUTO-key speed must still reject");
+        assert_out_of_range(err, key, -1.0, None);
+    }
 }
 
 #[test]

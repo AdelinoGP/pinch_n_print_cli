@@ -30,15 +30,15 @@ support_speed              = { default = 80.0,  range = "> 0" }
 support_interface_speed    = { default = 80.0,  range = "> 0" }
 gap_infill_speed           = { default = 30.0,  range = ">= 0", note = "0 selects emitter-owned volumetric AUTO (ADR-0072)" }
 ironing_speed              = { default = 20.0,  range = "> 0" }
-skirt_speed                = { default = 50.0,  range = "> 0" }
-wipe_tower_max_purge_speed = { default = 90.0,  range = "> 0" }
+skirt_speed                = { default = 50.0,  range = ">= 0", note = "0 = use the default layer extrusion speed; canonical min 0" }
+wipe_tower_max_purge_speed = { default = 90.0,  range = ">= 10.0", note = "canonical min 10" }
 prime_tower_speed          = { default = 90.0,  range = "> 0" }
 travel_speed               = { default = 120.0, range = "> 0" }
 travel_speed_z             = { default = 0.0,   range = ">= 0", note = "0 = use travel_speed for Z" }
 initial_layer_speed        = { default = 30.0,  range = "> 0" }
 initial_layer_infill_speed = { default = 60.0,  range = "> 0" }
 initial_layer_travel_speed = { default = 120.0, range = "> 0" }
-wipe_speed                 = { default = 96.0,  range = "> 0" }
+wipe_speed                 = { default = 96.0,  range = ">= 0", note = "canonical min 0; canonical coFloatOrPercent over travel_speed" }
 filament_ironing_speed     = { default = 0.0,   range = ">= 0", note = "0 = use ironing_speed" }
 overhang_1_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }
 overhang_2_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }

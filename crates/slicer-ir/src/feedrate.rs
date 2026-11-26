@@ -383,6 +383,16 @@ pub const SPEED_KEY_COUNT: usize = SPEED_KEYS.len();
 /// `resolve_feedrate`; canonical declares min 1 with an unset default, which
 /// this port cannot express, so the sentinel wins — see the deviation note).
 ///
+/// `outer_wall_speed`, `inner_wall_speed` and `gap_infill_speed` also take a
+/// `0.0` floor, but here the zero meaning is this port's, not canonical's:
+/// canonical declares all three `min = 1`. ADR-0072
+/// (`docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md`)
+/// defines `0` on exactly these keys as the emitter-owned volumetric AUTO
+/// sentinel (`role_base_speed_mm_per_s`, `crates/slicer-gcode/src/emit.rs`),
+/// and this table is live in `check_extension_scalar`
+/// (`crates/slicer-config/src/resolution.rs`), so a `1.0` floor rejected the
+/// sentinel before the emitter could honour it.
+///
 /// Three keys have **no canonical counterpart** at all (`thin_wall_speed`,
 /// `bottom_surface_speed`, `prime_tower_speed` appear nowhere in
 /// `PrintConfig.cpp`), so their bounds are this port's own choice, taken as
@@ -391,8 +401,8 @@ pub const SPEED_KEY_COUNT: usize = SPEED_KEYS.len();
 /// Positionally aligned with [`SPEED_KEYS`]; the const assertion below fails
 /// the build if the two drift apart.
 pub const SPEED_BOUNDS: [(f64, Option<f64>); SPEED_KEY_COUNT] = [
-    (1.0, None),  // outer_wall_speed — canonical min 1
-    (1.0, None),  // inner_wall_speed — canonical min 1
+    (0.0, None),  // outer_wall_speed — canonical min 1; 0 = volumetric AUTO (ADR-0072)
+    (0.0, None),  // inner_wall_speed — canonical min 1; 0 = volumetric AUTO (ADR-0072)
     (1.0, None),  // thin_wall_speed — PnP-only; no canonical counterpart
     (1.0, None),  // top_surface_speed — canonical min 1
     (1.0, None),  // bottom_surface_speed — PnP-only; no canonical counterpart
@@ -401,7 +411,7 @@ pub const SPEED_BOUNDS: [(f64, Option<f64>); SPEED_KEY_COUNT] = [
     (1.0, None),  // internal_bridge_speed — canonical min 1 (coFloatsOrPercents over bridge_speed)
     (1.0, None),  // support_speed — canonical min 1
     (1.0, None),  // support_interface_speed — canonical min 1
-    (1.0, None),  // gap_infill_speed — canonical min 1
+    (0.0, None),  // gap_infill_speed — canonical min 1; 0 = volumetric AUTO (ADR-0072)
     (1.0, None),  // ironing_speed — canonical min 1
     (0.0, None),  // skirt_speed — canonical min 0; 0 = default layer extrusion speed
     (10.0, None), // wipe_tower_max_purge_speed — canonical min 10 (the bound ticket 108 could not express)
