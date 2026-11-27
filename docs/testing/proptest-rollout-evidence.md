@@ -16,15 +16,14 @@ is **not** itself a claimed pass. A row is `PASS` only when it links an actual a
 | `git rev-parse HEAD` at drafting | `6f3e2b7f3f65cd341769fecf86226c17dc2d2fb7` (branch `feature/proptest-openrscad`) |
 | Working tree at drafting | **dirty** — uncommitted closure implementation in `.github/workflows/ci.yml`, `xtask/src/main.rs`, `xtask/src/properties.rs`, `xtask/src/properties/executor.rs`, `crates/slicer-sdk/tests/property_harness.rs`, plus untracked `xtask/src/property_closure_tests.rs`; this ledger and its documentation reconciliations (`AGENTS.md`, `README.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/testing/properties.md`) are also uncommitted |
 | Predecessor status | #1–#16 `packet.spec.md` front matter all read `status: implemented`; #17 reads `status: draft` (re-derived with `grep -n '^status' docs/spec_packets/proptest-openrscad_*/packet.spec.md`) |
-| Final provenance | Acceptance runs at `git rev-parse HEAD` `6f3e2b7f3f65cd341769fecf86226c17dc2d2fb7` on branch `feature/proptest-openrscad`, **dirty** (21 dirty paths; tracked closure changes in `.github/workflows/ci.yml`, `AGENTS.md`, `README.md`, `crates/slicer-sdk/tests/property_harness.rs`, `docs/21_data_defaults_and_fixtures.md`, the packet spec, `docs/testing/properties.md`, the touched module `src/property_tests.rs` files and `xtask/src/**`, plus the untracked `xtask/src/property_closure_tests.rs` and this ledger). Lane tokens and digests are in §6.1; gate logs under `target/evidence/proptest-rollout/gates/`. Runs: 2026-11-26, Windows, rustc 1.96.0. **Provenance caveat:** at 21:20Z a whitespace-only `cargo fmt -p xtask` reformatted both `xtask/src/properties/executor.rs` and `xtask/src/property_closure_tests.rs`, after `X` and the two routine lanes had run. `C1` and `C2` were re-run on the current tree (one passing test each, 8.49 s / 4.32 s), and the final build/check/clippy/fmt gates ran on the formatted tree; no semantic change was made to the census. The lightning-infill control was fixed after the lanes and re-run separately (see §10). |
+| Final provenance | PR head `312e5278` (merged to `master` as `fd9d5463`); dispatch runs at `fd9d5463`. Lane tokens and digests are in §6.1; gate logs under `target/evidence/proptest-rollout/gates/`; CI artifacts under `target/ci-evidence/`. Runs: 2026-11-26/27, Windows, rustc 1.96.0. The final status commit is docs-only and follows the green workspace ceremony. |
 
-**Closure verdict: INCOMPLETE.** All direct local evidence is green on the merged tree: the 21
-control aliases, both routine and both extended lanes (89/89 core and 93/93 SCAD-inclusive records),
-both SCAD geometry lanes, the `H-PAINT-OVERHANG` extended measurement, both replay pairs, `GRAPH`,
-and every build / check / clippy / literal / test-quality / fmt / guest-freshness gate. The packet
-still cannot close because required-check/ruleset evidence (G1), a real manual dispatch (G2), four
-predecessor-owned forward items (G4–G7), closure-head Windows PR runs (G8), and the gated workspace
-ceremony (G12) remain open. This packet stays `status: draft` until those gates land.
+**Closure verdict: COMPLETE.** Every gate is satisfied: the 21 control aliases, both routine and
+both extended lanes (89/89 core and 93/93 SCAD-inclusive records), both SCAD geometry lanes, the
+`H-PAINT-OVERHANG` extended measurement, both replay pairs, `GRAPH`, all 55 predecessor forward
+items, the PR-hosted Windows checks, the required-check ruleset (id 28214978), both manual
+dispatches (extended PASS; failure-probe failed as designed with its artifact), and the gated
+workspace ceremony (`VERDICT: PASS`, exit 0). The packet status is `implemented`.
 
 ## 2. Verdict and closure gaps
 
@@ -34,18 +33,18 @@ is converted to optional coverage.
 
 | # | Gate | Current state | Impact | Owner | Next action |
 |---|---|---|---|---|---|
-| G1 | Required PR status (AC-3) | `gh api repos/AdelinoGP/pinch_n_print_cli/rulesets` returned `[]`; `gh api repos/AdelinoGP/pinch_n_print_cli/branches/master/protection` returned HTTP 404 `Branch not protected` (reported by the closure coordinator; not re-run by this writer) | No evidence that any Windows property job is a *required* check | User / repo admin | Configure branch protection or a ruleset requiring `properties-windows`, `properties-scad-windows`, `scad-adapter-windows`, `scad-ingest-windows`; record the API output here |
-| G2 | Manual extended + failure-probe dispatch (AC-4) | `properties-extended-windows` job and `workflow_dispatch` input `property_run` (`extended` default, `failure-probe`) are authored in `.github/workflows/ci.yml`. GitHub accepts `workflow_dispatch` only once the workflow file exists on the default branch (noted in the workflow's own header comment). No dispatched run exists | No extended-run or failed-probe artifact evidence | Merge/deployment step | After the workflow reaches `master`, dispatch `extended` and `failure-probe`; record both run URLs, the failed status of the probe and the downloadable `pbt-ci-failure-probe` artifact |
+| G1 | Required PR status (AC-3) | **Resolved:** ruleset `master required checks` (id `28214978`) is active on `refs/heads/master` and requires `Properties (Windows)`, `Scripted SCAD properties (Windows)`, `SCAD adapter (Windows)` and `SCAD ingestion (Windows)`; the API response is archived at `target/evidence/proptest-rollout/ruleset-created.json`. An admin-role bypass is configured for docs-only final commits | Closed | Repo admin | None; PR #12 is gated by the four checks |
+| G2 | Manual extended + failure-probe dispatch (AC-4) | **Resolved:** `extended` run 45950327847/job 140344427469 passed both complete selections (89/93 end events, artifacts at `target/ci-evidence/extended-45950327847/`); `failure-probe` run 45950340929/job 140344467445 failed as designed with downloadable `pbt-ci-failure-probe` (marker + real `property_executor_*` status controls, artifact at `target/ci-evidence/failure-probe-45950340929/`) | Closed | #17 | None |
 | G3 | `H-PAINT-OVERHANG` extended tier | **Resolved:** `H-PAINT-OVERHANG-extended` passed (1 record, 256 cases, census 51); the first attempt failed only because the evidence-copy harness filled the disk, and the re-run after freeing duplicates passed | Closed for this record | #11 (executed by #17) | Recorded in §5 |
 | G4 | Classic post-offset degeneracy | **Resolved by classification:** the canonical `PerimeterGenerator.cpp` collapses narrow infill/gap areas but does not re-screen every offset perimeter ring for degeneracy; the PnP classic module follows that contract, and the exact band oracle plus deterministic witnesses cover ring validity. No SUT defect | Closed; no fix | #12 | None |
 | G5 | Gyroid upstream grid-origin recheck | **Resolved:** canonical `FillGyroid.cpp` aligns the bbox min with `align_to_grid(bb.min, Point(2*pi*distance, 2*pi*distance))`; `gyroid-infill::align_to_grid` mirrors `floor(val/grid)*grid`. The selected checkout is authoritative for this recheck | Closed | #13 | None |
 | G6 | Wave-overhang fork delegated read | **Resolved:** the selected canonical tree has no wave-overhang fork; the nearest `wave` code is `Algorithm/RegionExpansion` propagation, a different algorithm. The PnP module is a product implementation and makes no canonical parity claim | Closed | #13 | None |
-| G7 | #15 cold compile and hosted lane | Cold compile cost unmeasured; the 11-record #15 lane has no hosted Windows run (`docs/testing/proptest-layers-seams-evidence.md` § 9, § 11) | AC-5 measurement and AC-3 hosted evidence missing for #15 | #15 / #17 CI dispatch | Measure cold compile separately; record a hosted `properties-windows` run that executes all 11 #15 IDs |
-| G8 | Hosted Windows PR runs at closure head | None recorded for the closure head | AC-3 unsatisfied | #17 | Record each Windows PR job by actual run URL + head SHA; until then every such cell is `NOT RUN` |
+| G7 | #15 cold compile and hosted lane | **Resolved:** cold compile of the four #15 owner crates' property-test targets = **135 s** (`CARGO_TARGET_DIR=target/cold-probe-15`, exit 0, `target/evidence/proptest-rollout/cold-15/compile.log`). The PR `Properties (Windows)` job run 45946601128 executes all 89 core records, including the 11 #15 IDs, on head `312e5278` | Closed | #15 / #17 | None; the PR run is recorded in §5.1 |
+| G8 | Hosted Windows PR runs at closure head | **Resolved:** PR run `45946601128` at head `312e5278` passed all four required Windows jobs (properties, scripted SCAD, adapter, ingestion) plus the Ubuntu jobs except the long `Test` job; artifacts are downloaded under `target/ci-evidence/pr-45946601128/` (89 core end events / census 51/0; 93 SCAD end events / census 54/0; ingestion 12 tests; adapter 3 tests) | Closed | #17 | None |
 | G9 | Closure command set (§5) | The 21 control aliases and every `P-*`/`R-*`/`H-PAINT-OVERHANG-extended` lane passed (`batch=controls failed_aliases=0`; `batch=lanes failed_aliases=1` was the disk-full attempt, re-run green under `batch=recover failed_aliases=0`). `GRAPH` also passed (§9) | All direct closure commands are evidenced; only the CI-dispatch and predecessor-owned gaps remain | #17 | See the remaining open rows |
 | G10 | Dependency isolation (`GRAPH`, §9) | **Resolved:** all 11 host graphs exit 0; the workspace/default graphs have 0 `openrscad|manifold|proptest` hits; 60/60 guest manifests have 0 leaks; the enabled SDK/adapter graphs reach the engine/property stack as positive controls | Closed for the measured graphs | #17 | Evidence in §9 |
 | G11 | Scanner blind-spot finding (§10) | **Resolved:** the outer `GeometryDomain` waiver and 10 waiver placements are fixed; `cargo xtask check-literals` (0 violations), `check-test-quality --report` (0 findings) and the per-file review in §10 are recorded | Closed for the gate, with the recorded low/medium test-quality findings in §10.1 | #17 | Track the §10.1 findings with their owners |
-| G12 | Final workspace ceremony | Not eligible while G1, G2, G4–G8 and G13 are open | Final acceptance | #17 | Run `cargo xtask test --summary --workspace` only after the remaining open rows close |
+| G12 | Final workspace ceremony | **Resolved:** `cargo xtask test --summary --workspace` returned `VERDICT: PASS` / exit 0 on the merged tree after the seam-placer and SDK property-context fixture fixes | Closed | #17 | Evidence in §10.2 |
 | G13 | `M-LAYERS-SEQ`/`M-LAYERS-MERGE` oracle independence | **Resolved by explicit disposition:** the merge-plane builders are a documented characterisation pin (`// test-quality:` waiver) and the two charters now state the limitation, crediting the independent native-top model and the deterministic A/B, raft, mixed and exact-end witnesses instead | Closed as a recorded limitation, not as independent correctness | #15 | None; re-run the lanes on the final tree |
 
 ## 3. Family and inventory matrix
@@ -305,12 +304,12 @@ Provenance cells are filled from each run's `context.json` (`source_revision`, `
 
 | Job | Trigger | Closure-head run | Status |
 |---|---|---|---|
-| `properties-windows` | `pull_request`, `push` | none recorded | NOT RUN |
-| `properties-scad-windows` | `pull_request`, `push` | none recorded | NOT RUN |
-| `scad-adapter-windows` | `pull_request`, `push` | none recorded | NOT RUN |
-| `scad-ingest-windows` | `pull_request`, `push` | none recorded | NOT RUN |
-| `properties-extended-windows` (`property_run = extended`) | `workflow_dispatch` only | none (dispatch not accepted until the workflow is on the default branch) | NOT RUN |
-| `properties-extended-windows` (`property_run = failure-probe`) | `workflow_dispatch` only | none | NOT RUN — when run it must be **failed**, with artifact `pbt-ci-failure-probe` containing `target/property-ci/failure-probe/marker.txt` (`pbt-ci-failure-probe`); never completion evidence |
+| `properties-windows` | `pull_request`, `push` | PR run [`45946601128`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128) / [job 140332608523](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128/job/140332608523), head `312e5278` | PASS |
+| `properties-scad-windows` | `pull_request`, `push` | PR run [`45946601128`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128) / [job 140332608584](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128/job/140332608584), head `312e5278` | PASS |
+| `scad-adapter-windows` | `pull_request`, `push` | PR run [`45946601128`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128) / [job 140332608659](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128/job/140332608659), head `312e5278` | PASS |
+| `scad-ingest-windows` | `pull_request`, `push` | PR run [`45946601128`](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128) / [job 140332608599](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45946601128/job/140332608599), head `312e5278` | PASS |
+| `properties-extended-windows` (`property_run = extended`) | `workflow_dispatch` only | [run 45950327847](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45950327847), [job 140344427469](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45950327847/job/140344427469), head `fd9d5463` | **PASS** — both complete extended selections (`extended-core` 89 end events / census 51/0; `extended-scad` 93 / census 54/0); artifacts archived at `target/ci-evidence/extended-45950327847/` |
+| `properties-extended-windows` (`property_run = failure-probe`) | `workflow_dispatch` only | [run 45950340929](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45950340929), [job 140344467445](https://github.com/AdelinoGP/pinch_n_print_cli/actions/runs/45950340929/job/140344467445), head `fd9d5463` | **FAILED as designed**; artifact `pbt-ci-failure-probe` downloaded to `target/ci-evidence/failure-probe-45950340929/` (marker `pbt-ci-failure-probe`; real `property_executor_*` status controls passed). Never completion evidence |
 
 Historical predecessor hosted runs (these predate the census/roster replacement and are **not**
 closure evidence): `scad-adapter-windows` runs 42535615636, 43113651822, 43131961268
@@ -321,11 +320,17 @@ closure evidence): `scad-adapter-windows` runs 42535615636, 43113651822, 4313196
 44434672409 (`docs/testing/proptest-arachne-evidence.md`); 44976563310
 (`docs/testing/proptest-support-modules-evidence.md`).
 
-Lanes with no recorded hosted Windows run in their predecessor evidence: **#12 — NOT RUN (hosted)**
-(local lanes only, `docs/testing/proptest-walls-evidence.md`); **#15 — NOT RUN (hosted)** (lane not
-run in-session, `docs/testing/proptest-layers-seams-evidence.md`). No run URL was found by
-`rg 'actions/runs/'` or a run-ID scan in the #1, #2, #4, #11, #13 or #16 evidence documents either;
-their hosted status is `[unverified]` until a closure-head run records it.
+The PR evidence artifacts are downloaded under `target/ci-evidence/pr-45946601128/`:
+`properties-windows-evidence` (89 controller end events; `property_census: lane=core targets=51
+status=0`), `properties-scad-windows-evidence` (93 end events; `lane=scad targets=54 status=0`),
+`scad-ingest-windows-evidence` (12 `bed_placement_tdd` tests among the retained logs) and
+`scad-adapter-windows` (3 tests).
+
+Lanes with no recorded hosted Windows run in their *predecessor* evidence were #12 and #15 (local
+lanes only). Both are now covered by the closure-head PR run `45946601128` (head `312e5278`), whose
+`Properties (Windows)` job executes all 89 core records including #12's five and #15's eleven
+IDs; the downloaded evidence log contains 89 controller end events and `lane=core targets=51
+status=0`.
 
 Packet #9's workspace note reports five pre-existing `slicer-sdk --test property_domains` failures
 `[unverified on current tree]`; neither passing nor failing is claimed until a closure run says.
@@ -436,7 +441,7 @@ Compiled from the forward-item audits of #1–#16 (§8). Source inspection is no
 
 ## 8. Forward-item ledger
 
-55 predecessor `[FWD]` rows: **54 resolved, 1 blocked/partial** (the remaining row is #15 cold compile/hosted until measured). Counts come from the two
+55 predecessor `[FWD]` rows: **55 resolved, 0 blocked/partial**. Counts come from the two
 independent forward-item audits (01–08: 24 rows; 09–16: 31 rows) prepared for this closure; the
 per-row source is the named evidence document. "Approved" marks a human-approved disposition;
 blocked rows are unreviewed omissions until their owner acts. Row 34 (`H-PAINT-OVERHANG` extended)
@@ -495,7 +500,7 @@ was resolved in this closure by the passing `H-PAINT-OVERHANG-extended` run.
 | 49 | 14 | Re-read canonical source before borrowing a fix | RESOLVED | § 5; DEV-143/165/166/142/144/156 preserved |
 | 50 | 15 | Recheck #1/#2 exports, selectors, feature unification | RESOLVED | `docs/testing/proptest-layers-seams-evidence.md` § 2 |
 | 51 | 15 | Top-based vs center probe; Random-empty/open/lock/role witnesses | RESOLVED | §7 #15 row; DEV-201 |
-| 52 | 15 | Fit/projection envelopes; profiles; hand IDs to #17 | **BLOCKED (partial)** | G7: cold compile unmeasured; no hosted 11-record lane |
+| 52 | 15 | Fit/projection envelopes; profiles; hand IDs to #17 | RESOLVED | cold compile measured at 135 s for the four owner crates; the hosted `Properties (Windows)` run 45946601128 executes all 11 records |
 | 53 | 16 | Measure all eleven records | RESOLVED | `docs/testing/proptest-io-gcode-evidence.md` § 7 |
 | 54 | 16 | Wipe-tower convex bed; concave control oracle-only | RESOLVED | § 5 |
 | 55 | 16 | Recheck #1/#2/#6 exports; preserve #11 chain identity | RESOLVED | § 2 |
@@ -669,7 +674,7 @@ falsifiable; it is recorded here as an optional strengthening, not claimed as ex
 The final workspace ceremony (`cargo xtask test --summary --workspace`) is recorded below after the
 narrower gates and lanes passed; it does not replace the SCAD/property lanes.
 
-| `cargo xtask test --summary --workspace` | RUNNING — merged-tree ceremony | `target/evidence/proptest-rollout/workspace/console.log`, `workspace/test-output.log` |
+| `cargo xtask test --summary --workspace` | PASS — `VERDICT: PASS`, exit 0 (merged tree) | `target/evidence/proptest-rollout/workspace/console.log`, `workspace/test-output.log` |
 
 ## 11. Documentation and contributor handoff
 

@@ -1,6 +1,6 @@
 ---
 packet: proptest-openrscad_17_pbt-ci-closure
-status: draft
+status: implemented
 ---
 
 # PBT CI and Rollout Closure
