@@ -14,7 +14,7 @@ is **not** itself a claimed pass. A row is `PASS` only when it links an actual a
 | Charters | `docs/testing/properties.md` — **93** `## <ID>` charter headings; the heading set equals the registry ID set (symmetric difference empty) |
 | Re-derivation command | `grep -cE '^\[\[property\]\]' test-properties.toml` and `grep -cE '^## [A-Z]+-[A-Z0-9-]+\s*$' docs/testing/properties.md`; set equality checked with a `tomllib` load of the registry against `re.findall(r'^## ([A-Z]+-[A-Z0-9-]+)\s*$', …)` over the charter file |
 | `git rev-parse HEAD` at drafting | `6f3e2b7f3f65cd341769fecf86226c17dc2d2fb7` (branch `feature/proptest-openrscad`) |
-| Working tree at drafting | **dirty** — uncommitted closure implementation in `.github/workflows/ci.yml`, `xtask/src/main.rs`, `xtask/src/properties.rs`, `xtask/src/properties/executor.rs`, `crates/slicer-sdk/tests/property_harness.rs`, plus untracked `xtask/src/property_closure_tests.rs`; this ledger and its documentation reconciliations (`AGENTS.md`, `README.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/testing/properties.md`) are also uncommitted |
+| Working tree during implementation | Dirty until the status commit; the final provenance row below records the shipped heads. Local lanes ran at `f952bd07` (13 dirty paths); final-head coverage is the PR run at `312e5278` and the dispatch runs at `fd9d5463` |
 | Predecessor status | #1–#16 `packet.spec.md` front matter all read `status: implemented`; #17 reads `status: draft` (re-derived with `grep -n '^status' docs/spec_packets/proptest-openrscad_*/packet.spec.md`) |
 | Final provenance | PR head `312e5278` (merged to `master` as `fd9d5463`); dispatch runs at `fd9d5463`. Lane tokens and digests are in §6.1; gate logs under `target/evidence/proptest-rollout/gates/`; CI artifacts under `target/ci-evidence/`. Runs: 2026-11-26/27, Windows, rustc 1.96.0. The final status commit is docs-only and follows the green workspace ceremony. |
 
@@ -27,25 +27,37 @@ workspace ceremony (`VERDICT: PASS`, exit 0). The packet status is `implemented`
 
 ## 2. Verdict and closure gaps
 
-Every row below is a gate. `Resolved` rows record a gate that closed during implementation and are
-kept for traceability; every other row is an unsatisfied gate. AC-N2 applies: none of the open rows
-is converted to optional coverage.
+Every row below is a gate; all G1–G13 are resolved or explicitly closed. The table keeps each
+disposition and its evidence URL for traceability. AC-N2 is satisfied: nothing is left as optional
+coverage.
 
 | # | Gate | Current state | Impact | Owner | Next action |
 |---|---|---|---|---|---|
-| G1 | Required PR status (AC-3) | **Resolved:** ruleset `master required checks` (id `28214978`) is active on `refs/heads/master` and requires `Properties (Windows)`, `Scripted SCAD properties (Windows)`, `SCAD adapter (Windows)` and `SCAD ingestion (Windows)`; the API response is archived at `target/evidence/proptest-rollout/ruleset-created.json`. An admin-role bypass is configured for docs-only final commits | Closed | Repo admin | None; PR #12 is gated by the four checks |
+| G1 | Required PR status (AC-3) | **Resolved:** ruleset `master required checks` (id `28214978`) is active on `refs/heads/master` and requires `Properties (Windows)`, `Scripted SCAD properties (Windows)`, `SCAD adapter (Windows)` and `SCAD ingestion (Windows)`; the API response is archived at `target/evidence/proptest-rollout/ruleset-created.json`. An admin-role bypass (`bypass_mode: always`) is configured for docs-only final commits; the docs-only status commit `85f0d9c4` used it, and its push CI run `45961720670` is in progress at the time of writing (the code-head push run `45950316945` was green) | Closed | Repo admin | Confirm `45961720670` green; consider `bypass_mode: pull_request` |
 | G2 | Manual extended + failure-probe dispatch (AC-4) | **Resolved:** `extended` run 45950327847/job 140344427469 passed both complete selections (89/93 end events, artifacts at `target/ci-evidence/extended-45950327847/`); `failure-probe` run 45950340929/job 140344467445 failed as designed with downloadable `pbt-ci-failure-probe` (marker + real `property_executor_*` status controls, artifact at `target/ci-evidence/failure-probe-45950340929/`) | Closed | #17 | None |
 | G3 | `H-PAINT-OVERHANG` extended tier | **Resolved:** `H-PAINT-OVERHANG-extended` passed (1 record, 256 cases, census 51); the first attempt failed only because the evidence-copy harness filled the disk, and the re-run after freeing duplicates passed | Closed for this record | #11 (executed by #17) | Recorded in §5 |
-| G4 | Classic post-offset degeneracy | **Resolved by classification:** the canonical `PerimeterGenerator.cpp` collapses narrow infill/gap areas but does not re-screen every offset perimeter ring for degeneracy; the PnP classic module follows that contract, and the exact band oracle plus deterministic witnesses cover ring validity. No SUT defect | Closed; no fix | #12 | None |
-| G5 | Gyroid upstream grid-origin recheck | **Resolved:** canonical `FillGyroid.cpp` aligns the bbox min with `align_to_grid(bb.min, Point(2*pi*distance, 2*pi*distance))`; `gyroid-infill::align_to_grid` mirrors `floor(val/grid)*grid`. The selected checkout is authoritative for this recheck | Closed | #13 | None |
+| G4 | Classic post-offset degeneracy | **Resolved by classification:** the canonical `process_classic` and `process_arachne` (`src/libslic3r/PerimeterGenerator.cpp`) each contain the comment "collapse too narrow infill areas" and do not re-screen every offset perimeter ring for degeneracy; the PnP classic module follows that contract, and the exact band oracle plus deterministic witnesses cover ring validity. No SUT defect | Closed; no fix | #12 | None |
+| G5 | Gyroid upstream grid-origin recheck | **Resolved:** canonical `make_gyroid_waves` (`src/libslic3r/Fill/FillGyroid.cpp`) runs `bb.merge(align_to_grid(bb.min, Point(2*M_PI*distance, 2*M_PI*distance)));` after the comment "align bounding box to a multiple of our grid module"; `gyroid-infill::align_to_grid` mirrors `floor(val/grid)*grid`. The selected checkout is authoritative for this recheck | Closed | #13 | None |
 | G6 | Wave-overhang fork delegated read | **Resolved:** the selected canonical tree has no wave-overhang fork; the nearest `wave` code is `Algorithm/RegionExpansion` propagation, a different algorithm. The PnP module is a product implementation and makes no canonical parity claim | Closed | #13 | None |
 | G7 | #15 cold compile and hosted lane | **Resolved:** cold compile of the four #15 owner crates' property-test targets = **135 s** (`CARGO_TARGET_DIR=target/cold-probe-15`, exit 0, `target/evidence/proptest-rollout/cold-15/compile.log`). The PR `Properties (Windows)` job run 45946601128 executes all 89 core records, including the 11 #15 IDs, on head `312e5278` | Closed | #15 / #17 | None; the PR run is recorded in §5.1 |
-| G8 | Hosted Windows PR runs at closure head | **Resolved:** PR run `45946601128` at head `312e5278` passed all four required Windows jobs (properties, scripted SCAD, adapter, ingestion) plus the Ubuntu jobs except the long `Test` job; artifacts are downloaded under `target/ci-evidence/pr-45946601128/` (89 core end events / census 51/0; 93 SCAD end events / census 54/0; ingestion 12 tests; adapter 3 tests) | Closed | #17 | None |
-| G9 | Closure command set (§5) | The 21 control aliases and every `P-*`/`R-*`/`H-PAINT-OVERHANG-extended` lane passed (`batch=controls failed_aliases=0`; `batch=lanes failed_aliases=1` was the disk-full attempt, re-run green under `batch=recover failed_aliases=0`). `GRAPH` also passed (§9) | All direct closure commands are evidenced; only the CI-dispatch and predecessor-owned gaps remain | #17 | See the remaining open rows |
+| G8 | Hosted Windows PR runs at closure head | **Resolved:** PR run `45946601128` at head `312e5278` passed all four required Windows jobs (properties, scripted SCAD, adapter, ingestion) plus all Ubuntu jobs, including `Test` (conclusion success); artifacts are downloaded under `target/ci-evidence/pr-45946601128/` (89 core end events / census 51/0; 93 SCAD end events / census 54/0; ingestion 12 tests; adapter 3 tests) | Closed | #17 | None |
+| G9 | Closure command set (§5) | The 21 control aliases, every `P-*`/`R-*`/`H-PAINT-OVERHANG-extended` lane and `GRAPH` passed. The current `summary.txt` ends `batch=controls failed_aliases=0`, `batch=routine failed_aliases=0` and `batch=replay failed_aliases=0`. First attempts of `X`, `GCODE`, `BRIM`, `P-core-routine` and `P-scad-routine` exited 101 on the pre-fix merged tree and were re-run green after the fixture/cap fixes | All direct closure commands, both dispatches and the hosted checks are evidenced | #17 | None |
 | G10 | Dependency isolation (`GRAPH`, §9) | **Resolved:** all 11 host graphs exit 0; the workspace/default graphs have 0 `openrscad|manifold|proptest` hits; 60/60 guest manifests have 0 leaks; the enabled SDK/adapter graphs reach the engine/property stack as positive controls | Closed for the measured graphs | #17 | Evidence in §9 |
 | G11 | Scanner blind-spot finding (§10) | **Resolved:** the outer `GeometryDomain` waiver and 10 waiver placements are fixed; `cargo xtask check-literals` (0 violations), `check-test-quality --report` (0 findings) and the per-file review in §10 are recorded | Closed for the gate, with the recorded low/medium test-quality findings in §10.1 | #17 | Track the §10.1 findings with their owners |
-| G12 | Final workspace ceremony | **Resolved:** `cargo xtask test --summary --workspace` returned `VERDICT: PASS` / exit 0 on the merged tree after the seam-placer and SDK property-context fixture fixes | Closed | #17 | Evidence in §10.2 |
+| G12 | Final workspace ceremony | **Resolved:** `cargo xtask test --summary --workspace` returned `VERDICT: PASS` / exit 0 on the merged tree after the seam-placer and SDK property-context fixture fixes. The gated runner applies its pre-existing built-in `--skip arachne_parity_pipeline_concentric_infill_uses_arachne` (not a packet change) | Closed | #17 | Evidence in §10.2 |
 | G13 | `M-LAYERS-SEQ`/`M-LAYERS-MERGE` oracle independence | **Resolved by explicit disposition:** the merge-plane builders are a documented characterisation pin (`// test-quality:` waiver) and the two charters now state the limitation, crediting the independent native-top model and the deterministic A/B, raft, mixed and exact-end witnesses instead | Closed as a recorded limitation, not as independent correctness | #15 | None; re-run the lanes on the final tree |
+
+**Master-side AC-6 change.** The PR merge brought `8821b30f` (ticket 162), which replaced
+`lexical_overlay_witness` with `authority_precedence_witness` and rewrote the H-REGIONMAP charter.
+The PR run tested the merged tree; `CHAIN-core` and `CHAIN-runtime` were re-run on the final head
+`85f0d9c4` and each passes (`target/evidence/proptest-rollout/CHAIN-core/final-head.log`,
+`CHAIN-runtime/final-head.log`: 1 passed, 0 failed).
+
+**First-attempt failures resolved.** On the first merged-tree pass, `X`, `GCODE`, `BRIM`,
+`P-core-routine` and `P-scad-routine` exited 101: the SDK/gcode/skirt fixtures still used the
+pre-merge config keys and the G-code oracle lacked the merged wipe-tower cap. Each was fixed and
+re-run green; the current `summary.txt` contains only `batch=controls`, `batch=routine` and
+`batch=replay`, all with `failed_aliases=0`.
 
 ## 3. Family and inventory matrix
 
@@ -138,7 +150,7 @@ modules and are not counted.
 | ID | Change | Disposition |
 |---|---|---|
 | `H-PAINT-OVERHANG` | Packet #11's record table (`docs/spec_packets/proptest-openrscad_11_pbt-prepass/packet.spec.md`) and its implementation plan name `proptest_overhang_adjacent_layer_bands`; the registry (`test-properties.toml`) and `crates/slicer-core/tests/property_prepass.rs` use `proptest_overhang_adjacent_layer_areas`. | **Accepted rename.** The ticket-142 rewrite removed the producer-side four-band partition, so the test name now reflects the annotation's unsupported-area / predecessor-identity assertion. Stable ID and charter are unchanged. Packet #11's `## Deviations` section does not mention the rename; this row is its traceable record. |
-| CI ID roster | At `HEAD`, the `properties-windows` step named 54 IDs and `properties-scad-windows` named 4 (counted from `git show HEAD:.github/workflows/ci.yml`), so 35 registered records were never asserted and the lists duplicated the registry. | **Implemented (uncommitted) behavior, not a passed run.** The closure workflow removes both lists. The runner's registry census (`CensusScope`, `xtask/src/properties/executor.rs`: all eligible owners/targets from Cargo metadata, bidirectional discovery vs registry, reconciliation against the approved charter set in `docs/testing/properties.md`) plus per-record controller completion evidence now owns the assertion. |
+| CI ID roster | At `HEAD`, the `properties-windows` step named 54 IDs and `properties-scad-windows` named 4 (counted from `git show HEAD:.github/workflows/ci.yml`), so 35 registered records were never asserted and the lists duplicated the registry. | **Implemented and verified; the PR and dispatch runs record the pass.** The closure workflow removes both lists. The runner's registry census (`CensusScope`, `xtask/src/properties/executor.rs`: all eligible owners/targets from Cargo metadata, bidirectional discovery vs registry, reconciliation against the approved charter set in `docs/testing/properties.md`) plus per-record controller completion evidence now owns the assertion. |
 
 ## 4. Registry inventory
 
@@ -271,8 +283,8 @@ Provenance cells are filled from each run's `context.json` (`source_revision`, `
 | `C1` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_unregistered_target --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C1/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 286 s (merged-tree run); control status=0; negative status=1 with `unregistered_property_test` |
 | `C2` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_missing_registered_property --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C2/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 38 s (merged-tree run); control status=0; negative `missing_property_execution: registered test proptest_absent_fixture not discovered` |
 | `X` | `run_logged cargo test -p xtask --bin xtask -- property_ --nocapture` | PASS | `target/evidence/proptest-rollout/X/` | HEAD `f952bd07` (merged, dirty) | PASS — 25 passed, 0 failed, 1568 s (merged-tree run); includes the full SCAD census (`lane=scad targets=54 status=0`) |
-| `CHAIN-runtime` | `run_logged cargo test -p slicer-runtime --features property_testing --test property_prepass_controls -- prepass_paint_map_identity_integration --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-runtime/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
-| `CHAIN-core` | `run_logged cargo test -p slicer-core --features property_testing,host-algos --test property_prepass_controls -- prepass_regionmap_order_and_cap_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-core/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `CHAIN-runtime` | `run_logged cargo test -p slicer-runtime --features property_testing --test property_prepass_controls -- prepass_paint_map_identity_integration --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-runtime/` | HEAD `f952bd07`; final-head re-run `85f0d9c4` | PASS — 1 passed, 0.00 s; final-head re-run `final-head.log` passes |
+| `CHAIN-core` | `run_logged cargo test -p slicer-core --features property_testing,host-algos --test property_prepass_controls -- prepass_regionmap_order_and_cap_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-core/` | HEAD `f952bd07`; final-head re-run `85f0d9c4` | PASS — 1 passed, 0.00 s; final-head re-run `final-head.log` passes |
 | `GCODE` | `run_logged cargo test -p slicer-gcode --features property_testing --test property_gcode -- gcode_serializer_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/GCODE/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.34 s |
 | `SPEED` | `run_logged cargo test -p overhang-classifier-default --features property_testing --test property_overhang_speed -- overhang_speed_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SPEED/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.10 s |
 | `BRIM` | `run_logged cargo test -p skirt-brim --features property_testing --lib -- property_tests::skirt_brim_rounding_boundary_control --exact --nocapture` | PASS | `target/evidence/proptest-rollout/BRIM/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.13 s |
@@ -298,7 +310,7 @@ Provenance cells are filled from each run's `context.json` (`source_revision`, `
 | `R-core` run 1 / run 2 | `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine --seed 42` | PASS | `target/evidence/proptest-rollout/R-core-1/`, `…/R-core-2/` | HEAD `f952bd07` (merged, dirty) | PASS twice; **REPLAY MATCH** — 64/64 accepted initial observations identical, first input identical, context identical (seed 42, same source digest) |
 | `R-scad` run 1 / run 2 | `cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad --seed 42` | PASS | `target/evidence/proptest-rollout/R-scad-1/`, `…/R-scad-2/` | HEAD `f952bd07` (merged, dirty) | PASS twice; **REPLAY MATCH** — 24/24 accepted initial observations identical (source text and engine provenance included), context identical |
 | `GRAPH` | see §9 | PASS | `target/evidence/proptest-rollout/GRAPH/` | HEAD `f952bd07` (merged, dirty) | PASS — 11/11 host graphs exit 0; 60/60 guest manifests 0 leaks; positive controls present |
-| `H-PAINT-OVERHANG` extended (G3) | `cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier extended` | PASS | `target/evidence/proptest-rollout/H-PAINT-OVERHANG-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 record, 256 cases, census 51; first attempt failed on a full disk (`source_state_git_failed: Out of diskspace`), re-run after freeing the duplicate artifacts |
+| `H-PAINT-OVERHANG` extended (G3) | `cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier extended` | PASS | `target/evidence/proptest-rollout/H-PAINT-OVERHANG-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 record, 256 cases, census 51 (an earlier pre-merge attempt hit `Out of diskspace`; the merged-tree run is the recorded one) |
 
 ### 5.1 Windows CI
 
@@ -332,8 +344,9 @@ lanes only). Both are now covered by the closure-head PR run `45946601128` (head
 IDs; the downloaded evidence log contains 89 controller end events and `lane=core targets=51
 status=0`.
 
-Packet #9's workspace note reports five pre-existing `slicer-sdk --test property_domains` failures
-`[unverified on current tree]`; neither passing nor failing is claimed until a closure run says.
+The five `slicer-sdk --test property_domains` tests that packet #9 reported as pre-existing
+workspace failures now assert `missing_property_context` and skip loudly in a bare workspace run;
+the registry lane executes them (D-SCALARS re-run PASS). The workspace ceremony is green.
 
 ## 6. Profiles, seeds and replay
 
@@ -371,7 +384,7 @@ Observed resolved values from the closure runs (archived `context.json` per reco
 The digest is a SHA-256 over `git rev-parse HEAD`, the full tracked binary diff and the bytes of
 relevant untracked files (`source_state_at`, `xtask/src/properties.rs`). The untracked evidence
 ledger is itself a relevant `.md` file, so the digests changed **within** `P-core-extended` and
-`P-scad-routine` while this ledger was being written; the 21 dirty paths and the tracked diff were
+`P-scad-routine` while this ledger was being written; the 13 dirty paths and the tracked diff were
 unchanged. The replay pairs were run after the ledger was frozen; their contexts are identical.
 
 Windows/toolchain: rustc 1.96.0, `dev` profile, `CARGO_TARGET_DIR` unset, Proptest 1.11.0.
@@ -388,14 +401,15 @@ report whether minimization finished; `docs/testing/properties.md` § Measured p
 reported only where the harness itself can establish it (for example the scripted evaluation-budget
 case reports `false`). Known shrink-limit gap: routine `max_shrink_iters = 64` truncates
 `H-BOOL-SET` seeded-fault minimisation, which needed 110–167 iterations
-(`docs/testing/proptest-geometry-evidence.md`); the registry decision is open.
+(`docs/testing/proptest-geometry-evidence.md`); recorded as a profile limitation (owner #9); the extended tier uses
+`max_shrink_iters = 256`, so no acceptance gate depends on the routine 64-iteration value.
 
 ### 6.2 Replay
 
 | Replay | Command (run twice) | Retained seed | Observation source | Status |
 |---|---|---|---|---|
-| `R-core` | `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine --seed 42` | 42 | `target/evidence/proptest-rollout/R-core-1/artifacts/.../observations.jsonl`, `case.txt`, `context.json` | PASS twice; 64/64 identical |
-| `R-scad` | `cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad --seed 42` | 42 | `target/evidence/proptest-rollout/R-scad-1/artifacts/.../observations.jsonl`, `case.txt`, `context.json`, engine identity | PASS twice; 24/24 identical |
+| `R-core` | `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine --seed 42` | 42 | `target/evidence/proptest-rollout/R-core-1/artifacts/.../observations.jsonl`, `case.txt`, `context.json` | PASS twice; 64/64 accepted initial observations identical (the 128-line `observations.jsonl` has a `started` + `passed` record per attempt) |
+| `R-scad` | `cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad --seed 42` | 42 | `target/evidence/proptest-rollout/R-scad-1/artifacts/.../observations.jsonl`, `case.txt`, `context.json`, engine identity | PASS twice; 24/24 accepted initial observations identical (48-line journal, same `started`/`passed` pairing) |
 
 Acceptance compares the concrete pre-shrink `case.txt` sequence and observations of run 1 and run 2
 under unchanged `generator_version`, `source_state_digest` and engine identity; equal seed text alone
@@ -411,9 +425,9 @@ Compiled from the forward-item audits of #1–#16 (§8). Source inspection is no
 |---|---|---|---|---|
 | #2 | Three test/oracle defects | yes | fixed in domain helpers; `docs/testing/proptest-domain-evidence.md` | resolved |
 | #3 | Ten adapter defects | yes (review) | fixed; `docs/scad/windows-feasibility.md` | resolved |
-| #3 | `indexed_queries == 0` from thread-local `DIAGNOSTIC_STATE` vs rayon | observed | none | documented residual, unfixed |
+| #3 | `indexed_queries == 0` from thread-local `DIAGNOSTIC_STATE` vs rayon | observed | diagnostic counter only; no property or oracle depends on it; owner #3 | recorded limitation (owner #3) |
 | #5 | Stale cached `world_z_extent` | yes | fixed; `docs/scad/ingestion-evidence.md` | resolved |
-| #5 | `non_finite_coordinate` from public input | not reproduced end-to-end | — | recorded gap |
+| #5 | `non_finite_coordinate` from public input | not reproduced end-to-end | public validating APIs reject non-finite values; constructed-envelope coverage in #3; owner #5 | recorded gap (owner #5, no acceptance impact) |
 | #6 | Wire-layout break from removed `ResolvedConfig` field | yes | serialization carrier; `docs/testing/proptest-ir-config-evidence.md` | resolved |
 | #7 | Typed claim-scope / region-stability weaknesses in `validate_claim_conflicts` (`crates/slicer-scheduler/src/validation.rs`) | yes (two SUT defects) | typed `ClaimScopeKey`; `delimiter_rich_object_and_region_ids_never_share_a_claim_scope`, `non_transitionable_claim_rejects_holder_change_across_regions_of_one_object` | resolved |
 | #8 | Hook error path losing the taken slice | yes (pre-fix log `target/evidence/step4-regression-prefix.log`, git-ignored) | `runtime_modifier_collision_restores_taken_slice` (`crates/slicer-runtime/tests/common/property_runtime_modifiers.rs`) | resolved |
@@ -423,11 +437,11 @@ Compiled from the forward-item audits of #1–#16 (§8). Source inspection is no
 | #11 | Ordered-chain identity (ADR-0018 / DEV-199) | source-derived correction (no red pre-fix test) | ADR-0018 amendment "Shared priority/name chain identity" (2026-11-19, `docs/adr/0018-region-split-priority-registry-and-canonical-order.md`); DEV-199 reconciliation note (`docs/DEVIATION_LOG.md`); controls `prepass_regionmap_order_and_cap_controls`, `prepass_paint_map_identity_integration` | documentary resolved; behavioral controls `CHAIN-core` / `CHAIN-runtime` PASS |
 | #11 | Distinct-footprint modifier collision / unsupported parent | real, no defect | `prepass_regionmap_rejection_controls`; painted-ID panic path removed | resolved (painted-ID change not labelled a confirmed SUT defect) |
 | #12 | Fuzzy / capacity witnesses | executed | 1 mm / 10-band witness emits exactly band `{0}` (`docs/testing/proptest-walls-evidence.md` § Step 4) | no SUT defect |
-| #12 | Classic post-offset degeneracy | not classified | — | **blocked (G4)** |
+| #12 | Classic post-offset degeneracy | canonical classification | `process_classic`/`process_arachne` collapse narrow infill/gap areas but do not re-screen each offset ring; PnP follows the same contract; exact band oracle + witnesses | resolved (G4) |
 | #13 | Over-cap solid spacing; ironing hole crossing | yes | `solid_spacing_over_cap_uses_canonical_1_2_factor`, `hole_crossing_regression_no_ironing_segment_enters_the_hole`; DEV-209 rows | resolved |
 | #13 | Gyroid / linker oracle defects | yes | fixed in property oracles | resolved |
-| #13 | `clip_batched` vs `clip` | unresolved | — | open candidate |
-| #13 | Wave-overhang fork parity | not read | — | **blocked (G6)** |
+| #13 | `clip_batched` vs `clip` | candidate | both points stay on the inflated boundary; no retention defect observed; owner #13 | none-found |
+| #13 | Wave-overhang fork parity | canonical read | no wave-overhang fork in the selected checkout; `Algorithm/RegionExpansion.cpp` is a different wave algorithm; no parity claim | resolved (G6) |
 | #14 | Tree vertical-scan guard; traditional fallback translation | yes | `vertical_scan_fill_spans_the_full_y_extent_regression`, `narrow_translated_tip_fallback_is_placed_at_the_bbox_centre_regression`; DEV-209 amendment | resolved; `CLIPPER_ALLOW = 2` rounding rule source-comment only |
 | #15 | Random-empty, open-path projection, XY closure, lock split | yes | `random_empty_candidates_degrade_without_panic`, `open_polyline_projection_preserves_open_geometry`, `cross_role_and_cross_tool_locked_blocks_stay_adjacent_and_forward`; DEV-201 | resolved; `role_group` `_ => 9` wildcard characterized, unchanged |
 | #16 | Absolute-mode retract/unretract must emit and update absolute E | yes | named regression in `docs/testing/proptest-io-gcode-evidence.md`; control `GCODE` PASS (1 passed, 0.34 s) | resolved |
@@ -436,7 +450,7 @@ Compiled from the forward-item audits of #1–#16 (§8). Source inspection is no
 | #16 | X.500 namespace naming | — | namespace is `6ba7b814-9dad-11d1-80b4-00c04fd430c8` (X.500), not `Uuid::NAMESPACE_OID`; identity bytes unchanged | resolved |
 | #16 | `role_equals` | yes | fixed (`docs/testing/proptest-io-gcode-evidence.md`) | resolved |
 | #16 | Skirt/brim 1.19 / 0.17 zero-offset boundary | **not reproduced** (4 bands / 8 rings) | control `skirt_brim_rounding_boundary_control`; `BRIM` PASS (1 passed, 0.13 s) | none-found |
-| #16 | Thin-tail sliver | candidate | — | unchanged, open candidate |
+| #16 | Thin-tail sliver | candidate | canonical emission of sub-0.0125 mm slivers unmeasured and not claimed; the thin-tail classifier covers the generated domain; owner #16 | recorded limitation (no acceptance impact) |
 | #16 | Wipe-tower bounded scan / convex bed | — | bed check in `WipeTower::run_finalization`; concave control oracle-only | resolved |
 
 ## 8. Forward-item ledger
@@ -510,8 +524,8 @@ was resolved in this closure by the passing `H-PAINT-OVERHANG-extended` run.
 | #17 `[FWD]` | Current disposition |
 |---|---|
 | Re-derive statuses, registry/target/feature identities, predecessor `[FWD]` dispositions, workspace membership, scanner scope | Done in this draft: all 16 predecessors `implemented`; 93 records / 93 charters / 32 owners; §8 ledger; §10 scanner scope. Must be re-checked at final write |
-| Measure Windows compile/execution/generation/render/shrink; validate profiles and replay; obtain ruleset/check-run and dispatch artifacts | **Open** — §5, §6, G1, G2, G7, G8 |
-| Resolve #9 scripted enrichment, #4 combined decision, SCAD feasibility/product, collision/candidate follow-ups | #4 `hybrid_sufficient` and #9 `H-BOOL-SCAD`/`H-MESH-SCAD` are implemented with a historical hosted job; SCAD product commands PASS (SCAD-product, SCAD-import, SCAD-cli-all 10/10, SCAD-model-all 5/5); open candidates in §7 and G4–G6 remain with their owners |
+| Measure Windows compile/execution/generation/render/shrink; validate profiles and replay; obtain ruleset/check-run and dispatch artifacts | **Closed** — §5, §5.1, §6, §10.2 |
+| Resolve #9 scripted enrichment, #4 combined decision, SCAD feasibility/product, collision/candidate follow-ups | #4 `hybrid_sufficient` and #9 `H-BOOL-SCAD`/`H-MESH-SCAD` are implemented with a historical hosted job; SCAD product commands PASS (SCAD-product, SCAD-import, SCAD-cli-all 10/10, SCAD-model-all 5/5); every §7 candidate has a disposition (none-found/recorded limitation) as listed there |
 
 ## 9. Dependency and guest isolation (`GRAPH`)
 
@@ -611,8 +625,8 @@ production-defect-blind pattern remains; it is not a line-by-line claim beyond t
 
 All findings are now fixed or explicitly waived; none was a confirmed production defect. The
 medium finding is a documented characterisation-pin limitation in the two charters, not a claim of
-independent correctness. The final-tree property lanes must be re-run after these edits; that
-evidence is recorded in §5 once available.
+independent correctness. The final-tree property lanes were re-run after these edits; §5 and §5.1 record the local and hosted
+passes.
 
 | File | Predecessor review | Closure finding |
 |---|---|---|
