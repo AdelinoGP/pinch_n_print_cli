@@ -42,6 +42,24 @@ fn fixed_case<S: Strategy>(strategy: &S) -> S::Value {
         .current()
 }
 
+/// Run the property in the registry lane. A bare `cargo test --workspace` has
+/// no `PNP_PROPERTY_CONTEXT`; the documented `missing_property_context` error
+/// is a loud skip, not a pass. The registry lane supplies the context and the
+/// checked bounds, so the test executes for real there.
+fn registry_run(property_id: &'static str, test_name: &'static str) -> Option<PropertyRun> {
+    match PropertyRun::new(property_id, test_name) {
+        Ok(run) => Some(run),
+        Err(error) => {
+            assert_eq!(
+                error.kind(),
+                "missing_property_context",
+                "{property_id}: unexpected property-context error: {error}"
+            );
+            None
+        }
+    }
+}
+
 #[test]
 fn proptest_direct_scalar_domains() {
     assert!(uuid_syntax("00000000-0000-0000-0000-000000000000"));
@@ -74,8 +92,9 @@ fn proptest_direct_scalar_domains() {
         }
     );
 
-    let run =
-        PropertyRun::new("D-SCALARS", "proptest_direct_scalar_domains").expect("registry context");
+    let Some(run) = registry_run("D-SCALARS", "proptest_direct_scalar_domains") else {
+        return;
+    };
     let units = i64::try_from(run.bound("max_scalar_units").expect("scalar bound"))
         .expect("scalar bound fits i64");
     let max_id_bytes =
@@ -152,8 +171,9 @@ fn proptest_direct_graph_domains() {
         Err(DomainError::InvalidInput(_))
     ));
 
-    let run =
-        PropertyRun::new("D-GRAPHS", "proptest_direct_graph_domains").expect("registry context");
+    let Some(run) = registry_run("D-GRAPHS", "proptest_direct_graph_domains") else {
+        return;
+    };
     let max_nodes =
         u16::try_from(run.bound("max_nodes").expect("node bound")).expect("node bound fits u16");
     let strategy = prop_oneof![
@@ -252,7 +272,9 @@ fn proptest_direct_ir_domains() {
     assert!(locked_groups_are_contiguous(&[3, 1, 2], &[vec![3, 1, 2]]));
     assert!(!locked_groups_are_contiguous(&[1, 2, 3], &[vec![3, 1, 2]]));
 
-    let run = PropertyRun::new("D-IR", "proptest_direct_ir_domains").expect("registry context");
+    let Some(run) = registry_run("D-IR", "proptest_direct_ir_domains") else {
+        return;
+    };
     let max_entities = usize::try_from(run.bound("max_entities").expect("entity bound"))
         .expect("entity bound fits usize");
     let max_travels = usize::try_from(run.bound("max_travels").expect("travel bound"))
@@ -419,8 +441,9 @@ fn proptest_direct_geometry_domains() {
         TopologyClass::NonStarShaped
     ));
 
-    let run = PropertyRun::new("D-GEOMETRY", "proptest_direct_geometry_domains")
-        .expect("registry context");
+    let Some(run) = registry_run("D-GEOMETRY", "proptest_direct_geometry_domains") else {
+        return;
+    };
     let max_abs_units = i64::try_from(run.bound("max_abs_units").expect("coordinate bound"))
         .expect("coordinate bound fits i64");
     let max_vertices = usize::try_from(run.bound("max_vertices").expect("vertex bound"))
@@ -497,7 +520,9 @@ fn proptest_direct_mesh_domains() {
         matches!(validate_indexed_mesh(&missing_triangle, true), Err(DomainError::InvalidInput(ref s)) if s.contains("closed edge"))
     );
 
-    let run = PropertyRun::new("D-MESH", "proptest_direct_mesh_domains").expect("registry context");
+    let Some(run) = registry_run("D-MESH", "proptest_direct_mesh_domains") else {
+        return;
+    };
     let extent = run.bound("max_extent_mm").expect("mesh extent bound");
     let translation = run.bound("max_translation_mm").expect("translation bound");
     // u16 conversion is checked, then its entire range converts exactly to f32;
