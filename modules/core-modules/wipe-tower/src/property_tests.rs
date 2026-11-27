@@ -1556,6 +1556,24 @@ fn proptest_generate_purge_paths() {
         ceiling_witness_reaches_bound(&limits),
         "profile bounds cannot form the volume-ceiling witness"
     );
+    // The strict-`<` row boundary needs `Positive` × `Grid` × `Boundary`; a
+    // 64-case random sample can miss that combination (it did in Windows CI
+    // run 46068735871). Check it deterministically against the live profile
+    // instead of requiring the population to contain it.
+    let boundary_case = build_case(
+        ScaleMode::Positive,
+        VolumeMode::Grid,
+        RowEdge::Boundary,
+        BedShape::Rectangle,
+        [0; 6],
+        &limits,
+    );
+    let boundary_observation = run_check(&boundary_case, &OracleModel::default(), &limits)
+        .expect("the deterministic strict-`<` boundary witness is accepted");
+    assert!(
+        boundary_observation.boundary_rows,
+        "the deterministic boundary witness must land exactly on y_max"
+    );
 
     let strategy = (
         prop::sample::select(SCALE_MODES.to_vec()).no_shrink(),
@@ -1689,10 +1707,8 @@ fn proptest_generate_purge_paths() {
         totals.integer_quotient > 0,
         "no case had an exactly integer purge_depth/line_width quotient"
     );
-    assert!(
-        totals.boundary_rows > 0,
-        "no case hit the strict-`<` scan-row boundary"
-    );
+    // `boundary_rows` is checked deterministically above; the random sample is
+    // not required to contain the rare Positive x Grid x Boundary combination.
     assert!(
         totals.ceiling_volume > 0,
         "no case reached max_purge_volume_mm3"
