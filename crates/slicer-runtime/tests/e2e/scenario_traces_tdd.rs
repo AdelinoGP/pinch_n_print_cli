@@ -323,6 +323,7 @@ fn seam_aligned_default_e2e() {
                     point(x0 + 1.0, 0.0),
                     point(x0 + 1.0, 1.0),
                     point(x0, 1.0),
+                    point(x0, 0.0),
                 ],
                 ..extrusion_path3d_base(slicer_ir::ExtrusionRole::OuterWall)
             },

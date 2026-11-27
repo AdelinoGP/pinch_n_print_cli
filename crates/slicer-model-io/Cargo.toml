@@ -21,9 +21,15 @@ serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3"
+slicer-sdk = { path = "../slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 
 [features]
 default = []
+# Empty selection feature (default off); gates the crate-internal
+# `loader::property_tests` unit-test module and the `property_io` target.
+# Never enters a production graph: the property engine is a dev-dependency.
+property_testing = []
 scad = ["dep:slicer-scad", "slicer-scad/openrscad"]
 
 # Ungated on purpose: this target must build and report real assertions in BOTH
@@ -35,3 +41,7 @@ name = "scad_ingest_feature_contract"
 [[test]]
 name = "scad_model_ingest"
 required-features = ["scad"]
+
+[[test]]
+name = "property_io"
+required-features = ["property_testing"]

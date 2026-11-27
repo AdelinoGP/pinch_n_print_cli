@@ -1364,6 +1364,27 @@ case logs before teardown; `slicer_sdk::test_support::property_testing::take_cas
 returns and clears those retained thread-local logs. The guard does not install
 or change per-case panic hooks.
 
+**Owner-private modules.** A module kernel that is private must be exercised from
+an in-crate `src/property_tests.rs`, declared with two separately stacked gates:
+
+```rust
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;
+```
+
+Do not combine them into `cfg(all(test, feature = "property_testing"))`: the
+literal visitor's `cfg_test_module` only recognises a bare `#[cfg(test)]` ident.
+An out-of-line `#[cfg(test)]` module also hides its file from both scanners —
+`collect_enforced_files` (`xtask/src/check_literals.rs`) covers
+`modules/core-modules/*/tests` but not `modules/core-modules/*/src`, and the
+literal visitor does not follow a separately declared module file. A green
+`cargo xtask check-literals` / `check-test-quality` run is therefore **not**
+evidence for a module-`src` property file: review every watched-type literal for
+FRU or a reasoned `// exhaustive:` waiver and every `docs/22_test_quality.md`
+pattern by hand, and record that review in the file header and the packet's
+evidence doc.
+
 Property support does not change private-kernel ownership or expose private
 production kernels for tests: test private kernels in their owning crate.
 

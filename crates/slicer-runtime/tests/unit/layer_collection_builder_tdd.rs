@@ -148,6 +148,29 @@ fn order_lock_proposal_split_rejected() {
         .expect("whole locked block may move");
 }
 
+/// ADR-0062 host contract for a block spanning role groups: the role-partitioned
+/// proposal the default optimizer used to emit (`[0, 2, 1]`: group-4 entities
+/// first, then the group-5 `Ironing` member) interleaves the same-region block and is
+/// rejected; the contiguous forward proposal is accepted.
+#[test]
+fn order_lock_cross_role_block_split_by_role_partition_rejected() {
+    let mut arena = three_entity_arena();
+    let mut collection = arena.take_layer_collection().expect("seeded layer");
+    collection.ordered_entities[0].path.order_lock = Some(7);
+    collection.ordered_entities[1].path.order_lock = Some(7);
+    collection.ordered_entities[1].role = ExtrusionRole::Ironing;
+    arena.set_layer_collection(collection);
+
+    let error = apply_entity_order_proposal(&mut arena, &[(0, false), (2, false), (1, false)])
+        .expect_err("role-partitioned split of a cross-role lock must be rejected");
+    assert!(
+        error.contains("locked block 7 was interleaved or reordered"),
+        "unexpected error: {error}"
+    );
+    apply_entity_order_proposal(&mut arena, &[(0, false), (1, false), (2, false)])
+        .expect("contiguous forward cross-role block is valid");
+}
+
 fn ordered_topo_orders(arena: &LayerArena) -> Vec<u32> {
     arena
         .layer_collection()

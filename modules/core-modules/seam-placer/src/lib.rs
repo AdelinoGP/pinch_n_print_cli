@@ -85,6 +85,17 @@ fn select_seam_candidate(
     layer_index: u32,
     candidates: &[slicer_ir::SeamCandidate],
 ) -> Option<&slicer_ir::SeamCandidate> {
+    // A region may legitimately have no seam candidates at all: a
+    // `seam_blocker` paint region can exclude every corner at
+    // perimeter-generation time, and `run_wall_postprocess` must then emit the
+    // walls pristine and leave `resolved_seam` unset (graceful degradation,
+    // `docs/05_module_sdk.md` T-082/P109). That contract is mode-agnostic, so
+    // the empty guard belongs here rather than in one arm: the `Random` arm
+    // otherwise computes `layer_index % candidates.len()` before `.get()` and
+    // divides by zero.
+    if candidates.is_empty() {
+        return None;
+    }
     match mode {
         // Aligned/AlignedBack never reach this function: `run_wall_postprocess`
         // routes them through the host-injected `resolved_seam` snap path
@@ -177,6 +188,10 @@ fn project_onto_wall_segment(
         if points.is_empty() {
             continue;
         }
+        // Closure follows the path's own XY-only convention, the same predicate
+        // `rotate_wall_loop` uses. Full-struct equality would disagree with it
+        // whenever the closing repeat carries different per-point metadata, and
+        // the two functions must agree on which record is the repeat.
         let is_closed = loop_.path.is_closed();
         let effective_len = if is_closed {
             points.len() - 1
@@ -186,8 +201,16 @@ fn project_onto_wall_segment(
         if effective_len == 0 {
             continue;
         }
+        // An open polyline's last-to-first pair is not a real segment; only a
+        // closed loop's closing repeat makes that wrap edge real. Enumerating
+        // it for an open path would project a seam onto a fabricated chord.
+        let segment_count = if is_closed {
+            effective_len
+        } else {
+            effective_len.saturating_sub(1)
+        };
 
-        for segment_start in 0..effective_len {
+        for segment_start in 0..segment_count {
             let end_index = if segment_start + 1 < effective_len {
                 segment_start + 1
             } else {
@@ -257,6 +280,8 @@ fn insert_projected_point(
     projection: WallSegmentProjection,
 ) -> slicer_sdk::prelude::WallLoop {
     let points = &loop_.path.points;
+    // Same XY-only closure predicate as `project_onto_wall_segment` and
+    // `rotate_wall_loop` (see the note there).
     let is_closed = loop_.path.is_closed();
     let effective_len = if is_closed {
         points.len() - 1
@@ -309,10 +334,13 @@ fn insert_projected_point(
         if let Some(first_flag) = effective_flags.first().cloned() {
             effective_flags.push(first_flag);
         }
+        // The closing repeat exists only for a closed loop. Pushing points[0]
+        // onto an open polyline would fabricate closure (IR 7: "Nothing may
+        // fabricate closure for an open line") and would also desynchronise
+        // the per-point arrays, since the flag push above is closure-gated.
+        effective_points.push(effective_points[0]);
+        effective_widths.push(effective_widths[0]);
     }
-
-    effective_points.push(effective_points[0]);
-    effective_widths.push(effective_widths[0]);
 
     let mut inserted_loop = loop_.clone();
     inserted_loop.path.points = effective_points;
@@ -949,3 +977,7 @@ mod tests {
         assert_eq!(s.seam_position(), "random");
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

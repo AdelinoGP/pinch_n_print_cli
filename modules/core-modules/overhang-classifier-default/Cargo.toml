@@ -10,11 +10,22 @@ slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
 
+[features]
+# Empty selection feature (default off); gates the `property_overhang_speed`
+# target. Never enters a production or guest graph: the property engine is a
+# dev-dependency only.
+property_testing = []
+
 [dev-dependencies]
-slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "property_overhang_speed"
+required-features = ["property_testing"]

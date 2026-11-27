@@ -12,9 +12,19 @@ log = "0.4"
 rayon = "1.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
 
+[features]
+# Empty selection feature (default off); gates the `property_gcode` target.
+# The property engine stays a dev-dependency and never enters a guest graph.
+property_testing = []
+
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
-slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
+slicer-sdk = { path = "../slicer-sdk", features = ["test", "property_testing"] }
+proptest = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "property_gcode"
+required-features = ["property_testing"]

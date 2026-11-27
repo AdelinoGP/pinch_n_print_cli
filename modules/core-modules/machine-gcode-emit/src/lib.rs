@@ -944,3 +944,7 @@ fn substitute_placeholders(
     out.push_str(&template[run_start..]);
     (out, unresolved.into_iter().collect())
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

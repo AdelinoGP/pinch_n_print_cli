@@ -142,7 +142,11 @@ pub fn calculate_speed(distance: f32, sections: &[(f32, f32)], original_speed: f
         return original_speed;
     }
     if distance >= sections[sections.len() - 1].0 {
-        return sections[sections.len() - 1].1;
+        // The boundary takes the same round-then-cap policy as the
+        // interpolation branch: a raw section speed can be fractional and can
+        // exceed `original_speed`, and returning it verbatim would let the
+        // speed jump back up at the last boundary.
+        return sections[sections.len() - 1].1.round().min(original_speed);
     }
 
     let pair = sections

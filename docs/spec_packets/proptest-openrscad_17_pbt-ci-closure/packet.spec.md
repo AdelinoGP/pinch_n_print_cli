@@ -206,3 +206,9 @@ This table is the author's static checklist against the live tree and the two fi
 | 11 | Completeness | PASS | No template placeholder or unresolved scope-changing authoring question; the three bounded `[FWD]` items are implementation evidence and handoff work, not claimed execution. |
 
 **Verdict: AUTHOR SELF-PREFLIGHT PASS.** No builds, property tests, guest-freshness checks, Windows CI executions or measurements were run during this authoring task; the predecessor implementations and actual rollout remain pending.
+
+## Deviations
+
+1. **Census fixture exemption.** The census discovers every `proptest_` test in an eligible target, but `crates/slicer-sdk/tests/property_harness.rs` deliberately carries two harness-fixture tests (`proptest_fixture_context_child`, `proptest_fixture_all_rejecting`) that are not property records; registering them would falsify the registry. They are classified by an adjacent source annotation `// property-census: harness-fixture`; an annotation that names no discovered test fails as `stale_property_census_exemption`. This is a focused test-fixture correction, not a coverage waiver.
+2. **Approved-matrix source.** The design notes require comparing owners/IDs with "the approved predecessor matrix" without naming a machine-readable source. The implementation reads the `## <PROPERTY-ID>` headings of `docs/testing/properties.md` (93 sections, set-equal to the registry) and fails both directions (`missing_property_record`, `unapproved_property_record`). No new roster file was added.
+3. **`H-PAINT-OVERHANG` name disposition.** The predecessor table names `proptest_overhang_adjacent_layer_bands`; the registry and tree use `proptest_overhang_adjacent_layer_areas` after the ticket-142 rewrite. The rename is accepted and recorded in `docs/testing/proptest-rollout-evidence.md` § 3.4; the stable ID and charter are unchanged. Packet #11's own deviations section does not mention it.

@@ -250,6 +250,35 @@ The hosted `properties-windows` job ran head `6b340919` in run `44434672409` and
 the assertion that all six Arachne IDs executed (see
 [proptest-arachne-evidence.md](proptest-arachne-evidence.md#measurements)).
 
+### I/O, G-code and module-kernel pilots (packet `proptest-openrscad_16`)
+
+Measured on the Windows development machine (rustc 1.96.0, `dev` profile, workspace `target/`,
+Proptest 1.11, warm binaries). Each record ran through the registry executor; per-record walls are the
+libtest times from the combined selections.
+
+| ID | routine cases / wall | extended cases / wall |
+| --- | --- | --- |
+| `H-IO-ID` | 64 / 0.04 s | 256 / 0.13 s |
+| `H-IO-EXTENT` | 64 / 0.04 s | 256 / 0.10 s |
+| `H-IO-PLACEMENT` | 64 / 0.03 s | 256 / 0.11 s |
+| `H-GCODE-FEEDRATE` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-GCODE-EMIT` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-SERIALIZE` | 64 / 0.05 s | 256 / 0.17 s |
+| `H-GCODE-TEMPLATE` | 64 / 0.05 s | 256 / 0.16 s |
+| `H-COOLING` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-OVERHANG-SPEED` | 64 / 0.03 s | 256 / 0.08 s |
+| `H-SKIRT-BRIM` | 64 / 0.44 s | 256 / 1.58 s |
+| `H-WIPE-TOWER` | 64 / 0.03 s | 256 / 0.09 s |
+
+The 11-record combined selection took 46 s (routine) and 30 s (extended) warm wall. Every record
+reported `accepted_cases` equal to its `cases`, `rejected_test_calls = 0`, zero local/global rejects,
+`call_counts_complete = true` and `outcome = passed`; `shrink_completed` is null because Proptest 1.11
+cannot report completion. Profiles: 64/32/64 and 256/128/256, zero rejection/regeneration budgets,
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`.
+Retained-seed replay `--property H-SKIRT-BRIM --tier routine --seed 4285591042002023685` passed 64/64.
+The 1/8 mm thin-tail case in `H-SKIRT-BRIM` was found by the extended tier and is recorded in
+[proptest-io-gcode-evidence.md](proptest-io-gcode-evidence.md) §7 and §10.
+
 ## Context and event schema
 
 `PNP_PROPERTY_CONTEXT` is one JSON object set on each selected execution child (serialized, never
@@ -345,6 +374,21 @@ missing or zero property execution with an otherwise successful child returns `1
 is parsed and reserved: with no eligible SCAD record registered it returns usage exit `2` with
 `no_eligible_scad_properties`. Source-adjacent seed persistence is disabled
 (`failure_persistence: None`); no `proptest-regressions*` file is ever written beside sources.
+
+## Contributor handoff
+
+A new property needs: a `## <ID>` charter here with an **independent oracle** (never the
+production function under test) and non-vacuous witnesses plus mutation controls; a private
+`proptest_*` test (module kernels in `src/property_tests.rs` behind stacked `#[cfg(test)]` /
+`#[cfg(feature = "property_testing")]`, host tests in a `tests/` target); one `[[property]]`
+record in `test-properties.toml` with exact package/target/full test name/features and measured
+Windows profiles; and per-case isolation through `PropertyRun`/`CaseGuard`. The registry census
+fails a discovered `proptest_*` test with no record (`unregistered_property_test`) and a record
+with no matching executed test (`missing_property_execution`). Windows CI runs the routine lanes
+on pull requests and the extended lane by manual dispatch. A confirmed failure becomes a named
+**concrete regression** over the retained concrete input, not a committed seed. Files outside the
+literal/test-quality scanner scope need the manual FRU/waiver review. The step-by-step workflow and
+current rollout gates are in `docs/testing/proptest-rollout-evidence.md` § 11 and § 2.
 
 ## H-IR-ANCHORS
 
@@ -7641,3 +7685,1836 @@ replaced by a duplicate of the outer `[0.25,9.75]` loop (a coincident wall), the
 from the holed case, and fill inserted at `(0.5,5)` outside the required `[1,9]^2` fill region. The
 sub-pitch scan fallback and the offset-collapse/no-work modes are separately observed and are not
 treated as always-success or always-empty.
+
+
+<!-- PBT-LAYERS-SEAMS charters (packet proptest-openrscad_15) -->
+
+## M-LAYERS-SEQ
+
+Registry record: `id = "M-LAYERS-SEQ"`, `package = "layer-planner-default"`, `target_kind = "lib"`,
+`target_name = "layer_planner_default"`, `test_name = "property_tests::proptest_layer_sequence"`, `production_symbol = "layer_planner_default::generate_object_layers"`,
+`production_path = "modules/core-modules/layer-planner-default/src/lib.rs"`, `features = ["layer-planner-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-layers-seq"`.
+
+### Stable property ID
+
+`M-LAYERS-SEQ` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `layer-planner-default`; lib target `layer_planner_default`; module `property_tests` in
+`modules/core-modules/layer-planner-default/src/property_tests.rs`; production symbol `layer_planner_default::generate_object_layers` in
+`modules/core-modules/layer-planner-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_layer_steps, max_raft_layers, max_z_quanta`.
+
+### Contract
+
+Independent event/interval model of the object-local native Z-plane sequence. The uniform fallback terminates on the canonical band midpoint (`generate_object_layers_f64`: emit while `z_f64 - 0.5*step < height`, break at `>= height`), so a final print top may overshoot the object by up to half a layer; explicit nonempty `layer_zs` is forwarded verbatim (host `layer_top_zs` already applied the midpoint rule). This is canonical `generate_object_layers` (`Slicing.cpp`), resolved upstream by perf-vs-orca t139 / closed `DEV-201`; `docs/02_ir_schemas.md` §"Print top vs sample plane" is normative. The fast(f64)/general(f32-round-trip) boundary and the general-merge catch-up guard `base_z_f64 > plan.height + 1e-6` are characterizations, not re-pinned end rules.
+
+### Domain
+
+Unique object IDs; finite positive bounded heights, first heights and steps on a 1/1024 mm dyadic grid with representable sums and gaps > 1e-6; bounded raft counts; strictly increasing finite explicit tops. Bounds `max_layer_steps=16, max_raft_layers=4, max_z_quanta=8192` validated before allocation. Empty/no-native and non-finite inputs are excluded from the raw loop; empty cases asserted separately.
+
+### Strategy
+
+Nonshrinking `prop::sample::select(modes).no_shrink()` for explicit-vs-uniform and fast-vs-general semantic modes; bounded dyadic dimensions/raft counts shrink. Deterministic companions (explicit A `[0.25,0.5,0.75,1.0]` h=1.0, B `[0.375,0.75]` h=0.75, raft/raft-free pair, fractional-height 0.55/0.2 -> `[0.2,0.4,0.6]`, endpoint/no-native/boundary-neighbor) plus positive `Cell` counters asserted `>0` after `PropertyRun::check`.
+
+### Oracle
+
+**Characterisation pin, not an independent oracle.** Independently derived native tops, raft prefix + common raft offset, per-object first credits and catch-up envelopes; NEVER calls the SUT to produce expected values. Midpoint termination recomputed from the model, not copied from the kernel. The merge-plane builders transcribe the production merge semantics (union of native tops, per-object catch-up, raft prefix, the 1e-6 coincidence and sentinel rules), so the generated merge-plane comparison pins stable characterisation and must not be credited as independent correctness; the independent evidence is the native-top model plus the deterministic A/B, raft, mixed and exact-end witnesses.
+
+### Tolerance
+
+Exact dyadic arithmetic for the model; a derived f32 conversion envelope for print tops; `1e-6` coincidence tolerance for dedup/native-index only (enumerated in code). Explicit rounding-boundary probe kept separate from the ordinary dyadic generator.
+
+### Shrinking
+
+`packet15_witnesses_controls_and_shrinking` drives the real strategy's ValueTree through `simplify`/`complicate`, requires a permitted reduction, re-checks mode/domain/witness at every state, and asserts false `simplify` / repeated `complicate` settle. Shrink completion is `null`/unknown (pure Proptest 1.11).
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["layer-planner-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-LAYERS-SEQ --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-LAYERS-SEQ/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-LAYERS-SEQ --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-1, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Both `in_process` tiers (routine 64 / extended 256 cases, chacha, timeout 0, zero reject budgets); `C` and the two `B` layer baselines pass; `M-LAYERS-SEQ` and `M-LAYERS-MERGE` discover with exact filters and emit matching controller begin/end events. Mutation controls: drop a native top, omit raft offset, replace catch-up bottom/height, swap association, insert empty-region plane, replace first explicit credit after catch-up -- each rejected by the same checker.
+
+## M-LAYERS-MERGE
+
+Registry record: `id = "M-LAYERS-MERGE"`, `package = "layer-planner-default"`, `target_kind = "lib"`,
+`target_name = "layer_planner_default"`, `test_name = "property_tests::proptest_layer_merge"`, `production_symbol = "layer_planner_default::merge_layer_sequences"`,
+`production_path = "modules/core-modules/layer-planner-default/src/lib.rs"`, `features = ["layer-planner-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-layers-merge"`.
+
+### Stable property ID
+
+`M-LAYERS-MERGE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `layer-planner-default`; lib target `layer_planner_default`; module `property_tests` in
+`modules/core-modules/layer-planner-default/src/property_tests.rs`; production symbol `layer_planner_default::merge_layer_sequences` in
+`modules/core-modules/layer-planner-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_objects, max_layer_steps, max_raft_layers, max_z_quanta`.
+
+### Contract
+
+Independent union-of-events model over multiple objects. `merge_same_height` (fast path: all-same-height, no explicit schedule) terminates on the f64 band midpoint against `max_height` and filters each object by its own midpoint; `merge_different_heights` (general path, forced by any explicit schedule) unions native tops, keeps native planes unfiltered (they inherit the schedule's midpoint rule) and still gates catch-up planes top-based by `base_z_f64 > plan.height + 1e-6`. Raft events precede model events; the greatest final raft top is added to ALL objects. Native and catch-up regions are distinct (`RegionLayerProposal.is_catchup`).
+
+### Domain
+
+Up to 4 objects; bounded dyadic-mm heights/steps/raft counts; explicit and uniform objects mixed; strictly increasing authored tops. Bounds `max_objects=4, max_layer_steps=16, max_raft_layers=4, max_z_quanta=8192` validated before any sequence construction. An emitted plane must have a nonempty region population.
+
+### Strategy
+
+Nonshrinking mode selector for fast/general + raft/no-raft + explicit/uniform participation; generated object sets and dyadic heights shrink. Positive `Cell` counters for native events, catch-ups, raft entries and participating objects, asserted `>0`; empty cases asserted separately.
+
+### Oracle
+
+**Characterisation pin, not an independent oracle.** The builders construct the expected global event table (union of native tops, per-object catch-up from last participating Z, raft prefix) and each `RegionLayerProposal` (`object_id`, `region_id=="0"`, `effective_layer_height`, `is_catchup`, `catchup_z_bottom`) without calling the merge kernels, but they transcribe the production merge semantics (including the 1e-6 coincidence and sentinel rules). The generated merge-plane comparison pins stable characterisation and must not be credited as independent correctness; the independent evidence is the native-top model plus the deterministic A/B, raft, mixed and exact-end witnesses. `MergedLayer` carries only `z` and `regions` -- no invented `is_raft`.
+
+### Tolerance
+
+f64 fast-path vs f32-general (`z as f64 - raft_top`) distinction characterized with a deliberately constructed rounding-boundary probe; exact dyadic model values; `1e-6` coincidence/sentinel uses enumerated; derived f32 envelope.
+
+### Shrinking
+
+Combined `packet15_witnesses_controls_and_shrinking` with real ValueTree simplify/complicate, mode + witness retention, a bounded step guard, and false-simplify / repeated-complicate assertions; shrink completion is `null`/unknown (pure Proptest 1.11).
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["layer-planner-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-LAYERS-MERGE --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-LAYERS-MERGE/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-LAYERS-MERGE --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-1, AC-N1, AC-5, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Both tiers with exact discovery; the A/B and raft witnesses, one-object, equal-height fast-path, mixed explicit/uniform, exact-end witnesses execute. Mutation controls (drop native top, omit raft offset, replace catch-up, swap association, empty-region plane, reorder raft/model, replace first credit) each rejected by the same checker. `B` layer baselines pass.
+
+## M-SEAM-PLANNER-PICK
+
+Registry record: `id = "M-SEAM-PLANNER-PICK"`, `package = "seam-planner-default"`, `target_kind = "lib"`,
+`target_name = "seam_planner_default"`, `test_name = "property_tests::proptest_planner_pick"`, `production_symbol = "seam_planner_default::comparator::pick_seam_point"`,
+`production_path = "modules/core-modules/seam-planner-default/src/comparator.rs"`, `features = ["seam-planner-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 2`,
+`charter = "docs/testing/properties.md#m-seam-planner-pick"`.
+
+### Stable property ID
+
+`M-SEAM-PLANNER-PICK` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-planner-default`; lib target `seam_planner_default`; module `property_tests` in
+`modules/core-modules/seam-planner-default/src/property_tests.rs`; production symbol `seam_planner_default::comparator::pick_seam_point` in
+`modules/core-modules/seam-planner-default/src/comparator.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_candidates, max_coord_quanta, max_score_quanta`.
+
+### Contract
+
+Dormant-kernel coverage of `comparator::pick_seam_point` (and `pick_random_seam_point`): the comparator scans a nonempty, in-bounds `perimeter_range` and returns an index in that range; strict ties retain the first index; valid paint priority is `Enforced > Neutral > Blocked` (aligned central-enforcer preference checked separately). An empty range returns its unchecked start -- reported as dormant/defensive behaviour, never dereferenced or credited as a valid candidate. Both kernels have zero production callers on this tree.
+
+### Domain
+
+Finite bounded candidate scores on a 1/1024 grid; bounded coordinate quanta; nonempty in-bounds ranges with a nonzero-start singleton and mixed-paint ranges. Bounds `max_candidates=16, max_coord_quanta=8192, max_score_quanta=4096`. Empty range asserted separately; no invalid `central_enforcer`/paint combination assumed.
+
+### Strategy
+
+Nonshrinking selector for paint-class/mode; bounded scores and coordinates shrink. Positive counters for nonempty-range membership, tie-first and priority wins, asserted `>0` after `check`. Generator v2: the `RearY` class reserves one quantum of Y headroom below `max_coord_quanta` for in-range candidates, so the out-of-range "strongest" decoration is strictly better than every in-range candidate and the class always keeps a Y spread (fixes a v1 collision found by the extended tier; see the evidence doc).
+
+### Oracle
+
+Independently computes the best index over the sliced range by its own priority/score comparison; NEVER calls `pick_seam_point` to derive the expected answer. `pick_random_seam_point` checked for reproducible membership and an interpolated point on the selected edge, not distribution or seam quality.
+
+### Tolerance
+
+Exact integer index/priority comparison; bounded f32 score arithmetic; no tolerance for membership. Interpolated point uses a derived bounded f32 error.
+
+### Shrinking
+
+Combined controls/shrink test with real ValueTree simplify/complicate; mode/domain/witness revalidated at every state; nonshrinking mode trees asserted not to simplify.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-planner-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLANNER-PICK --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLANNER-PICK/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLANNER-PICK --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-2, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Dormant vs live distinction reported in evidence. Mutation controls: out-of-range or lower-priority candidate returned, blocked vertex retained, only enforcer demoted -- each rejected by the same checker. `B` spline baseline passes.
+
+## M-SEAM-PLANNER-PAINT
+
+Registry record: `id = "M-SEAM-PLANNER-PAINT"`, `package = "seam-planner-default"`, `target_kind = "lib"`,
+`target_name = "seam_planner_default"`, `test_name = "property_tests::proptest_planner_paint"`, `production_symbol = "seam_planner_default::region_candidates"`,
+`production_path = "modules/core-modules/seam-planner-default/src/lib.rs"`, `features = ["seam-planner-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-seam-planner-paint"`.
+
+### Stable property ID
+
+`M-SEAM-PLANNER-PAINT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-planner-default`; lib target `seam_planner_default`; module `property_tests` in
+`modules/core-modules/seam-planner-default/src/property_tests.rs`; production symbol `seam_planner_default::region_candidates` in
+`modules/core-modules/seam-planner-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_candidates, max_coord_quanta`.
+
+### Contract
+
+LIVE planner selection. Exact `Custom("seam_blocker")`/`Custom("seam_enforcer")` `Flag(true)` annotations classify contour vertices: blockers removed, central enforcers score 2, other enforcers 1, neutral 0; `choose_region_candidate` picks only among MAX-score candidates and returns None on empty selection. `Random` uses `layer_index` as a deterministic modulo choice among eligible candidates (no external RNG seed). This is direct selection coverage, NOT end-to-end paint delivery. Hole vertices are neutral under the current contour annotation convention.
+
+### Domain
+
+Bounded integer XY `Point2` coordinates (native units) and bounded candidate counts. Bounds `max_candidates=16, max_coord_quanta=8192`. Enforcer, enforcer-run, blocked, no-paint, singleton and empty fixtures; empty selection asserted separately.
+
+### Strategy
+
+Nonshrinking selector for mode (Nearest/Rear/Random/Aligned/AlignedBack) and paint pattern; coordinates/counts shrink. Positive counters for nonempty eligible selections, max-score-only choice, blocked-exclusion and deterministic modulo cycling, asserted `>0`.
+
+### Oracle
+
+Independently builds the annotation -> score -> eligible-set -> mode-winner table; NEVER calls `region_candidates`/`choose_region_candidate` to derive the expected winner. Empty selection expected `None`.
+
+### Tolerance
+
+Exact score/class comparison and exact integer modulo; no numeric tolerance. Repeatability at fixed layer indices is a determinism pin (`// test-quality:`).
+
+### Shrinking
+
+Combined controls/shrink test; mode selector is nonshrinking; shrink states re-check paint classification and required witness; the mode tree itself is asserted not to simplify.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-planner-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLANNER-PAINT --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLANNER-PAINT/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLANNER-PAINT --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-2, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: return a nonmember / lower-priority candidate, retain a blocked vertex, demote the only enforcer -- each rejected by the same checker. Determinism at fixed layer indices and registry-seed replay recorded. `B` spline baseline passes.
+
+## M-SEAM-PLANNER-SPLINE
+
+Registry record: `id = "M-SEAM-PLANNER-SPLINE"`, `package = "seam-planner-default"`, `target_kind = "lib"`,
+`target_name = "seam_planner_default"`, `test_name = "property_tests::proptest_planner_spline"`, `production_symbol = "seam_planner_default::align::fit_cubic_bspline"`,
+`production_path = "modules/core-modules/seam-planner-default/src/align.rs"`, `features = ["seam-planner-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-seam-planner-spline"`.
+
+### Stable property ID
+
+`M-SEAM-PLANNER-SPLINE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-planner-default`; lib target `seam_planner_default`; module `property_tests` in
+`modules/core-modules/seam-planner-default/src/property_tests.rs`; production symbol `seam_planner_default::align::fit_cubic_bspline` in
+`modules/core-modules/seam-planner-default/src/align.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_observations, max_segments, max_coord_quanta, max_weight_quanta`.
+
+### Contract
+
+Dormant-kernel coverage of `align::fit_cubic_bspline` (zero production callers; `align_seam_points` is transitively dormant). Supported inputs only: nonempty equal-length arrays, finite sorted observation parameters, positive finite weights, `1 <= segments <= observations.len()`, bounded finite intermediates. The source-backed positive domain comes from `fit_curve` (`OrcaSlicerDocumented/src/libslic3r/Geometry/Curves.hpp`).
+
+### Domain
+
+Bounded finite observation parameters and 2D observations on a 1/1024 grid; positive finite weights; segment count bounded by observation count. Bounds `max_observations=16, max_segments=8, max_coord_quanta=8192, max_weight_quanta=4096`; `max_segments <= max_observations` enforced. Empty arrays / zero segments are INVALID fit-domain inputs and are never fed.
+
+### Strategy
+
+Nonshrinking selector for the fit family; bounded parameters/weights/segments shrink while preserving nonempty equal-length arrays and `segments <= observations.len()`. Positive counters for nondegenerate constant-data fits, weighted-mean degeneracies and single-observation fits, asserted `>0`.
+
+### Oracle
+
+Independently derives: a positive-span, well-conditioned CONSTANT-data fit at observed/interior parameters; the same-parameter weighted-mean degeneracy (equal parameters, observations `[[0,0],[10,0],[0,10]]`, weights `[1,2,1]` -> `[5,2.5]`); single observation. NEVER calls the fit to manufacture its expected answer.
+
+### Tolerance
+
+A dimensionally valid error envelope derived from the restricted basis/conditioning and f32 ops BEFORE choosing bounds; finite output required. No arbitrary interpolation, affine-exactness-for-all-samples, extrapolation or universal error claim.
+
+### Shrinking
+
+Combined controls/shrink test; shrink states re-check equal-length arrays, sorted parameters, positive weights and the required witness; nonshrinking family selector.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-planner-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLANNER-SPLINE --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLANNER-SPLINE/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLANNER-SPLINE --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-2, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: replace `[5,2.5]` weighted mean by the unweighted mean or a non-finite fit -- each rejected by the same checker. `B` `seam_canonical_spline_tdd` baseline passes. Dormant status named in evidence.
+
+## M-SEAM-PLACER-SELECT
+
+Registry record: `id = "M-SEAM-PLACER-SELECT"`, `package = "seam-placer"`, `target_kind = "lib"`,
+`target_name = "seam_placer"`, `test_name = "property_tests::proptest_placer_select"`, `production_symbol = "seam_placer::select_seam_candidate"`,
+`production_path = "modules/core-modules/seam-placer/src/lib.rs"`, `features = ["seam-placer/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-seam-placer-select"`.
+
+### Stable property ID
+
+`M-SEAM-PLACER-SELECT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-placer`; lib target `seam_placer`; module `property_tests` in
+`modules/core-modules/seam-placer/src/property_tests.rs`; production symbol `seam_placer::select_seam_candidate` in
+`modules/core-modules/seam-placer/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_candidates, max_coord_quanta, max_score_quanta`.
+
+### Contract
+
+For finite nonempty candidates, independently check actual membership and local choice: `Nearest`/defensive aligned arms minimize `score + reason_bonus` (ties by lowest Y then X; bonuses UserForced -1.0, Concave -0.5, Sharp -0.2, Aligned 0.0); `Rear` maximizes Y then lower effective score then higher X; `Random` chooses `layer_index % candidates.len()`. Empty selection must produce no candidate and preserve the wall loop INCLUDING `Random`. AC-N2 requires REPRODUCTION AND CLASSIFICATION before a defect is confirmed: source inspection shows the `Random` arm divides by `candidates.len()` before `.get()`. If the empty case is reproduced and the documented no-candidate contract confirmed, a focused fix guards `len()==0 -> None` with a named concrete regression. The empty-candidate guarantee is documented mode-agnostically (`docs/05_module_sdk.md` T-082 + P109 graceful degradation + wall-preservation invariant), not by Random name.
+
+### Domain
+
+Finite bounded candidate positions/scores on a 1/1024 grid; all `SeamMode` variants; singleton, exact ties, and the empty list. Bounds `max_candidates=16, max_coord_quanta=8192, max_score_quanta=4096`.
+
+### Strategy
+
+Nonshrinking selector for `SeamMode`; positions/scores/layer_index shrink. Positive counters for nonempty member selection, each mode, exact-tie winner and deterministic Random cycling, asserted `>0`; empty case asserted separately (no panic, no candidate, walls pristine).
+
+### Oracle
+
+Independently computes the winning candidate by recomputing effective score and tie-break keys; NEVER calls `select_seam_candidate` to derive the expected member. Random expected index is `layer_index % len` computed independently.
+
+### Tolerance
+
+Exact integer index and `total_cmp` score comparison; exact reason bonuses; bounded f32 score arithmetic. Deterministic layer-index cycling is a determinism pin, not statistical randomness.
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking mode selector; shrink states re-check membership, mode and required witness; the mode tree itself is asserted not to simplify.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-placer/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLACER-SELECT --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLACER-SELECT/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLACER-SELECT --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-3, AC-N2, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. AC-N2 obliges the empty-Random witness to be executed and classified (reproduce the panic first; fix only if confirmed, with a named concrete RNG/context-independent regression giving root cause + failing input). Mutation controls: return a nonmember, wrong tie winner -- each rejected by the same checker. `B` placer baselines pass; replay `--seed 42` reproduces the concrete pre-shrink input stream.
+
+## M-SEAM-PLACER-PROJECT
+
+Registry record: `id = "M-SEAM-PLACER-PROJECT"`, `package = "seam-placer"`, `target_kind = "lib"`,
+`target_name = "seam_placer"`, `test_name = "property_tests::proptest_placer_project"`, `production_symbol = "seam_placer::project_onto_wall_segment"`,
+`production_path = "modules/core-modules/seam-placer/src/lib.rs"`, `features = ["seam-placer/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-seam-placer-project"`.
+
+### Stable property ID
+
+`M-SEAM-PLACER-PROJECT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-placer`; lib target `seam_placer`; module `property_tests` in
+`modules/core-modules/seam-placer/src/property_tests.rs`; production symbol `seam_placer::project_onto_wall_segment` in
+`modules/core-modules/seam-placer/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_wall_points, max_walls, max_coord_quanta`.
+
+### Contract
+
+Continuous aligned-seam projection onto the nearest ACTUAL wall segment, with an independent clamped dot-product/segment-distance oracle. For a CLOSED loop (explicit closing repeat) interior insertion interpolates continuous fields (XY/Z, width, flow_factor, dist_to_top_mm) and `width_profile.widths` linearly, while discrete metadata (`overhang_quartile`, `overhang_distance_mm`, `WallFeatureFlags`) selects start at `t<=0.5` else end; the closing repeat is re-appended. For an OPEN polyline, last-to-first is NOT a real segment and the path MUST stay open: `docs/02_ir_schemas.md` IR 7 says "Nothing may fabricate closure for an open line" and per-point arrays are parallel. AC-N2 requires REPRODUCTION AND CLASSIFICATION before a defect is confirmed: source inspection shows `project_onto_wall_segment` wraps last->first for open paths and `insert_projected_point` unconditionally appends a closing point/width (breaking `flags==points==widths`). If reproduced and the IR-7 open-geometry contract confirmed, a focused fix preserves open geometry with a named concrete regression. The XY-only `ExtrusionPath3D::is_closed` vs full-record equality mismatch is classified as a separate representation witness.
+
+### Domain
+
+Small finite closed loops (explicit closing duplicate) AND open polylines; distinct per-point widths and flags; bounded 1/1024-mm coordinates. Bounds `max_wall_points=16, max_walls=4, max_coord_quanta=8192`. Interior/endpoint/zero-length/equal-distance/empty-wall cases; `1e-5` t-snap and `t=0` zero-length accounted with separate boundary witnesses; equal-distance ties choose lower wall index then segment start.
+
+### Strategy
+
+Nonshrinking selector for closed-vs-open topology and segment position; coordinates shrink while preserving interior insertion and parallel array lengths. Positive counters for interior projections and closed-loop metadata interpolation, asserted `>0`; empty-wall/endpoint cases asserted separately.
+
+### Oracle
+
+Independently computes the nearest actual segment and t by clamped dot product / bounded f32 distance; NEVER calls `project_onto_wall_segment`/`insert_projected_point` to derive the expected projection. Open paths are verified to remain open with parallel arrays.
+
+### Tolerance
+
+Exact retained metadata (flags/widths/discrete fields) comparison; a derived bounded f32 error for computed coordinates/widths; `1e-5` parameter snap handled by keeping ordinary points away from the snap boundary (separate boundary witnesses).
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking topology selector; shrink states re-check parallel array lengths, interior t in (0,1), domain bounds and the required witness.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-placer/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLACER-PROJECT --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLACER-PROJECT/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLACER-PROJECT --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-3, AC-N2, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. AC-N2 obliges the open-polyline implicit-closing-edge witness to be executed and classified; fix only after reproduction with a named concrete regression. If a confirmed fix changes an existing open-wall example, it must be updated to the corrected open/closed contract WITHOUT deleting or weakening coverage (and still pass). Mutation controls: put projection off the actual segment, alter interpolated width/discrete flag, close an open path -- each rejected by the same checker. `B` placer baselines pass.
+
+## M-SEAM-PLACER-ROTATE
+
+Registry record: `id = "M-SEAM-PLACER-ROTATE"`, `package = "seam-placer"`, `target_kind = "lib"`,
+`target_name = "seam_placer"`, `test_name = "property_tests::proptest_placer_rotate"`, `production_symbol = "seam_placer::rotate_wall_loop"`,
+`production_path = "modules/core-modules/seam-placer/src/lib.rs"`, `features = ["seam-placer/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-seam-placer-rotate"`.
+
+### Stable property ID
+
+`M-SEAM-PLACER-ROTATE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `seam-placer`; lib target `seam_placer`; module `property_tests` in
+`modules/core-modules/seam-placer/src/property_tests.rs`; production symbol `seam_placer::rotate_wall_loop` in
+`modules/core-modules/seam-placer/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_wall_points, max_coord_quanta`.
+
+### Contract
+
+Closed-loop rotation compares the effective cyclic point sequence and paired flags/widths by an independently chosen start index, then one closing repeat. Open paths remain unchanged in EVERY field by `rotate_wall_loop` (it early-returns a clone for `!path.is_closed()`), so rotating a closed sequence changes only the starting index -- not geometry or orientation. The repeated endpoint is distinguished from effective vertices; correspondence is by vertex identity, not lengths alone. Same-XY/different-metadata closing endpoints are a separately classified representation witness (XY-only `is_closed` vs full-record equality).
+
+### Domain
+
+Small finite closed loops with explicit closing duplicates and open polylines; distinct per-point widths/flags; bounded 1/1024-mm coordinates. Bounds `max_wall_points=16, max_coord_quanta=8192`.
+
+### Strategy
+
+Nonshrinking selector for closed-vs-open topology and start index; coordinates shrink. Positive counters for closed cyclic rotations, asserted `>0`; open-path preservation asserted separately in every field.
+
+### Oracle
+
+Independently computes the expected rotated sequence by cyclic zipped `(point, flags, width)` shift + one closing repeat; NEVER calls `rotate_wall_loop` to derive the expected order. Open paths expected byte-for-byte unchanged.
+
+### Tolerance
+
+Exact retained metadata comparison; exact vertex-identity correspondence; derived bounded f32 error only where coordinates are calculated elsewhere. No orientation reversal asserted.
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking topology/start selectors; shrink states re-check cyclic correspondence and the required witness; selectors asserted not to simplify.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["seam-placer/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-SEAM-PLACER-ROTATE --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-SEAM-PLACER-ROTATE/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-SEAM-PLACER-ROTATE --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-3, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: rotate points without matching width/flag, lose the closing repeat, reverse orientation, close an open path -- each rejected by the same checker. `B` placer baselines pass.
+
+## M-PATH-NEAREST
+
+Registry record: `id = "M-PATH-NEAREST"`, `package = "path-optimization-default"`, `target_kind = "lib"`,
+`target_name = "path_optimization_default"`, `test_name = "property_tests::proptest_path_nearest"`, `production_symbol = "path_optimization_default::nearest_neighbor_permutation"`,
+`production_path = "modules/core-modules/path-optimization-default/src/lib.rs"`, `features = ["path-optimization-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-path-nearest"`.
+
+### Stable property ID
+
+`M-PATH-NEAREST` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `path-optimization-default`; lib target `path_optimization_default`; module `property_tests` in
+`modules/core-modules/path-optimization-default/src/property_tests.rs`; production symbol `path_optimization_default::nearest_neighbor_permutation` in
+`modules/core-modules/path-optimization-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_candidates, max_coord_quanta`.
+
+### Contract
+
+Local greedy nearest-neighbour behaviour (NOT a globally shortest tour). The cursor begins at the origin and advances to the chosen candidate's end; the source documents a `0.001 mm` tie window with earlier candidate index winning. Candidate-index and original-index bijections are checked independently with `oracles::is_permutation` / a local seen-set, including empty and singleton. Exact two-candidate ties and separated-distance witnesses may assert the selected first index from an independent distance calculation.
+
+### Domain
+
+Finite bounded start/end positions on a 1/1024 grid. Bounds `max_candidates=16, max_coord_quanta=8192`. Empty and singleton included; no globally optimal route claim.
+
+### Strategy
+
+Nonshrinking selector for tie/geometry class; positions shrink. Positive counters for nonempty permutations and exact-tie wins, asserted `>0`; empty/singleton asserted separately.
+
+### Oracle
+
+Independently computes the greedy first choice by its own bounded distance calculation; NEVER calls `nearest_neighbor_permutation` to derive the expected first index. Bijection via independent `is_permutation`/seen-set.
+
+### Tolerance
+
+Bounded f32 squared-distance arithmetic; the `0.001 mm` tie window treated exactly; no global-optimality tolerance.
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking class selector; shrink states re-check bijection, bounds and the required witness.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["path-optimization-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-PATH-NEAREST --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-PATH-NEAREST/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-PATH-NEAREST --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-4, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: duplicate/drop an index, violate an exact tie winner -- each rejected by the same checker. `B` path baselines pass.
+
+## M-PATH-LOCKS
+
+Registry record: `id = "M-PATH-LOCKS"`, `package = "path-optimization-default"`, `target_kind = "lib"`,
+`target_name = "path_optimization_default"`, `test_name = "property_tests::proptest_path_locks"`, `production_symbol = "path_optimization_default::coalesce_locked_candidates"`,
+`production_path = "modules/core-modules/path-optimization-default/src/lib.rs"`, `features = ["path-optimization-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-path-locks"`.
+
+### Stable property ID
+
+`M-PATH-LOCKS` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `path-optimization-default`; lib target `path_optimization_default`; module `property_tests` in
+`modules/core-modules/path-optimization-default/src/property_tests.rs`; production symbol `path_optimization_default::coalesce_locked_candidates` in
+`modules/core-modules/path-optimization-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_entities, max_coord_quanta`.
+
+### Contract
+
+ADR-0062 lock preservation. An untagged item is a singleton; each maximal adjacent equal `Some(order_lock)` run becomes one candidate with original indices in authored order, first start and last end. For a valid locked block in one `(layer, object, region)`, output positions are compared to input via `oracles::locked_groups_are_contiguous` plus explicit `false` reversal flags: the block may move as a unit, never split or reverse. Locks take precedence over role/tool grouping that would split one. ADR-0062 does not limit a valid lock to one role or tool; contiguous same-region multi-role and multi-tool blocks are exercised where the producer/view can represent them.
+
+### Domain
+
+Finite bounded `OrderedEntityView` positions on a 1/1024 grid; bounded entity counts; adjacent distinct tags and same-tag-separated-by-`None` characterization. Bounds `max_entities=16, max_coord_quanta=8192`. `OrderedEntityView` (8 fields, no Default) built via FRU on `ordered_entity_view_base(role)` or an `// exhaustive:` waiver.
+
+### Strategy
+
+Nonshrinking selector for lock pattern; positions/counts shrink while preserving contiguous authored-order runs. Positive counters for locked block moves-as-unit and first-start/last-end coalescing, asserted `>0`; empty/singleton asserted separately.
+
+### Oracle
+
+Independently derives adjacent runs from the input and checks contiguity/direction with `locked_groups_are_contiguous`; NEVER calls `coalesce_locked_candidates` to derive the expected grouping. A nearer unrelated singleton and a first-vs-last-endpoint witness included.
+
+### Tolerance
+
+Exact index/order/tag comparison; bounded f32 coordinate arithmetic; exact `false` reversal flags. Malformed separated tags are characterized, not claimed ADR-0062-valid.
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking pattern selector; shrink states re-check contiguity, direction and the required witness.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["path-optimization-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-PATH-LOCKS --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-PATH-LOCKS/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-PATH-LOCKS --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-4, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: split/reverse a locked block or set a reversal flag, substitute the first block end for the last, duplicate/drop an index -- each rejected by the same checker. `B` path baselines pass.
+
+## M-PATH-GROUPS
+
+Registry record: `id = "M-PATH-GROUPS"`, `package = "path-optimization-default"`, `target_kind = "lib"`,
+`target_name = "path_optimization_default"`, `test_name = "property_tests::proptest_path_groups"`, `production_symbol = "path_optimization_default::PathOptimizationDefault::group_then_nearest_neighbor"`,
+`production_path = "modules/core-modules/path-optimization-default/src/lib.rs"`, `features = ["path-optimization-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#m-path-groups"`.
+
+### Stable property ID
+
+`M-PATH-GROUPS` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `path-optimization-default`; lib target `path_optimization_default`; module `property_tests` in
+`modules/core-modules/path-optimization-default/src/property_tests.rs`; production symbol `path_optimization_default::PathOptimizationDefault::group_then_nearest_neighbor` in
+`modules/core-modules/path-optimization-default/src/lib.rs` (private kernel, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`.
+Bound keys: `max_entities, max_coord_quanta`.
+
+### Contract
+
+Applicable role/tool grouping with staged wall order. For ordinary unlocked/compatible inputs: ascending tool clusters, skirt before the staged wall block, walls preserved in staged order, then documented non-wall role groups. Never asserts that the optimizer re-sorts `InnerWall` before `OuterWall`; expected roles are derived independently, NOT by calling `role_group`. The archived `docs/spec_packets/_OLD/61_path-optimization-role-sequencing.md` suggests new infill roles such as `InternalBridgeInfill` belong with infill, which is archived design-only evidence, NOT by itself an applicable live contract: the current `role_group` `_ => 9` wildcard (taking `InternalBridgeInfill`, `InternalSolidInfill`, `RaftInfill`, `SupportBaseInterface`, `Brim`) is INVESTIGATION material: reproduce/classify the witness; fix only if the applicable live contract is confirmed, otherwise characterize.
+
+### Domain
+
+Finite bounded `OrderedEntityView` positions on a 1/1024 grid; bounded entity counts; authored contiguous cross-group locks and an `InternalBridgeInfill`/`SupportMaterial` witness. Bounds `max_entities=16, max_coord_quanta=8192`.
+
+### Strategy
+
+Nonshrinking selector for role/tool mix; positions/counts shrink. Positive counters for role/tool groups, staged wall order and a cross-group locked block, asserted `>0`; degenerate cases asserted separately.
+
+### Oracle
+
+Independently computes the expected group order from an authored role table (skirt, walls, infill, ironing, support, towers) and verifies lock precedence; NEVER calls `role_group` to derive expected roles. Wildcard-role behaviour recorded as characterization evidence.
+
+### Tolerance
+
+Exact group/order/index comparison; bounded f32 coordinate arithmetic; no optimality claim.
+
+### Shrinking
+
+Combined controls/shrink test; nonshrinking mix selector; shrink states re-check group order, staged walls and the required witness.
+
+### Execution
+
+Both tiers (measured Windows profiles, values unchanged from the pilot; evidence in `docs/testing/proptest-layers-seams-evidence.md` §9.4): routine 64 cases / size 32 / shrink 64, extended 256 / 128 / 256;
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`,
+`max_shrink_time_ms = 0`, zero rejection/regeneration budgets. Features `["path-optimization-default/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`. Selected by
+`cargo xtask test --summary --properties --property M-PATH-GROUPS --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/M-PATH-GROUPS/`.
+Plain `cargo test` of a generated property is NOT acceptance (missing context). Windows
+routine lane includes this record. Retained-seed reproduction command: `cargo xtask test --summary --properties --property M-PATH-GROUPS --tier <tier> --seed <seed>` (the replay reproduces the concrete input stream once measured; `--seed 42` is the Step-6 replay for the selected property).
+
+### Failure record
+
+`failure.json` retains the classification (`sut_or_contract` / `panic` / `exhausted` /
+`process_failure` / `generator_or_oracle` / `harness`), the full context, the concrete/debug input,
+the tier-bearing reproduction command, an executable direct reproduction, captured SDK logs and
+`shrink_completed` (null for pure Proptest). The foundation registry owns discovery/execution/context/
+profile identity; no hand-maintained roster. Waivers `// exhaustive: <reason>` and
+`// test-quality: <reason>` name their protected surface; `modules/core-modules/*/src/**` is
+outside both scanner scopes, so a green `check-literals` / `check-test-quality` is NOT evidence
+for this file (manual review recorded in the evidence doc).
+
+### Acceptance
+
+Maps to AC-4, AC-N1, AC-6. The combined `packet15_witnesses_controls_and_shrinking` accepts every
+unmodified positive witness and rejects each named mutation with the SAME checker; positive
+counters cannot be satisfied by empty cases. Mutation controls: reorder staged walls, put support before the documented infill witness, split a cross-group lock -- each rejected by the same checker. `B` path baselines pass. `InternalBridgeInfill` wildcard is investigated and classified; fix only if the applicable contract is confirmed (archived evidence alone justifies characterization, not a change).
+
+## H-OVERHANG-SPEED
+
+Registry record: `id = "H-OVERHANG-SPEED"`, `package = "overhang-classifier-default"`, `target_kind = "test"`,
+`target_name = "property_overhang_speed"`, `test_name = "proptest_overhang_speed_sections"`,
+`production_symbol = "overhang_classifier_default::calculate_speed"`,
+`production_path = "modules/core-modules/overhang-classifier-default/src/lib.rs"`,
+`features = ["overhang-classifier-default/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-overhang-speed"`.
+
+### Stable property ID
+
+`H-OVERHANG-SPEED` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `overhang-classifier-default`; test target `property_overhang_speed` in
+`modules/core-modules/overhang-classifier-default/tests/property_overhang_speed.rs`; production symbols
+`overhang_classifier_default::build_speed_sections` and
+`overhang_classifier_default::calculate_speed` in `modules/core-modules/overhang-classifier-default/src/lib.rs`
+(both public). Bound keys: `max_path_width_mm`, `max_speed_mm_s`, `max_interpolation_samples`.
+
+### Contract
+
+`build_speed_sections` always returns exactly six `(distance, speed)` entries derived from
+`OVERHANG_OVERLAP_LEVELS = [90, 75, 50, 25, 13, 0]`: distances `path_width * (1 - level/100)`, speeds
+`[ref_speed, rule(overhang_1_4), rule(overhang_2_4), rule(overhang_3_4), rule(overhang_4_4),
+slowdown ? rule(overhang_4_4) : bridge_speed]` where `rule(v) = v < 0.5 ? ref_speed : v`. The output is
+sorted ascending by f32 distance with ties by descending speed, and every run of equal f32 distance is
+flattened to the run's first (highest) speed **without dropping entries**. `calculate_speed(d, sections,
+original)` is `original` for empty sections and for `d <= first`; `min(round(last_section_speed), original)`
+for `d >= last`; and `min(round(clamped linear interpolation), original)` inside an interval. The
+`>= last` branch is the round-then-cap fix for the confirmed defect (see below). This is a PnP contract, not
+an exact OrcaSlicer parity claim: canonical drops duplicate entries and dereferences the empty domain.
+
+### Domain
+
+Positive finite `ref_speed` and `path_width` bounded by `max_path_width_mm`/`max_speed_mm_s`; configured
+overhang speeds `>= 0` including the `< 0.5` reference sentinel; finite `bridge_speed >= 0`; both
+`slowdown_for_curled_perimeters` values; a complete `ConfigView`. Interpolation sections are dyadic and
+strictly increasing (empty, singleton and `>= 2` samples), samples are at boundaries, exact dyadic
+in-interval fractions, below the first and above the last, with integer-valued `original_speed`.
+Duplicate/unsorted/negative/NaN sections are separate labelled boundary observations, never the only
+generated strategy; `path_width = 0` is the duplicate-distance boundary witness.
+
+### Strategy
+
+Construction-first: a mode selector (`prop::sample::select(...).no_shrink()`) picks the section-build or
+interpolation family; sizes shrink. Mandatory witnesses on every run: the `path_width = 0` six-zero-distance
+case (all six retained, all flattened to the highest speed), the `< 0.5` sentinel, both sixth-slot branches,
+the last-boundary cap, and the `[(0,10),(1,20)]` / `original = 30` `<= first` monotonicity counterexample.
+
+### Oracle
+
+An independent insertion sort plus run flattening recomputes the six entries from the authored table; the
+SUT is never called for an expected value. Interpolation is recomputed with `f64` products from the f32
+inputs, rounded half-away-from-zero and capped, then compared by f32 bits. Shared dependencies: the
+documented six overlap levels and the `f32::round`/`min` semantics; the production sort/flatten loop is not
+copied. No canonical-parity claim beyond the verified round-then-cap behaviour.
+
+### Tolerance
+
+Exact f32 bit equality on the declared dyadic domain (sections, samples and `original_speed` are chosen so
+products/sums/round are exact). No approximate speed comparison.
+
+### Shrinking
+
+Distances/widths/speeds simplify; the selected mode, the six-entry multiplicity and any required duplicate
+distance survive. `no_shrink` pins the mode selector. A real shrink/complicate probe simplifies a nonminimal
+value tree to exhaustion, re-validates, complicates and re-validates.
+
+### Execution
+
+Both tiers; bounds `max_path_width_mm=4, max_speed_mm_s=200, max_interpolation_samples=8`.
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero
+rejection/regeneration budgets. Features `["overhang-classifier-default/property_testing"]`.
+Selected by `cargo xtask test --summary --properties --property H-OVERHANG-SPEED --tier <routine|extended>`;
+context via `PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-OVERHANG-SPEED/`.
+Plain `cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification (`sut_or_contract`/`panic`/`exhausted`/`process_failure`/
+`generator_or_oracle`/`harness`), full context, concrete/debug input, tier-bearing reproduction command, an
+executable direct reproduction, captured SDK logs and `shrink_completed` (null for pure Proptest).
+
+### Acceptance
+
+Maps to AC-9 and AC-N4. Confirmed defect, reproduced before the fix: `calculate_speed`'s `distance >= last`
+branch returned the raw section speed, so `sections = [(0.0, 1.0), (1.0, 1.75)]`, `original_speed = 2.0`
+returned `1.75` at `d = 1.0` (a spurious decrease from the in-interval `2.0`). Fixed to
+`sections[len-1].1.round().min(original_speed)`; named concrete regression
+`calculate_speed_last_boundary_rounds_and_caps_last_section_speed` in `tests/basic_tdd.rs` states the former
+input/output. Controls reject the missing sentinel, wrong sixth slot, dropped duplicate entry, ascending
+ties, unequal tie speeds, wrong interval selection, missing round and the missing last-boundary round-and-cap.
+Restricted monotonicity is asserted only for `first_distance < a < b <= last_distance` with nondecreasing
+section speeds and integer `original_speed`; no global monotonicity and no fan/speed monotonicity claim.
+## H-GCODE-TEMPLATE
+
+Registry record: `id = "H-GCODE-TEMPLATE"`, `package = "machine-gcode-emit"`, `target_kind = "lib"`,
+`target_name = "machine_gcode_emit"`, `test_name = "property_tests::proptest_placeholder_substitution"`,
+`production_symbol = "machine_gcode_emit::substitute_placeholders"`,
+`production_path = "modules/core-modules/machine-gcode-emit/src/lib.rs"`,
+`features = ["machine-gcode-emit/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-gcode-template"`.
+
+### Stable property ID
+
+`H-GCODE-TEMPLATE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `machine-gcode-emit`; lib target `machine_gcode_emit`; module `property_tests` in
+`modules/core-modules/machine-gcode-emit/src/property_tests.rs`; production symbols
+`machine_gcode_emit::substitute_placeholders` and `format_placeholder_value` (private kernels, metadata
+only -- no new public export). Registered from `src/lib.rs` under stacked `#[cfg(test)]` /
+`#[cfg(feature = "property_testing")]`. Bound keys: `max_template_bytes`, `max_placeholders`.
+
+### Contract
+
+Single-pass, byte-oriented placeholder substitution: at `[` search for `]` before the next newline; if found,
+substitute the lookup value verbatim and advance past `]`; if absent, copy the rest of the line literally.
+Substituted values are never rescanned. Unresolved keys stay verbatim and are returned sorted and
+deduplicated. `format_placeholder_value` renders scalars, recurses on a `List`'s first element until a
+renderable scalar or an empty list (empty string) and returns `None` for unsupported variants
+(`Percent`/`FloatOrPercent`), leaving the placeholder verbatim and warned about. Canonical
+`PlaceholderParser::process`/`process_macro` throws on an unknown key; PnP's warn-and-pass is deliberate and
+is not claimed as canonical parity. `run_gcode_postprocess` with empty templates preserves every
+`GCodeCommand` in order and re-emits `ExtrusionMode` as `Raw("M82")`/`Raw("M83")`.
+
+### Domain
+
+Templates of bounded bytes built from a construction-first token sequence: literal runs (including Unicode,
+empty runs and no `[`), `[key]` placeholders with keys from a bounded lookup, adjacent placeholders, empty
+`[]`, unclosed `[`, a `]` before any `[`, nested `[[key]]` (including a non-ASCII key) and newlines. One
+malformed shape per case is forced by a `no_shrink` mode selector; an excess-token budget drops (never
+rejects) tokens. Lookup values include strings containing `[other]` to prove substituted values are not
+rescanned.
+
+### Strategy
+
+Construction-first token sequence, not arbitrary malformed bytes. Mandatory witnesses every run: the
+no-rescan value, sorted/deduplicated unresolved keys, an empty list, a list whose first element is itself a
+list, an unsupported variant, and the command-order passthrough over all nine `GCodeCommand` variants
+(compiler-enforced exhaustive roster in the test).
+
+### Oracle
+
+An independent line-split left-to-right scanner (structurally different from the production flat byte
+index) plus an independent `ValueKind` table for `format_placeholder_value`. Shared dependencies: the
+lookup map's `BTreeMap` ordering (sorted output) and the existing `run_gcode_postprocess` entrypoint;
+the production scanner is never called to derive an expected value.
+
+### Tolerance
+
+Exact string equality for the rendered text and exact vector equality for the unresolved keys; no
+normalization.
+
+### Shrinking
+
+Placeholders/literal bytes simplify; the selected malformed mode survives through a `no_shrink` selector and
+a present/absent/unclosed witness must remain. A real shrink/complicate probe simplifies a nonminimal tree
+to exhaustion for each malformed shape, asserts `changed = true`, re-validates, complicates and re-validates.
+
+### Execution
+
+Both tiers; bounds `max_template_bytes=64, max_placeholders=6`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["machine-gcode-emit/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-GCODE-TEMPLATE --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-GCODE-TEMPLATE/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed` (null for pure
+Proptest). `modules/core-modules/*/src/**` is outside both scanner scopes, so a green `check-literals` /
+`check-test-quality` is NOT evidence for this file; the manual FRU/test-quality review is recorded in the
+file header and the evidence doc.
+
+### Acceptance
+
+Maps to AC-7 and AC-N3. Exact rendered text and sorted/deduplicated unresolved vectors pass over 64 routine
+cases with zero rejects; the non-recursive, first-element-recursion, empty-list and unsupported-variant
+behaviours are pinned deterministically. `template_controls` rejects recursion into substituted values,
+unsorted and duplicated unresolved keys, an empty-string substitute for an empty list and a command-order
+swap -- each by the same checker after first accepting the honest claim. The three machine-gcode-emit
+baselines pass unchanged.
+## H-COOLING
+
+Registry record: `id = "H-COOLING"`, `package = "part-cooling"`, `target_kind = "lib"`,
+`target_name = "part_cooling"`, `test_name = "property_tests::proptest_cooling_decision_table"`,
+`production_symbol = "part_cooling::PartCooling::cooling_decision_for_event"`,
+`production_path = "modules/core-modules/part-cooling/src/lib.rs"`,
+`features = ["part-cooling/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-cooling"`.
+
+### Stable property ID
+
+`H-COOLING` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `part-cooling`; lib target `part_cooling`; module `property_tests` in
+`modules/core-modules/part-cooling/src/property_tests.rs`; production symbols
+`part_cooling::PartCooling::layer_fan_speed` (private) and
+`part_cooling::PartCooling::cooling_decision_for_event` (public). Registered from `src/lib.rs` under stacked
+`#[cfg(test)]` / `#[cfg(feature = "property_testing")]`. Bound keys: `max_layer_index`, `max_close_layers`.
+
+### Contract
+
+A pure layer/event decision table. `layer_fan_speed(layer) = 0` when `layer <
+close_fan_the_first_x_layers`, else `fan_max_speed`. `cooling_decision_for_event(view) =
+(overhang_fan_speed as u16 * fan_max_speed as u16) / 100` when `enable_overhang_bridge_fan` and any ordered
+entity has role `BridgeInfill` (the only overhang role), else the layer base. The `u16` multiplication
+cannot wrap `u8` under the declared manifest ranges (`overhang_fan_speed <= 100`, `fan_max_speed <= 255`).
+No fan-speed monotonicity is claimed: the branch is a table, and a higher percentage can leave the integer
+result unchanged. Canonical `CoolingBuffer::apply_layer_cooldown` is a richer reference; this is a
+simplified PnP decomposition, not a full parity claim.
+
+### Domain
+
+`fan_max_speed` in `[0,255]`, `close_fan_the_first_x_layers` in `[0,max_close_layers]`,
+`overhang_fan_speed` in `[0,100]`, both `enable_overhang_bridge_fan` values (a `no_shrink` mode), layer
+indices before/at/after/random around the close boundary, and entity role sequences over
+Empty/SingleOverhang/SinglePlain/OverhangAndPlain/MultiRole. `LayerCollectionIR`/`LayerCollectionView` are
+built through the existing `slicer_sdk::test_support::fixtures` bases. Raw values above the declared ranges
+are outside the valid config domain and are not used to assert monotonic behaviour.
+
+### Strategy
+
+Construction-first; `no_shrink` pins the enable/role modes and the boundary class, while sizes shrink.
+Non-vacuity counters assert boundary, below-boundary, `fan_max = 0`, empty-role, enabled-bump and
+disabled-with-overhang populations are all exercised.
+
+### Oracle
+
+The exact integer table above, recomputed in `u16` with an exact `u8` conversion, compared for both
+`layer_fan_speed` (private) and `cooling_decision_for_event`. No call to either SUT function produces an
+expected value. Shared dependency: the manifest-declared key ranges, which make the `u16 -> u8` conversion
+lossless.
+
+### Tolerance
+
+Exact integer equality; no percentage rounding tolerance and no monotonicity predicate.
+
+### Shrinking
+
+Layers/entities and the boundary distance simplify; the overhang/no-overhang and fan-disabled/enabled modes
+survive. A real shrink/complicate probe covers all five role modes x both enable values and re-validates
+after each transition.
+
+### Execution
+
+Both tiers; bounds `max_layer_index=8, max_close_layers=4`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["part-cooling/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-COOLING --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-COOLING/`. Plain `cargo test`
+of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed` (null for pure
+Proptest). `modules/core-modules/*/src/**` is outside both scanner scopes; the manual FRU/test-quality review
+is recorded in the file header and the evidence doc.
+
+### Acceptance
+
+Maps to AC-8 and AC-N3. The exact table passes over 64 routine cases with zero rejects, including
+`fan_max = 0`, `close_layers = 0`, the boundary layer, overhang present/absent and enable false.
+`cooling_controls` rejects a strict `<=` boundary, a percentage computed from the wrong base, an overhang
+bump with the feature disabled and a role classifier that treats `InternalBridgeInfill` as overhang -- each
+by the same checker. The two part-cooling baselines pass unchanged.
+## H-GCODE-FEEDRATE
+
+Registry record: `id = "H-GCODE-FEEDRATE"`, `package = "slicer-gcode"`, `target_kind = "test"`,
+`target_name = "property_gcode"`, `test_name = "proptest_feedrate_resolution"`,
+`production_symbol = "slicer_gcode::emit::DefaultGCodeEmitter::resolve_feedrate"`,
+`production_path = "crates/slicer-gcode/src/emit.rs"`, `features = ["slicer-gcode/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-gcode-feedrate"`.
+
+### Stable property ID
+
+`H-GCODE-FEEDRATE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-gcode`; test target `property_gcode` in
+`crates/slicer-gcode/tests/property_gcode.rs`; production symbol
+`slicer_gcode::emit::DefaultGCodeEmitter::resolve_feedrate` in `crates/slicer-gcode/src/emit.rs` (public).
+Bound keys: `max_base_speed_mm_s`, `max_factor_milli` (factor = milli/1000).
+
+### Contract
+
+`resolve_feedrate(role, factor)` always returns `Some`: the role selects a configured base speed (an
+independent 23-slot table covering every `ExtrusionRole`, the `InternalBridgeInfill` percent-versus-absolute
+rule, the `filament_ironing_speed > 0` override and the `Custom("Travel"/"Wipe"/"GapInfill")` names), the
+factor is clamped to `[0.05, 5.0]`, and the wire value is
+`round(f64(base) * 60.0 * f64(clamped) * 1000.0) / 1000.0` narrowed to f32. A zero base yields
+`Some(0.0)`, never an error and never a fabricated automatic speed (`resolve_extrusion_feedrate` is the
+automatic path and is covered separately by `H-GCODE-EMIT`). **The clamp is PnP ADR-0052, not OrcaSlicer
+parity**: a delegated read of the canonical checkout found no such clamp in `GCode::_extrude_piece`,
+`GCodeWriter::set_speed` or the `GCode/` extrusion path.
+
+### Domain
+
+Bounded finite bases in `[0, max_base_speed_mm_s]` for every role, and finite factors (as milli-units)
+spanning `[0, max_factor]` including `0`, negative values, values below `0.05`, above `5.0` and the exact
+`0.05`/`5.0` ends. The overflow probe derives `max_finite_base = f32::MAX / (60.0 * 5.0)` and shows a larger
+finite base narrows to `f32::INFINITY` (an overflow observation, not a valid rate). Non-finite factors are a
+separately labelled boundary observation: `+/-inf` saturate through `f32::clamp` and NaN propagates; none is
+asserted as correct.
+
+### Strategy
+
+Construction-first per-role/factor pairs with `no_shrink` on the over/under-clamp and role mode; magnitudes
+shrink. Mandatory witnesses every run: zero base, exact clamp ends, ironing both branches, internal-bridge
+percent and absolute, and the four `Custom` names.
+
+### Oracle
+
+The independent role table plus the f64 multiply/round/narrow formula, compared by f32 bits. Shared
+dependency: Rust's documented `f64::round` half-away-from-zero semantics. `role_base_speed_mm_per_s` is
+never called to derive an expected value; the production clamp/conversion seam is not reused.
+
+### Tolerance
+
+Exact f32 bit equality. No approximate speed comparison and no "roundtrip" claim beyond the declared dyadic
+witnesses.
+
+### Shrinking
+
+Base/factor magnitudes simplify; the selected role and the over/under-clamp mode survive via `no_shrink`.
+A real shrink/complicate probe re-validates after each transition.
+
+### Execution
+
+Both tiers; bounds `max_base_speed_mm_s=1000, max_factor_milli=10000`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["slicer-gcode/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-GCODE-FEEDRATE --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-GCODE-FEEDRATE/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed` (null for pure
+Proptest).
+
+### Acceptance
+
+Maps to AC-4, AC-N2 and AC-N4. Passes over 64 routine cases with zero rejects; the role table, clamp,
+60x conversion and round-to-millidegree match by bits. `gcode_feedrate_controls` rejects a missing 60x
+conversion, a `[0,1]` clamp, truncation instead of round-to-millidegree, a role-table swap and an
+unjustified exact-roundtrip claim, each by the same checker. The three
+`gcode_feedrate_emission_tdd` baselines and the `gcode_emit_format_tdd` formatter baseline pass unchanged.
+
+## H-GCODE-EMIT
+
+Registry record: `id = "H-GCODE-EMIT"`, `package = "slicer-gcode"`, `target_kind = "test"`,
+`target_name = "property_gcode"`, `test_name = "proptest_emission_state_sequence"`,
+`production_symbol = "slicer_gcode::emit::DefaultGCodeEmitter::emit_gcode"`,
+`production_path = "crates/slicer-gcode/src/emit.rs"`, `features = ["slicer-gcode/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-gcode-emit"`.
+
+### Stable property ID
+
+`H-GCODE-EMIT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-gcode`; test target `property_gcode` in
+`crates/slicer-gcode/tests/property_gcode.rs`; production symbols
+`slicer_gcode::emit::DefaultGCodeEmitter::{emit_gcode,emit_gcode_owned}` in `crates/slicer-gcode/src/emit.rs`
+(public). Bound keys: `max_layers`, `max_entities_per_layer`, `max_points_per_entity`, `max_abs_mm`.
+
+### Contract
+
+A small command/state model over the real emitter. The stream starts with
+`ExtrusionMode { absolute: !relative }`; M73 is disabled and never expected. A layer with output emits
+`Raw(";LAYER_CHANGE")`, `Raw(";Z:<...>")`, `Raw(";HEIGHT:<...>")` before its first move; a layer with no
+output emits nothing and does not increment `metadata.layer_count`; a layer with only annotations, or with
+only a side-table entry and no ordered entities, is a no-output layer. Entity order is preserved; each
+entity's first `Move` has `e = None`, subsequent positive-length Moves carry the cumulative absolute E,
+zero-length segments carry `e = None`, x/y/z equal the source points, the role equals the entity role and
+`f` equals the feedrate oracle. After each entity the sequence is retract(s) -> Z-hop up -> travel(s) ->
+tool change (with the wipe-tower guard) -> annotation(s) -> Z-hop down -> unretract(s). A tool change emits
+`ToolChange { after_entity_index, from, to }` and resets the next entity's `;TYPE:` label; a layer-boundary
+tool reset precedes the first entity when `tool_index` differs. `metadata.filament_used_mm` has length
+`max_tool + 1` over the keys actually present in `filament_per_tool`, with a zero entry for a tool that owns
+any processed Move point (including a singleton/non-extruding entity) and no entry for a tool that appears
+only in `tool_changes`. Two consecutive entities of the same role emit exactly one `;TYPE:` label,
+including `GapFill`, `SupportBaseInterface` and `RaftInfill` (the confirmed defect below).
+
+### Domain
+
+0..=`max_layers` layers with 0..=`max_entities_per_layer` entities of 0..=`max_points_per_entity` dyadic
+points; distinct per-layer `entity_id`s; `order_lock = Some(0)` (simplification bypassed); `disable_m73`;
+wipe-tower synthesis off in the positive domain; role base speeds nonzero so `f` follows the explicit
+feedrate path. Includes empty layers, a skipped empty layer between nonempty layers, an entity-less
+side-table layer, annotations, singleton/zero-length entities, a `#11`-ordered nonempty
+`RegionKey.variant_chain` as fixture input only, `emit_gcode`/`emit_gcode_owned` parity and the negative
+modes: wipe tower enabled with a tool change and no `WipeTower` entity (`MissingToolchangePurge`), a tool
+index `>= 1024` on an extruding entity (`ToolIndexOutOfRange`), and the automatic-volumetric branch with a
+zero base speed and non-finite geometry/factor (`GCodeEmitError::Emit` messages, never `F0`/`FNaN`).
+
+### Strategy
+
+Construction-first scene builder with `no_shrink` on the empty/skip/tool-change/negative modes; sizes
+shrink. A mandatory chain-insensitivity witness compares a nonempty `#11` chain scene against the same scene
+with an empty chain (`GCodeIR` carries no `RegionKey`, so this is fixture-only evidence).
+
+### Oracle
+
+An independent state machine that walks `GCodeIR.commands`; it never calls the emitter's geometry math or
+reads back a value it is supposed to predict. Shared dependency: the declared `ResolvedConfig` keys and the
+tool-change anchor declarations.
+
+### Tolerance
+
+Exact command-kind/order/field equality for the state model; per-tool filament sums use a derived f32
+accumulation envelope (documented in the test file). No global minimality or ordering-optimality claim.
+
+### Shrinking
+
+Layers/entities/points and side entries simplify; the empty/nonempty, skip, tool-change/retract/travel/anchor
+and chain-witness modes survive via `no_shrink`. A real shrink/complicate probe re-validates.
+
+### Execution
+
+Both tiers; bounds `max_layers=3, max_entities_per_layer=3, max_points_per_entity=4, max_abs_mm=64`.
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero
+rejection/regeneration budgets. Features `["slicer-gcode/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-GCODE-EMIT --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-GCODE-EMIT/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`.
+
+### Acceptance
+
+Maps to AC-5, AC-N2 and AC-N4. Passes over 64 routine cases with zero rejects. Confirmed defect, reproduced
+before the fix: `role_equals` omitted the `GapFill`, `SupportBaseInterface` and `RaftInfill` same-variant
+arms, so two consecutive entities of those roles re-emitted an identical `;TYPE:` label (observed
+`;TYPE:Gap infill` twice). Fixed by adding the three arms; named concrete regression
+`same_role_entities_emit_one_type_label_including_gap_fill` in `tests/gcode_emit_tdd.rs` fails without the
+fix and passes with it. `gcode_emission_controls` rejects a missing header, a dropped empty-layer skip, an
+unretracted/reordered tool change, a per-entity E accumulator, a dropped singleton zero entry and a
+fabricated tool-change-only entry. The `gcode_emit_tdd` baselines pass unchanged.
+
+## H-GCODE-SERIALIZE
+
+Registry record: `id = "H-GCODE-SERIALIZE"`, `package = "slicer-gcode"`, `target_kind = "test"`,
+`target_name = "property_gcode"`, `test_name = "proptest_serializer_extrusion_state"`,
+`production_symbol = "slicer_gcode::serialize::DefaultGCodeSerializer::serialize_gcode"`,
+`production_path = "crates/slicer-gcode/src/serialize.rs"`, `features = ["slicer-gcode/property_testing"]`,
+`requires_host_algos = false`, `requires_scad = false`, `generator_version = 1`,
+`charter = "docs/testing/properties.md#h-gcode-serialize"`.
+
+### Stable property ID
+
+`H-GCODE-SERIALIZE` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-gcode`; test target `property_gcode` in
+`crates/slicer-gcode/tests/property_gcode.rs`; production symbols
+`slicer_gcode::serialize::DefaultGCodeSerializer::serialize_gcode`, the free `format_coord`/`format_xyz`
+and `GcodeFlavor::set_temperature` in `crates/slicer-gcode/src/flavor.rs` (public). Bound keys:
+`max_commands`, `max_abs_mm`, `max_abs_e_mm`.
+
+### Contract
+
+An independent text and extrusion-state model in relative and absolute modes with Marlin and
+RepRapFirmware temperature forms. `G0` for `Custom("Travel")` else `G1`; XYZ at 3 trimmed decimals; E as the
+absolute value in absolute mode and as `current - previous_accumulator` in relative mode; F and retract
+speeds at 4 trimmed decimals. Relative Gcode retract `G1 E-<length> F<speed>` subtracts; unretract adds.
+**Absolute mode is absolute E**: Moves set the accumulator, `G92 E<value>` resets it in both modes, and a
+Gcode retract/unretract updates the accumulator and emits the updated absolute position (never a bare
+delta). Firmware `G10`/`G11` leave it unchanged. `FanSpeed` is `M106 S<v>`; `Temperature` uses the selected
+flavor (`M104`/`M109` vs `G10 P<n> S<c>` + `M116`); `T<n>`; `; <text>`; Raw verbatim; `M82`/`M83`. Each
+stream opens with exactly one matching `ExtrusionMode`.
+
+### Domain
+
+0..=`max_commands` commands built directly as `GCodeIR` (`Move`, `Retract`, `Unretract`, `FanSpeed`,
+`Temperature`, `ToolChange`, `Comment`, `Raw`, `ExtrusionMode`) with dyadic XYZ (<= 3 decimals), dyadic
+absolute E and retract/unretract lengths (<= 5 decimals), integer Celsius values, bounded ASCII text
+(including `G92 E0`, `G92 E1.5`, `G92 X0`, unparseable `G92 E`, a non-`G92` line), and no non-finite numeric
+field in the valid domain. Duplicate/negative/unparseable E and mode-switch fixtures are separate labelled
+text-ordering observations.
+
+### Strategy
+
+Construction-first command sequence with `no_shrink` on the mode/flavor and the G92/mode-switch modes.
+Mandatory witnesses: a relative retract/unretract pair, an absolute retract/unretract pair, a firmware pair
+in both modes, a G92 reset, a `-0`/rounding boundary and the exact header/width block.
+
+### Oracle
+
+An independent renderer and accumulator recomputed from the documented contract; a deterministic
+`gcode_serializer_formatting_probe` pins the formatter's actual tie/`-0` behaviour before it is used.
+Shared dependency: the documented `format_coord` wire shape (4 decimals, trimmed) and the flavor's
+temperature command forms. The SUT is never called to produce expected text.
+
+### Tolerance
+
+Exact string equality on the generated domain; a tolerance is not a substitute for a formatting policy.
+
+### Shrinking
+
+Commands and magnitudes simplify; the mode/flavor and the required G92/mode-switch witnesses survive via
+`no_shrink`. A real shrink/complicate probe re-validates.
+
+### Execution
+
+Both tiers; bounds `max_commands=12, max_abs_mm=64, max_abs_e_mm=100`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["slicer-gcode/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-GCODE-SERIALIZE --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-GCODE-SERIALIZE/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`. One oracle defect was
+found and fixed during implementation (the RepRapFirmware renderer truncated `256 C` to `255 C` via a
+`u8` cast); it was an oracle bug, not a SUT bug, and is recorded here rather than as a production regression.
+
+### Acceptance
+
+Maps to AC-6, AC-N2 and AC-N4. Passes over 64 routine cases with zero rejects. Confirmed defect, reproduced
+before the fix: absolute-mode Gcode retract/unretract emitted `E-<length>`/`E<length>` deltas and never
+updated the accumulator, and absolute Moves/G92 did not maintain it. Fixed in `serialize.rs` (Move sets the
+accumulator, G92 resets it in both modes, retract/unretract update and emit the updated absolute E, and the
+parallel chunk seeder runs in both modes); named concrete regression
+`absolute_mode_gcode_retract_emits_updated_absolute_e_position` in `tests/gcode_relative_extrusion_tdd.rs`
+fails with the fix stashed and passes with it. `gcode_serializer_controls` rejects a mode swap, a missed G92
+reset, a relative retract/unretract accumulator error, a formatting-boundary error, a reordered header and a
+mutated E delta. The two `gcode_relative_extrusion_tdd` baselines pass unchanged.
+## H-IO-ID
+
+Registry record: `id = "H-IO-ID"`, `package = "slicer-model-io"`, `target_kind = "lib"`,
+`target_name = "slicer_model_io"`, `test_name = "loader::property_tests::proptest_object_id_and_basename_collisions"`,
+`production_symbol = "slicer_model_io::loader::path_object_id"`,
+`production_path = "crates/slicer-model-io/src/loader.rs"`,
+`features = ["slicer-model-io/property_testing"]`, `requires_host_algos = false`,
+`requires_scad = false`, `generator_version = 1`, `charter = "docs/testing/properties.md#h-io-id"`.
+
+### Stable property ID
+
+`H-IO-ID` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-model-io`; lib target `slicer_model_io`; inline `loader::property_tests` module in
+`crates/slicer-model-io/src/loader.rs`; production symbols `slicer_model_io::loader::path_object_id`
+(private) and `slicer_model_io::check_basename_collisions` (public). Bound keys: `max_basename_bytes`,
+`max_paths`, `max_index`.
+
+### Contract
+
+`path_object_id(path, index) = uuid5(X500, "<file_name>#<index>")` where the 16-byte namespace is RFC 4122's
+X.500 namespace (`6ba7b814-...`), **not** `Uuid::NAMESPACE_OID` (`6ba7b812-...`); a path whose
+`file_name()` is `None` falls back to the whole `path.to_string_lossy()` text. The historical local name
+`NS_OID` is a misnomer that does not change the bytes or the minted ids. `check_basename_collisions`
+groups by `file_name()` in input order, allows literal repeats and canonicalized same files, skips paths
+with no file name, and returns `ModelLoadError::DuplicateInputBasename { basename, first, second }` naming
+the first path in input order and the first later distinct path. It has no production multi-input caller
+today; the property does not claim one.
+
+### Domain
+
+Bounded ASCII/Unicode basenames without separators (`max_basename_bytes`), bounded distinct directories,
+indices `0..=max_index` plus deterministic `0` and a large representable index; empty path lists, repeats,
+same basename in different directories, a collision witness, Unicode basenames, `file_name() == None`
+paths (empty/root/`.`/`..`), and a trailing-separator path (`/usr/bin/` -> `bin`, **not** skipped). Rust's
+actual `Path::file_name()` component semantics are modelled, not a hand-rolled split.
+
+### Strategy
+
+Construction-first basename/directory/mode strategies, not a filter-heavy arbitrary-path generator;
+`prop::sample::select(...).no_shrink()` pins the collision/no-collision mode so shrinking cannot silently
+change the verdict. Sizes shrink.
+
+### Oracle
+
+An independent `format!("{basename}#{index}")` name constructor plus `uuid::Uuid::new_v5` with the actual
+X.500 bytes; the `uuid` crate's RFC 4122 implementation is a recorded shared dependency, but the
+basename/index/fallback and collision logic are not shared with the SUT. Assertions are canonical lowercase
+hyphenated form, determinism, cross-directory stability, trailing-separator basename, and **bounded-domain**
+distinct-id observations for different indices/basenames. A deterministic control substitutes
+`Uuid::NAMESPACE_OID` and requires rejection. No universal injectivity is asserted.
+
+### Tolerance
+
+Exact string equality for ids and exact `PathBuf` equality for the error fields; no normalization of path
+text.
+
+### Shrinking
+
+Directory/basename text and list length simplify; the collision/no-collision mode is a `no_shrink`
+selector. A shrink/complicate probe obtains a nonminimal value tree, simplifies to exhaustion, asserts the
+required mode survives, complicates and re-validates.
+
+### Execution
+
+Both tiers; bounds `max_basename_bytes=32, max_paths=8, max_index=64`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["slicer-model-io/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-IO-ID --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-IO-ID/`. Plain `cargo test`
+of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`. The inline
+`crates/*/src` module is inside the literal scanner's scope, but a clean scan is not correctness evidence;
+its watched literals and test-quality patterns were also reviewed by hand.
+
+### Acceptance
+
+Maps to AC-1, AC-N1 and AC-N4. Passes over 64 routine cases with zero rejects. `io_identity_controls`
+rejects a full-path hash, an index-ignoring id, the `NAMESPACE_OID` substitution, a missing collision, a
+same-file false collision and an id that ignores the trailing-separator basename; it also exercises the
+temp-file canonicalization case and asserts the exact `DuplicateInputBasename` fields. The four
+`model_loader_tdd` baselines pass unchanged.
+
+## H-IO-EXTENT
+
+Registry record: `id = "H-IO-EXTENT"`, `package = "slicer-model-io"`, `target_kind = "test"`,
+`target_name = "property_io"`, `test_name = "proptest_object_world_z_extent"`,
+`production_symbol = "slicer_model_io::loader::object_world_z_extent"`,
+`production_path = "crates/slicer-model-io/src/loader.rs"`,
+`features = ["slicer-model-io/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-io-extent"`.
+
+### Stable property ID
+
+`H-IO-EXTENT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-model-io`; test target `property_io` in
+`crates/slicer-model-io/tests/property_io.rs`; production symbol
+`slicer_model_io::loader::object_world_z_extent` (public, not crate-root re-exported). Bound keys:
+`max_vertices`, `max_abs_mm`.
+
+### Contract
+
+`object_world_z_extent(object)` returns `Some((z_min, z_max))` exactly when the reduced extrema are finite
+and `z_max > z_min`; the all-zero matrix is the documented identity convention (`z = v.z`); otherwise
+`z = m[2]x + m[6]y + m[10]z + m[14]` is computed in `f64` from the f32 inputs and narrowed once to f32.
+NaN vertices are ignored by the `<`/`>` reduction; an infinity that reaches an extremum makes the extent
+non-finite and returns `None`. Empty, flat and non-finite results are `None`, never a panic.
+
+### Domain
+
+0..=`max_vertices` vertices on the `2^-4` mm grid inside `max_abs_mm < 2^12`, and an affine matrix whose Z
+row is on the `2^-2` mm grid. Modes: identity (all-zero matrix), live affine, flat/degenerate, NaN and
+infinity, each pinned by a `no_shrink` selector; identity/affine/flat are the valid printable domain, the
+non-finite modes are separately labelled observations and never called a valid object.
+
+### Strategy
+
+Construction-first dyadic generator; magnitudes shrink, vertices are removed, and the mode witness survives.
+Flat mode requires a constant Z, NaN mode requires at least one NaN and one finite vertex, infinity mode
+requires an infinite vertex.
+
+### Oracle
+
+Integer `2^-6` mm arithmetic: every product and the four-term sum are exact integers on the declared domain,
+so the expected Z is derived exactly and narrowed once to f32, matching the production's f64 sum plus one
+cast. The reduction is modelled independently (identity, empty, flat, NaN-ignore, infinity-rejects). No SUT
+call produces an expected value.
+
+### Tolerance
+
+Exact f32 bit equality for `Some((min,max))`, and exact `None` for the rejected modes. No approximate
+extent comparison.
+
+### Shrinking
+
+Vertices and magnitudes simplify; the identity/affine/flat/NaN/infinity mode survives via `no_shrink`. A
+real shrink/complicate probe re-validates each mode after every transition.
+
+### Execution
+
+Both tiers; bounds `max_vertices=16, max_abs_mm=64`. `rng_algorithm = "chacha"`,
+`isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero rejection/regeneration
+budgets. Features `["slicer-model-io/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-IO-EXTENT --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-IO-EXTENT/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`.
+
+### Acceptance
+
+Maps to AC-2, AC-N1 and AC-N4. Passes over 64 routine cases with zero rejects. `io_extent_controls` rejects
+a missing `m[2]`/`m[6]`/`m[10]`/`m[14]` term, a raw-vertex identity extent, a swapped min/max and a false
+`Some` for a degenerate extent. The two `world_z_canonical_surface_tdd` baselines pass unchanged.
+
+## H-IO-PLACEMENT
+
+Registry record: `id = "H-IO-PLACEMENT"`, `package = "slicer-model-io"`, `target_kind = "test"`,
+`target_name = "property_io"`, `test_name = "proptest_place_bare_mesh_on_bed"`,
+`production_symbol = "slicer_model_io::loader::place_bare_mesh_on_bed"`,
+`production_path = "crates/slicer-model-io/src/loader.rs"`,
+`features = ["slicer-model-io/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-io-placement"`.
+
+### Stable property ID
+
+`H-IO-PLACEMENT` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `slicer-model-io`; test target `property_io` in
+`crates/slicer-model-io/tests/property_io.rs`; production symbols
+`slicer_model_io::loader::place_bare_mesh_on_bed` and `BedPlacement` (both public). Bound keys:
+`max_objects`, `max_vertices_per_object`, `max_abs_mm`, `max_translation_mm`.
+
+### Contract
+
+One rigid whole-scene translation: `dx = bed_center.x - (min.x+max.x)/2`, `dy` likewise, `dz = -min.z`,
+derived from the union of per-object world AABBs (zero matrix = identity). After placement the world
+`z_min` is 0, the whole XY AABB centre is `bed_center`, every pair of objects keeps its AABB min/max
+differences, and no object is individually re-centred or re-dropped. `None` is returned for an empty or
+unplaceable world (no object with a finite-X AABB). The post-placement `build_volume` is asserted as the
+**world-space** AABB union for every scene (Deviation 3: the former raw-vertex recompute was a confirmed
+SUT defect, now fixed by `compute_world_bounding_box_union`); identity-mode scenes additionally equal the
+shifted raw-vertex union. The recompute is unconditional, including an exactly-zero shift, and the
+zero-shift witness starts from a deliberately stale box.
+
+### Domain
+
+0..=`max_objects` objects with 0..=`max_vertices_per_object` dyadic vertices, zero-matrix identity or a
+bounded live affine transform (`no_shrink` mode), and a finite dyadic `bed_center` bounded by
+`max_translation_mm`. A construction-first box family (`analytical_meshes(SolidKind::Box, ...)`) supplies
+nonempty worlds; included modes are empty, single, multi, already placed, below-bed/off-centre, one
+empty object beside a nonempty object, an all-nonfinite-X world, and a finite-X world with a non-finite Y
+extent (the two `None` negative modes).
+
+### Strategy
+
+Construction-first box family with a `no_shrink` identity/live-transform and placeable/unplaceable selector;
+object counts and vertex counts shrink.
+
+### Oracle
+
+Independent per-object world AABB (zero matrix = identity), union, and the three translation formulas
+recomputed on the f32 values; post-placement assertions use derived envelopes: z-min zero, centre within
+`2 * ulp(max(|coordinate|, |bed_center|))`, pairwise AABB differences within `4 * EPSILON * max_abs`
+(covers `fl(a+t) - fl(b+t) - (a-b)`). The SUT is never called to derive an expected placement.
+
+### Tolerance
+
+Derived float envelopes above, not exact AABB equality after translation; the pre-placement placement
+formula is compared on the f32 values. No claim that `build_volume` equals the world union for live
+transforms.
+
+### Shrinking
+
+Objects/vertices simplify and transforms are simplified; the empty/nonempty, identity/live-transform and
+placeable/unplaceable modes survive via `no_shrink`. A real shrink/complicate probe re-validates.
+
+### Execution
+
+Both tiers; bounds `max_objects=4, max_vertices_per_object=8, max_abs_mm=64, max_translation_mm=200`.
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero
+rejection/regeneration budgets. Features `["slicer-model-io/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-IO-PLACEMENT --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-IO-PLACEMENT/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`.
+
+### Acceptance
+
+Maps to AC-3, AC-N1 and AC-N4. Passes over 64 routine cases with zero rejects. `io_placement_controls`
+rejects per-object centring, a Z-only drop, a non-rigid per-object scale, a stale pre-placement
+`build_volume` and a fabricated empty-world placement; the zero-shift witness requires a deliberately
+stale box to be refreshed. The named regressions
+`identity_matrix_placement_updates_build_volume_to_the_world_union` and
+`zero_shift_placement_still_refreshes_build_volume` pass, as does the CLI consumer-path test
+`pnp_cli::scad_placement_refreshes_build_volume_to_world_union`, and the model-io baselines pass.
+## H-WIPE-TOWER
+
+Registry record: `id = "H-WIPE-TOWER"`, `package = "wipe-tower"`, `target_kind = "lib"`,
+`target_name = "wipe_tower"`, `test_name = "property_tests::proptest_generate_purge_paths"`,
+`production_symbol = "wipe_tower::WipeTower::generate_purge_paths"`,
+`production_path = "modules/core-modules/wipe-tower/src/lib.rs"`,
+`features = ["wipe-tower/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-wipe-tower"`.
+
+### Stable property ID
+
+`H-WIPE-TOWER` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `wipe-tower`; lib target `wipe_tower`; module `property_tests` in
+`modules/core-modules/wipe-tower/src/property_tests.rs`; production symbol
+`wipe_tower::WipeTower::generate_purge_paths` (private, metadata only -- no new public export). Registered
+from `src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`. Bound keys:
+`max_abs_mm`, `max_scan_lines`, `max_line_width_mm`, `max_purge_volume_mm3`.
+
+### Contract
+
+For one tool change, `generate_purge_paths(z, layer_height, layer_index, tc)` returns, in order: one
+zero-flow travel pair at `(tower_x, tower_y)`; a sequence of rectilinear scan pairs at
+`y = tower_y + line_width/2 + k*line_width` while `y < y_max`, alternating `x_min -> x_max` and
+`x_max -> x_min`, each with two points, flow `1.0` and width `line_width`; and one prime pair from
+`(tower_x, tower_y)` (flow `0.0`) to `(tower_x + min(purge_volume/(line_width*layer_height), tower_width),
+tower_y)` (flow `1.0`). Every pair carries role `WipeTower`, region `__wipe_tower__`, `region_id = 0`, an
+empty chain, the argument layer index, `speed_factor = 1.0`, `tool_index = None` and `order_lock = None`.
+`cross_section = line_width * layer_height * tower_width <= 0` yields an empty vector; a zero purge volume
+with a positive cross-section yields the zero-length travel and prime pair and no scan rows. **Bed
+containment is not part of this seam** (packet `## Deviations` item 2): the production `bed_shape` check
+lives in `WipeTower::run_finalization`; the property uses a convex bed only as an independent scene witness.
+Canonical `WipeTower::tool_change`/`toolchange_Wipe`/`finish_layer` has no direct equivalent; this is a PnP
+rectilinear generator, not a canonical-parity claim.
+
+### Domain
+
+`line_width` a power of two in `[1/8, 2]` mm, `tower_width` a 1/16 mm multiple, `tower_x`/`tower_y`/`z` on
+the 1/16 mm grid inside `max_abs_mm`, `layer_height` a 1/16 mm multiple (with 0.2 mm, the module default and
+off-grid, as a labelled classified control), `purge_volume` in `[0, max_purge_volume_mm3]`, a bounded
+`global_layer_index`, and a `ToolChange` fixture. Zero `line_width`/`tower_width`/`purge_volume`/
+`layer_height` are separate labelled zero modes. `no_shrink` pins the zero/positive, row-count class and
+bed-shape modes; sizes shrink.
+
+### Strategy
+
+Construction-first cases with a row-count ladder (zero, one, many, near-boundary), a `n_upper =
+ceil(purge_depth/line_width) + 1` exhaustion guard checked before the model iterates, and strict
+`y += line_width` progress. Non-vacuity counters cover positive cross-sections, empty cross-sections, each
+zero mode, row counts, exact/classified row counts, both bed shapes and the volume ceiling.
+
+### Oracle
+
+An independent rational/geometric model: the travel/scan/prime sequence and alternating x-order from the
+documented formulas; the scan-row count from an f64 rational quotient (exact `ceil` only when the f32
+additions are exact, otherwise a classified within-one observation, never claimed exact); tower-rectangle
+containment within a derived envelope; positive scan-segment lengths; capped prime length; exact region keys;
+and independent half-plane containment against a convex rectangle or right triangle. The generator is never
+called to derive an expected value.
+
+### Tolerance
+
+Exact counts/keys/roles/flows on the exact sub-domain; a derived f32 envelope for rectangle containment; a
+classified `+-1` count on non-exact/boundary witnesses (never presented as exact); no optimality or
+tessellation claim.
+
+### Shrinking
+
+Scan rows/volume/dimensions simplify; the zero/positive mode, the row-count class and the convex-bed mode
+survive via `no_shrink`. A real shrink/complicate probe re-validates.
+
+### Execution
+
+Both tiers; bounds `max_abs_mm=64, max_scan_lines=64, max_line_width_mm=2, max_purge_volume_mm3=64`.
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero
+rejection/regeneration budgets. Features `["wipe-tower/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-WIPE-TOWER --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-WIPE-TOWER/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`.
+`modules/core-modules/*/src/**` is outside both scanner scopes, so a green `check-literals` /
+`check-test-quality` is NOT evidence for this file; the manual FRU/test-quality review is recorded in the
+file header and the evidence doc.
+
+### Acceptance
+
+Maps to AC-11, AC-N3 and AC-N4. Passes over 64 routine and 256 extended cases with zero rejects and **no
+confirmed SUT defect**. `wipe_tower_controls` rejects a scan row outside the rectangle, an off-by-one row
+count, an over-wide prime segment, a false positive-length claim and a concave-bed containment assertion --
+each by the same checker. The concave-bed control is explicitly a test-oracle demonstration, not a
+production-rejection claim. The `wipe_tower_tdd` and `bed_bounds_tdd` baselines pass unchanged.
+## H-SKIRT-BRIM
+
+Registry record: `id = "H-SKIRT-BRIM"`, `package = "skirt-brim"`, `target_kind = "lib"`,
+`target_name = "skirt_brim"`, `test_name = "property_tests::proptest_skirt_brim_enclosure"`,
+`production_symbol = "skirt_brim::SkirtBrim::generate"`,
+`production_path = "modules/core-modules/skirt-brim/src/lib.rs"`,
+`features = ["skirt-brim/property_testing"]`, `requires_host_algos = false`, `requires_scad = false`,
+`generator_version = 1`, `charter = "docs/testing/properties.md#h-skirt-brim"`.
+
+### Stable property ID
+
+`H-SKIRT-BRIM` -- semantic, independent of packet numbers.
+
+### Owner
+
+Package `skirt-brim`; lib target `skirt_brim`; module `property_tests` in
+`modules/core-modules/skirt-brim/src/property_tests.rs`; production symbol
+`skirt_brim::SkirtBrim::generate` (private, metadata only -- no new public export). Registered from
+`src/lib.rs` under stacked `#[cfg(test)]` / `#[cfg(feature = "property_testing")]`. Bound keys:
+`max_abs_mm`, `max_skirt_distance_mm`, `max_loops`, `max_line_width_mm`.
+
+### Contract (packet `## Deviations` item 1)
+
+The authored `generate_skirt_entities`/`generate_brim_entities` do not exist; the property drives the real
+private `SkirtBrim::generate(&[LayerSnapshot])`. `spacing = flow_spacing() = line_width -
+first_layer_height*(1 - PI/4)` (canonical `Flow::rounded_rectangle_extrusion_spacing`, shared formula), not
+`line_width`. The brim anchors on the filled `OuterWall` contour grown by half the modal wall width, builds
+the annulus `[contour+gap, contour+gap+quantised]` with
+`quantised = floor(brim_width/spacing/2)*spacing*2`, and emits one outer contour and one hole ring per
+inward band from `spacing/2`, outermost band first (`2 * floor(brim_width/spacing/2)` rings above the
+thin-tail bound). The skirt is a convex-hull offset of the occupied outline (layer-0 points plus brim-area
+contours), `skirt_loops` offsets at `skirt_distance + spacing/2 + i*spacing`, emitted outermost first, once
+per layer up to `min(skirt_height, layers)`. Roles/regions are `Skirt`/`__skirt__` and `Brim`/`brim`, with
+`region_id = 0`, empty chain, matching layer index, `speed_factor = 1.0`, `tool_index = None`,
+`order_lock = None`, every point width `spacing` (skirt) or `line_width` (brim), flow `1.0`, and a closed
+path. No rectangle identity, four-corner or vertex-count claim is made.
+
+### Domain
+
+One or two layers carrying a closed rectangle `OuterWall` loop on the 1/16 mm grid (625 integer units,
+converted with `Point2::from_mm`), `line_width` a power of two in `[1/8, 2]` mm, `first_layer_height = 0.2`,
+`skirt_distance` a 1/16 mm multiple in `[0, max_skirt_distance_mm]`, `skirt_loops` in `[0, max_loops]`,
+`skirt_height = 1`, `brim_width` a 1/16 mm multiple in `[0, max_abs_mm]`, `brim_object_gap = 0`,
+`min_skirt_length = 0`, enabled, rectangle coordinates inside `max_abs_mm`, with a degenerate
+`x_min == x_max` mode for closure/count only.
+
+### Strategy
+
+Construction-first cases with `no_shrink` on the rectangle class, skirt/brim presence and layer count;
+dimensions shrink. Mandatory witnesses every run: positive skirt loops, zero skirt loops, positive and zero
+brim, a degenerate rectangle, a two-layer scene and the wide-brim thin-tail shape.
+
+### Oracle
+
+An independent model computes `spacing`, `quantised`, the expected band count and the skirt offsets from the
+documented formulas; the rectangle footprint is contained with a test-local f64 point-in-polygon and edge
+sampling (clipper output is not on the 1/16 grid, so the integer `point_in_region` conversion is inexact --
+recorded in the file header). Whole-bbox edge enclosure replaces four-corner membership; the brim rings are
+checked for closure, key/width/flow invariants, nesting order and clearance windows. The generator is never
+called to produce an expected value.
+
+**Thin-tail classification (derived, measured).** The exact `2 * floor(brim_width/spacing/2)` count holds
+while each band is wider than the offset's arc decimation: for a 90-degree corner the outer boundary's
+single chord sits up to `wall_width/2 * (1 - cos 45 deg) = 0.058579 mm` inside a parallel offset, plus
+`BRIM_ARC_TOLERANCE_MM` per boundary, so the two boundaries can meet when
+`spacing <= 0.083579 mm` (only `line_width = 1/8` on the domain). In that tail the first
+`2 * (bands - 1)` rings keep the exact structure and the last band may split into several non-degenerate
+rings; every fragment is validated (closed, >= 3 distinct vertices, non-zero area, inside the last band's
+clearance window), the fragment count is recorded as `tail_fragments`, and no bound is invented. The
+measured failing input (`line_width 0.125`, `brim_width 56.6875`, 1/16 x 3/16 mm rectangle at (-64,-64))
+yields 693 rings: 690 clean rings plus 2 contour lobes and 3 sliver holes of 0.0004-0.0016 mm2 area, all at
+the band-344 hole boundary. The sliver emission is a **recorded candidate observation**. Canonical's
+**append step** is verified against `Brim.cpp::tryExPolygonOffset` (upstream `main`, read 2026-11-26):
+after a first `-0.5*spacing` offset it appends every contour **and hole** of each Clipper2 result with no
+area/vertex filter, and `Brim.cpp::outer_inner_brim_area` uses the same
+`floor(width/flow/2)*flow*2` brim-width quantisation. That is
+not the full emission pipeline: canonical Douglas-Peucker-simplifies each result at
+`0.0125 / SCALING_FACTOR` immediately before appending, and `Brim.cpp::makeBrimInfillImpl` unions the
+loops with `union_pt_chained_outside_in`; PnP does neither, and a 3-vertex sliver under 0.0125 mm high is
+exactly what Douglas-Peucker collapses. Whether canonical emits these slivers is therefore **unmeasured
+and not claimed**. The exact tail ring multiset is likewise not claimed: canonical applies
+`-1.3*spacing` / `+0.3*spacing` open-close with `douglas_peucker` between passes while
+`SkirtBrim::generate` applies one `-depth` offset per band.
+
+**Corner-join windows (derived, measured).** The brim's outer boundary offset decimates the reconstruction
+contour's 90-degree corner arc against `OFFSET_SHORTEST_EDGE_FACTOR * quantised`, which can place a ring
+vertex `quantised - depth` from the footprint **corner** instead of `anchor + quantised - depth`. The
+nearest-vertex windows are therefore two-sided and family-specific: outer ring
+`[quantised - depth - contour_env, anchor + quantised - depth + contour_env]`, hole ring
+`anchor + depth +/- contour_env`, skirt ring `[annex + d - anchor - SKIRT_ENV, annex + d + SKIRT_ENV]`, with
+`contour_env = 0.086579 mm` (two round-join passes + `wall_width/2 * (1 - cos 45 deg) = 0.058579` corner
+sagitta + rounding + slack). The named `skirt_brim_corner_join_witness` pins the exact vertex
+`(-11.658100, -95.147697)` at `quantised - depth = 61.648008`, the exact extent (2e-4), and rejects a
+uniform half-anchor error (measured deviation 0.201207 against the 0.086579 window).
+
+### Tolerance
+
+Exact ring counts outside the thin tail; `max_clearance_dev` and `max_bbox_excess` report the excess
+**outside the derived windows** (0.000000 in the final runs, i.e. every residual is explained), while
+`max_bbox_dev` is the raw measurement (corner-chord sagitta, ~0.05 mm and seed-dependent). The tail asserts
+structure and validity, not a fragment count. No area/simplicity claim for degenerate rectangles.
+
+### Shrinking
+
+Loops/vertices and dimensions simplify; the positive/zero-loop, safe/boundary and skirt/brim modes survive
+via `no_shrink`. A real shrink/complicate probe re-validates the required witness after each transition.
+
+### Execution
+
+Both tiers; bounds `max_abs_mm=64, max_skirt_distance_mm=8, max_loops=3, max_line_width_mm=2`.
+`rng_algorithm = "chacha"`, `isolation = "in_process"`, `timeout_ms = 0`, `max_shrink_time_ms = 0`, zero
+rejection/regeneration budgets. Features `["skirt-brim/property_testing"]`. Selected by
+`cargo xtask test --summary --properties --property H-SKIRT-BRIM --tier <routine|extended>`; context via
+`PNP_PROPERTY_CONTEXT`; artifacts under `target/property-testing/<run_token>/H-SKIRT-BRIM/`. Plain
+`cargo test` of the generated property is NOT acceptance. Included in the Windows routine job.
+
+### Failure record
+
+`failure.json` retains classification, full context, concrete/debug input, the tier-bearing reproduction
+command, an executable direct reproduction, captured SDK logs and `shrink_completed`.
+`modules/core-modules/*/src/**` is outside both scanner scopes; the manual FRU/test-quality review is
+recorded in the file header and the evidence doc.
+
+### Acceptance
+
+Maps to AC-10, AC-N3 and AC-N4. Routine 64 and extended 256 cases pass with zero rejects; `thin_tail` and
+`tail_fragments` are **single-run samples, not bounds** (across the observed runs, routine `thin_tail` 1-4 /
+`tail_fragments` 0, extended `thin_tail` 20-27 / `tail_fragments` 0-7), and the 1.19/0.17 boundary control
+asserts the measured 4 bands / 8 rings, offsets 1.1531/0.2635 .. 0.7718/0.6448, innermost hole 0.6448 and
+**no** zero-offset ring (the authored note is classified as a mis-prediction). `skirt_brim_controls` calls
+the same boundary helper, rejects an off-by-one count, inward skirt order, an open loop, lost whole-bbox
+enclosure, a dropped brim loop and a fabricated rectangle-shape equality, and
+`skirt_brim_corner_join_witness` pins the corner-join geometry and the half-anchor rejection. Final runs:
+routine `decimation_classified=0`; `max_clearance_dev=0`, `max_bbox_excess=0`, `enclosed_loops` 52-57
+routine / 207-238 extended. The two `skirt_brim_tdd` baselines pass unchanged. No production code changed
+for this family.

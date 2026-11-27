@@ -871,6 +871,7 @@ mod property_run_tests {
 
 // These fixtures are intentionally not in the live registry. The xtask
 // boundary tests launch them with a real, subprocess-local context.
+// property-census: harness-fixture
 #[test]
 fn proptest_fixture_context_child() {
     const NAME: &str = "proptest_fixture_context_child";
@@ -894,6 +895,8 @@ fn proptest_fixture_context_child() {
     .unwrap_or_else(|error| panic!("{error}"));
 }
 
+// Rejection-exhaustion fixture for the xtask harness; not a property record.
+// property-census: harness-fixture
 #[test]
 fn proptest_fixture_all_rejecting() {
     const NAME: &str = "proptest_fixture_all_rejecting";

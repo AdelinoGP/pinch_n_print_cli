@@ -195,6 +195,14 @@ scanned. In particular, `modules/core-modules/*/src/property_tests.rs` files
 scanner and require the manual FRU/waiver review recorded in their evidence.
 A green `check-literals` run is not evidence for those files.
 
+`modules/core-modules/*/src/**` and `xtask/src/**` are not scan roots at all,
+and `cargo xtask check-test-quality` uses the same roots
+(`collect_enforced_files` in `xtask/src/check_test_quality.rs`). Out-of-line
+crate-source test files such as
+`crates/slicer-runtime/src/region_partition/property_tests.rs` are also unread.
+The per-site manual FRU/waiver review for the property-test blind spots is
+recorded in `docs/testing/proptest-rollout-evidence.md` § 10.
+
 1. **Macro range expressions.** A macro token tree with a top-level range
    expression (`field: 0..2`) reads the `..` as an FRU rest, suppressing
    detection (locked by test `scan_macro_range_blind_spot_documented`).

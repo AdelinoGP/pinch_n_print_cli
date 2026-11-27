@@ -5,6 +5,21 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Manual extended/probe lane (`properties-extended-windows`). GitHub only
+  # accepts a `workflow_dispatch` once this workflow file exists on the
+  # repository's default branch, so a dispatch from this feature branch fails
+  # until it lands there. `failure-probe` is an intentional-failure diagnostic
+  # and is never completion evidence for an extended run.
+  workflow_dispatch:
+    inputs:
+      property_run:
+        description: 'Property lane (extended = real measured run; failure-probe = intentional failure diagnostic, not completion)'
+        required: true
+        default: extended
+        type: choice
+        options:
+          - extended
+          - failure-probe
 
 env:
   CARGO_TERM_COLOR: always
@@ -155,46 +170,42 @@ jobs:
         run: cargo xtask build-guests
       - name: Run routine properties
         run: cargo xtask test --summary --properties --tier routine
-      # A passing exit code does not prove the intended records executed: an
-      # empty or mis-scoped selector exits 0. `cargo xtask test` writes every
-      # record's execution line to target/test-output.log, so assert the IDs
-      # there. The assertion covers the 32 records the property packets' ACs name
-      # (13 geometry/Arachne, 9 infill/linker/wave/ironing, and the 10 support
-      # planner/renderer records of packet proptest-openrscad_14); the lane still
-      # executes every other selected record. This is the same positive check the
-      # scripted SCAD lane uses, and it catches the `--with-scad`-omitted failure
-      # mode directly.
-      - name: Assert the 32 required property records executed
+      # A passing exit code alone is not acceptance: an empty or mis-scoped
+      # selector exits 0. The registry census and the gated executor own
+      # per-record registration and execution evidence, so this check keeps no
+      # literal ID roster: a hand-written list would duplicate the registry and
+      # rot whenever a record is added. Instead it rejects the executor's census
+      # failure tokens (defense in depth; the runner already exits nonzero for
+      # them) and requires controller completion evidence in the combined log.
+      - name: Assert dynamic property execution evidence
         shell: pwsh
         run: |
-          $missing = @()
-          foreach ($id in @(
-            'H-BOOL-SET', 'H-BOOL-CLIP', 'H-OFFSET-MITER', 'H-OFFSET-SMOOTH',
-            'H-MESH-SLICE', 'H-MESH-QUERY', 'H-HELPERS-SPLIT',
-            'H-ARACHNE-BEADING', 'H-ARACHNE-GRAPH', 'H-ARACHNE-PIPELINE',
-            'M-ARACHNE-CLASSIFY', 'M-ARACHNE-BUILD', 'M-ARACHNE-SEQUENCE',
-            'M-RECTILINEAR-SCAN', 'M-RECTILINEAR-SPACING',
-            'M-GYROID-PHASE', 'M-GYROID-CLIP',
-            'M-LINKER-GRAPH', 'M-LINKER-CONNECT', 'M-LINKER-CHAIN',
-            'M-WAVE-TRIM', 'M-IRONING-ZIGZAG',
-            'M-SUPPORT-RASTER', 'M-SUPPORT-HOLES', 'M-SUPPORT-GRID',
-            'M-SUPPORT-TERRITORY', 'M-TREE-SMOOTH', 'M-TREE-ROLES',
-            'M-TRADITIONAL-SCAN', 'M-TREE-SCAN', 'M-TREE-RENDER',
-            'M-SUPPORT-IRONING')) {
-            if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
-              $missing += $id
+          $log = 'target/test-output.log'
+          foreach ($token in @('missing_property_execution', 'unregistered_property_test')) {
+            if (Select-String -Path $log -Pattern $token -SimpleMatch -Quiet) {
+              Write-Host "::error::property run reported $token"
+              exit 1
             }
           }
-          if ($missing.Count -gt 0) {
-            Write-Host "::error::property records did not execute: $($missing -join ', ')"
-            exit 1
+          # Compact JSON, as emitted by `serde_json`; matched independently so
+          # no key-order assumption is made. At least one controller end event
+          # with a passing, completion-eligible outcome is required.
+          foreach ($needle in @('"process_role":"controller"', '"phase":"end"', '"outcome":"passed"', '"completion_eligible":true')) {
+            if (-not (Select-String -Path $log -Pattern $needle -SimpleMatch -Quiet)) {
+              Write-Host "::error::property log lacks controller completion evidence: $needle"
+              exit 1
+            }
           }
-          Write-Host "OK: all 32 asserted property records executed"
-      - name: Upload property failure artifacts
-        if: failure()
+          Write-Host "OK: property log shows controller completion evidence and no census failure token"
+      - name: Upload property evidence
+        # Retained on success as well as failure: a passing PR run must keep the
+        # combined log and attempt tree that show which records actually
+        # executed, not just the failing case. `always()` also runs after
+        # cancellation, unlike `failure()`.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: properties-windows-failure
+          name: properties-windows-evidence
           path: |
             target/test-output.log
             target/property-testing/
@@ -235,30 +246,36 @@ jobs:
           # property executes.
           cargo xtask test --summary --properties --tier routine --with-scad
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # An empty or unavailable selector is not acceptance: both records must
-          # have produced a passing execution with completion evidence.
-          if (-not (Select-String -Path target/test-output.log -Pattern 'D-SCAD-2D')) {
-            Write-Host "::error::D-SCAD-2D did not execute"
-            exit 1
+          # An empty or mis-scoped selector is not acceptance. The registry
+          # census and the gated executor own per-record registration and
+          # execution evidence, so this lane keeps no literal ID roster: a
+          # hand-written list duplicates the registry and rots whenever a
+          # record is added. `--with-scad` itself fails when no eligible SCAD
+          # record is selected, and the census fails when a registered SCAD
+          # record is missing. This check still rejects the executor's census
+          # failure tokens (defense in depth) and requires controller
+          # completion evidence in the combined log.
+          $log = 'target/test-output.log'
+          foreach ($token in @('missing_property_execution', 'unregistered_property_test')) {
+            if (Select-String -Path $log -Pattern $token -SimpleMatch -Quiet) {
+              Write-Host "::error::scripted SCAD property run reported $token"
+              exit 1
+            }
           }
-          if (-not (Select-String -Path target/test-output.log -Pattern 'D-SCAD-3D')) {
-            Write-Host "::error::D-SCAD-3D did not execute"
-            exit 1
-          }
-          # Packet proptest-openrscad_09's scripted records: the same positive
-          # check, so a selector that drops them cannot pass silently.
-          foreach ($id in @('H-BOOL-SCAD', 'H-MESH-SCAD')) {
-            if (-not (Select-String -Path target/test-output.log -Pattern $id -SimpleMatch -Quiet)) {
-              Write-Host "::error::$id did not execute"
+          foreach ($needle in @('"process_role":"controller"', '"phase":"end"', '"outcome":"passed"', '"completion_eligible":true')) {
+            if (-not (Select-String -Path $log -Pattern $needle -SimpleMatch -Quiet)) {
+              Write-Host "::error::scripted SCAD log lacks controller completion evidence: $needle"
               exit 1
             }
           }
           exit 0
-      - name: Upload scripted SCAD failure artifacts
-        if: failure()
+      - name: Upload scripted SCAD evidence
+        # Retained on success as well as failure so the routine SCAD lane's log
+        # and attempt tree stay recoverable after the job finishes.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: properties-scad-windows-failure
+          name: properties-scad-windows-evidence
           path: |
             target/test-output.log
             target/property-testing/
@@ -616,7 +633,7 @@ jobs:
             @{ Name = 'helpers_cli'; Package = 'pnp-cli'; Test = 'helpers_cli'; Expected = 9 },
             @{ Name = 'cli_tdd'; Package = 'pnp-cli'; Test = 'cli_tdd'; Expected = 3 },
             @{ Name = 'model_loader_tdd'; Package = 'slicer-model-io'; Test = 'model_loader_tdd'; Expected = 44 },
-            @{ Name = 'bed_placement_tdd'; Package = 'slicer-model-io'; Test = 'bed_placement_tdd'; Expected = 8 })
+            @{ Name = 'bed_placement_tdd'; Package = 'slicer-model-io'; Test = 'bed_placement_tdd'; Expected = 12 })
           foreach ($case in $regressions) {
             cargo test -p $case.Package --test $case.Test 2>&1 |
               Tee-Object -FilePath target/test-output.log
@@ -650,11 +667,174 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload ingestion artifacts
-        if: failure()
+        # Retained on success as well as failure: the enabled acceptance logs
+        # are the lane's evidence, and a failed step must not be the only case
+        # whose per-test logs (target/scad-ingest/) survive.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scad-ingest-windows-failure
+          name: scad-ingest-windows-evidence
           path: |
             target/scad-ingest/
             target/test-output.log
           if-no-files-found: warn
+
+  # Manual extended/probe lane. Only `workflow_dispatch` selects this job, and
+  # no predecessor job carries an `if:`, so a dispatch still runs the same
+  # required PR checks rather than skipping them. `extended` is the real
+  # measured `P-core-extended` then `P-scad-extended` run, archived separately.
+  # `failure-probe` runs the runner's own controlled failure/status tests and
+  # then deliberately fails; it is a diagnostic, never completion evidence.
+  #
+  # The SCAD-inclusive selection compiles the vendored engine's native Manifold
+  # kernel, a C++ CMake build; `windows-latest` provides CMake and MSVC.
+  properties-extended-windows:
+    name: Properties extended (Windows, manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    # Covers a cold vendored-engine/C++ kernel compile, the guest WASMs and both
+    # complete extended selections in one job.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
+
+      - name: Extended core properties
+        if: inputs.property_run == 'extended'
+        shell: pwsh
+        run: |
+          # xtask owns target/test-output.log; an outer Tee-Object to the same
+          # path takes a sharing lock on Windows and aborts the run before any
+          # property executes. Capture the status immediately.
+          cargo xtask test --summary --properties --tier extended
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Archive before the SCAD run overwrites the combined log/appends to
+          # target/property-testing, and before the evidence assertions below,
+          # so a missing-evidence failure is still uploaded.
+          New-Item -ItemType Directory -Force -Path target/property-ci/extended-core | Out-Null
+          Copy-Item target/test-output.log target/property-ci/extended-core/test-output.log
+          Copy-Item target/property-testing target/property-ci/extended-core/property-testing -Recurse
+          # A green exit code alone is not acceptance. The registry census and
+          # the gated executor own per-record registration and execution
+          # evidence, so no literal ID roster is kept here. Reject the census
+          # failure tokens (defense in depth) and require controller completion
+          # evidence: the runner writes an end event only after validating the
+          # record's exact test name, accepted cases and completion eligibility.
+          $log = 'target/test-output.log'
+          foreach ($token in @('missing_property_execution', 'unregistered_property_test')) {
+            if (Select-String -Path $log -Pattern $token -SimpleMatch -Quiet) {
+              Write-Host "::error::extended core property run reported $token"
+              exit 1
+            }
+          }
+          foreach ($needle in @('"process_role":"controller"', '"phase":"end"', '"outcome":"passed"', '"completion_eligible":true')) {
+            if (-not (Select-String -Path $log -Pattern $needle -SimpleMatch -Quiet)) {
+              Write-Host "::error::extended core log lacks completion evidence: $needle"
+              exit 1
+            }
+          }
+          if (@(Get-ChildItem target/property-ci/extended-core/property-testing -Recurse -File -ErrorAction SilentlyContinue).Count -eq 0) {
+            Write-Host "::error::extended core run produced no property-testing attempt tree"
+            exit 1
+          }
+
+      - name: Extended SCAD-inclusive properties
+        if: inputs.property_run == 'extended'
+        shell: pwsh
+        run: |
+          cargo xtask test --summary --properties --tier extended --with-scad
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path target/property-ci/extended-scad | Out-Null
+          Copy-Item target/test-output.log target/property-ci/extended-scad/test-output.log
+          # target/property-testing is append-only across the job, so this copy
+          # is a superset of the core run; each run's token subdirectory stays
+          # identifiable by its own context.json.
+          Copy-Item target/property-testing target/property-ci/extended-scad/property-testing -Recurse
+          # Same non-roster evidence contract as the core selection: the
+          # census/executor own per-record registration and execution, so only
+          # census failure tokens and controller completion evidence are
+          # checked here.
+          $log = 'target/test-output.log'
+          foreach ($token in @('missing_property_execution', 'unregistered_property_test')) {
+            if (Select-String -Path $log -Pattern $token -SimpleMatch -Quiet) {
+              Write-Host "::error::extended SCAD property run reported $token"
+              exit 1
+            }
+          }
+          foreach ($needle in @('"process_role":"controller"', '"phase":"end"', '"outcome":"passed"', '"completion_eligible":true')) {
+            if (-not (Select-String -Path $log -Pattern $needle -SimpleMatch -Quiet)) {
+              Write-Host "::error::extended SCAD log lacks completion evidence: $needle"
+              exit 1
+            }
+          }
+          if (@(Get-ChildItem target/property-ci/extended-scad/property-testing -Recurse -File -ErrorAction SilentlyContinue).Count -eq 0) {
+            Write-Host "::error::extended SCAD run produced no property-testing attempt tree"
+            exit 1
+          }
+
+      - name: Runner status controls
+        if: inputs.property_run == 'failure-probe'
+        shell: pwsh
+        run: |
+          # Real controlled runner-status tests through the real xtask binary:
+          # accumulated child logs with the child's native nonzero status, and
+          # rejection of missing/zero/ignored/mismatched completion evidence.
+          # The filter must actually select them; the "test ... ok" assertions
+          # below fail a green zero-test selection.
+          cargo test -p xtask --bin xtask -- property_executor_ --nocapture 2>&1 |
+            Tee-Object -FilePath target/test-output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($test in @(
+            'property_executor_appends_logs_and_preserves_child_status',
+            'property_executor_rejects_missing_zero_ignored_and_mismatched_evidence')) {
+            if (-not (Select-String -Path target/test-output.log -Pattern "$test ... ok" -SimpleMatch -Quiet)) {
+              Write-Host "::error::failure-probe did not execute $test"
+              exit 1
+            }
+          }
+          # Identifiable non-completion evidence, then the deliberate failure.
+          # No synthetic success step follows it: this job must stay red.
+          New-Item -ItemType Directory -Force -Path target/property-ci/failure-probe | Out-Null
+          Copy-Item target/test-output.log target/property-ci/failure-probe/test-output.log
+          'pbt-ci-failure-probe' | Set-Content -Path target/property-ci/failure-probe/marker.txt
+          Write-Host "::error::pbt-ci-failure-probe: deliberate non-completion diagnostic. This failed job is not extended-run evidence and satisfies no property acceptance gate; inspect the pbt-ci-failure-probe marker/log artifact and the runner status controls above."
+          exit 1
+
+      - name: Upload extended artifacts
+        # `always()` uploads after failure and cancellation. The raw
+        # `target/property-testing/` path covers a run that failed before the
+        # per-selection archive copy above could execute. In probe mode this
+        # artifact contains only probe diagnostics (no extended run occurred);
+        # the identifiable marker/log is the `pbt-ci-failure-probe` artifact.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: properties-extended-windows
+          path: |
+            target/property-ci/
+            target/test-output.log
+            target/property-testing/
+            target/scad-adapter/
+            target/scad-ingest/
+          if-no-files-found: warn
+
+      - name: Upload failure-probe marker and log
+        # Runs even though the probe step above deliberately fails; the upload
+        # never overrides that failure status.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pbt-ci-failure-probe
+          path: |
+            target/property-ci/failure-probe/
+            target/test-output.log
+          if-no-files-found: ignore

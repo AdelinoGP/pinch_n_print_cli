@@ -2869,6 +2869,10 @@ fn proptest_gyroid_raw_wave_clipping() {
         rotated_cases.get() > 0,
         "no rotated generation case was sampled"
     );
+    assert!(
+        dense_cases.get() > 0,
+        "no high-density generation case was sampled"
+    );
     println!(
         "M-GYROID-CLIP accepted_calls={} raw_paths={} raw_segments={} raw_points={} \
          outside_points={} expected_intervals={} returned_segments={} retained_subjects={} \

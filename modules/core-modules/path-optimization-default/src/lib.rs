@@ -217,59 +217,70 @@ impl PathOptimizationDefault {
             return (Vec::new(), Vec::new());
         }
 
-        let mut tool_clusters: std::collections::BTreeMap<u32, Vec<&OrderedEntityView>> =
+        // ADR-0062: paths sharing an `order_lock` tag are an atomic, contiguous,
+        // forward-direction sequence, whatever their tool or role. The host
+        // (`validate_entity_order_locks`, `slicer-runtime/src/layer_executor.rs`)
+        // rejects a proposal that splits one, so a locked block is formed into a
+        // unit BEFORE partitioning and the whole unit is assigned to the
+        // partition (tool cluster, wall-vs-role-group) of its FIRST member.
+        // Units are maximal runs of equal `Some(order_lock)` adjacent in staged
+        // input order (the host's own adjacency rule); unlocked entities are
+        // singleton units. Candidate start/end are the first member's start and
+        // the last member's end.
+        let all_entities: Vec<&OrderedEntityView> = entities.iter().collect();
+        let units = coalesce_locked_candidates(&all_entities);
+
+        let mut tool_clusters: std::collections::BTreeMap<u32, Vec<NearestNeighborCandidate>> =
             std::collections::BTreeMap::new();
-        for entity in entities {
+        for unit in units {
+            let first = &entities[unit.indices[0] as usize];
             tool_clusters
-                .entry(tool_index_of(entity))
+                .entry(tool_index_of(first))
                 .or_default()
-                .push(entity);
+                .push(unit);
         }
 
-        let ordered_tool_keys: Vec<u32> = tool_clusters.keys().copied().collect();
-
         let mut final_permutation: Vec<(u32, bool)> = Vec::with_capacity(entities.len());
-        for &tool_idx in &ordered_tool_keys {
-            let cluster_entities = &tool_clusters[&tool_idx];
-
+        for cluster_units in tool_clusters.into_values() {
             // Perimeter modules commit the wall sequence before this stage. The
             // path-optimization view intentionally has no perimeter index, so
-            // wall entities must remain in their staged relative order. Travel
+            // wall units must remain in their staged relative order. Travel
             // optimization still applies to the non-wall role groups.
-            let mut walls = Vec::new();
-            let mut role_groups: std::collections::BTreeMap<u32, Vec<&OrderedEntityView>> =
+            let mut walls: Vec<NearestNeighborCandidate> = Vec::new();
+            let mut role_groups: std::collections::BTreeMap<u32, Vec<NearestNeighborCandidate>> =
                 std::collections::BTreeMap::new();
-            for entity in cluster_entities {
-                if Self::is_wall(&entity.role) {
-                    walls.push(*entity);
+            for unit in cluster_units {
+                let first = &entities[unit.indices[0] as usize];
+                if Self::is_wall(&first.role) {
+                    walls.push(unit);
                 } else {
                     role_groups
-                        .entry(self.role_group(&entity.role))
+                        .entry(self.role_group(&first.role))
                         .or_default()
-                        .push(entity);
+                        .push(unit);
                 }
             }
 
-            for group_entities in role_groups.values() {
-                if self.role_group(&group_entities[0].role) >= 1 {
+            for (&group, candidates) in &role_groups {
+                if group >= 1 {
                     break;
                 }
-                let candidates = coalesce_locked_candidates(group_entities);
-                for (candidate_idx, reversal) in nearest_neighbor_permutation(&candidates) {
+                for (candidate_idx, reversal) in nearest_neighbor_permutation(candidates) {
                     for &orig_idx in &candidates[candidate_idx].indices {
                         final_permutation.push((orig_idx, reversal));
                     }
                 }
             }
-            for entity in walls {
-                final_permutation.push((entity.original_index, false));
+            for unit in walls {
+                for orig_idx in unit.indices {
+                    final_permutation.push((orig_idx, false));
+                }
             }
-            for group_entities in role_groups.values() {
-                if self.role_group(&group_entities[0].role) < 1 {
+            for (&group, candidates) in &role_groups {
+                if group < 1 {
                     continue;
                 }
-                let candidates = coalesce_locked_candidates(group_entities);
-                for (candidate_idx, reversal) in nearest_neighbor_permutation(&candidates) {
+                for (candidate_idx, reversal) in nearest_neighbor_permutation(candidates) {
                     for &orig_idx in &candidates[candidate_idx].indices {
                         final_permutation.push((orig_idx, reversal));
                     }
@@ -674,6 +685,68 @@ mod tests {
         assert!(perm.iter().all(|&(_, reversed)| !reversed));
     }
 
+    /// Regression: ADR-0062 locked blocks that span role groups or tools.
+    ///
+    /// Root cause: `group_then_nearest_neighbor` partitioned entities by tool
+    /// cluster and role group BEFORE coalescing locked runs, so a valid
+    /// contiguous block whose members fell into different partitions was split
+    /// (the host's `validate_entity_order_locks` then rejects the proposal
+    /// with `locked block N was interleaved or reordered`).
+    ///
+    /// Failing input on the pre-fix code: a same-region two-entity lock tag 5 on
+    /// `[SparseInfill (group 4), Ironing (group 5)]` followed by an unrelated
+    /// `SparseInfill` produced `[0, 2, 1]`; a lock tag 6 on `[tool 0, tool 1]`
+    /// followed by one unlocked entity per tool produced `[0, 2, 1, 3]`.
+    #[test]
+    fn cross_role_and_cross_tool_locked_blocks_stay_adjacent_and_forward() {
+        let module = PathOptimizationDefault::default();
+
+        let cross_role = vec![
+            make_locked_entity(1, ExtrusionRole::Ironing, (0.0, 0.0), (1.0, 0.0), 5),
+            make_entity(2, ExtrusionRole::SparseInfill, 50.0, 0.0),
+        ];
+        let mut cross_role_all = vec![make_locked_entity(
+            0,
+            ExtrusionRole::SparseInfill,
+            (0.0, 0.0),
+            (1.0, 0.0),
+            5,
+        )];
+        cross_role_all.extend(cross_role);
+        let (perm, _changes) = module.group_then_nearest_neighbor(&cross_role_all);
+        assert_eq!(
+            perm,
+            vec![(0, false), (1, false), (2, false)],
+            "tag 5 spans role groups 4 and 5 and must stay adjacent, forward, unreversed"
+        );
+
+        let mut tool_one =
+            make_locked_entity(1, ExtrusionRole::SparseInfill, (2.0, 0.0), (3.0, 0.0), 6);
+        tool_one.tool_index = 1;
+        let mut unlocked_tool_one = make_entity(3, ExtrusionRole::SparseInfill, 60.0, 0.0);
+        unlocked_tool_one.tool_index = 1;
+        let cross_tool = vec![
+            make_locked_entity(0, ExtrusionRole::SparseInfill, (0.0, 0.0), (1.0, 0.0), 6),
+            tool_one,
+            make_entity(2, ExtrusionRole::SparseInfill, 50.0, 0.0),
+            unlocked_tool_one,
+        ];
+        let (perm, changes) = module.group_then_nearest_neighbor(&cross_tool);
+        assert_eq!(
+            perm,
+            vec![(0, false), (1, false), (2, false), (3, false)],
+            "tag 6 spans tools 0 and 1: the block is placed whole in its first member's cluster"
+        );
+        assert_eq!(
+            changes
+                .iter()
+                .map(|c| (c.after_entity_index, c.from_tool, c.to_tool))
+                .collect::<Vec<_>>(),
+            vec![(0, 0, 1), (1, 1, 0), (2, 0, 1)],
+            "tool-change records are derived from the final permutation"
+        );
+    }
+
     #[test]
     fn all_none_locks_neutrality() {
         let entities = vec![
@@ -871,3 +944,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

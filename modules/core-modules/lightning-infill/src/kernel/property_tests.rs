@@ -998,7 +998,7 @@ fn lightning_seed_tree_controls() {
 }
 
 /// `lightning_owned_shrink_controls` — the real forest value tree survives
-/// complication and simplification, and a narrowing bound is rejected.
+/// simplification and re-complication without losing structural validity.
 #[test]
 fn lightning_owned_shrink_controls() {
     use proptest::strategy::{Strategy, ValueTree};
@@ -1013,13 +1013,7 @@ fn lightning_owned_shrink_controls() {
         .new_tree(&mut runner)
         .expect("the forest strategy must build a tree");
     let mut simplifications = 0usize;
-    for _ in 0..4 {
-        if !tree.complicate() {
-            break;
-        }
-        let case: TreeCase = tree.current();
-        verify_trees(&case).expect("a complicated forest must stay valid");
-    }
+    let mut complications = 0usize;
     for _ in 0..8 {
         if !tree.simplify() {
             break;
@@ -1027,29 +1021,23 @@ fn lightning_owned_shrink_controls() {
         let case: TreeCase = tree.current();
         verify_trees(&case).expect("a simplified forest must stay valid");
         simplifications += 1;
+        // `complicate` re-expands the immediately preceding successful
+        // simplification. Calling it after simplification is exhausted would
+        // make this loop vacuous and the assertion below unsatisfiable.
+        if tree.complicate() {
+            let case: TreeCase = tree.current();
+            verify_trees(&case).expect("a complicated forest must stay valid");
+            complications += 1;
+        }
     }
     assert!(
         simplifications > 0,
         "the forest tree must expose at least one simplification"
     );
-
-    // The seed domain needs at least one layer and a nonnegative radius.
-    assert!(bound_domain(1, 0).is_ok());
-    assert!(bound_domain(0, 0).is_err());
-    assert!(bound_domain(1, 100 * MM).is_ok());
-    // A radius larger than the fixture cannot be modelled: the property's own
-    // bounds must keep it below half the smallest side.
-    assert!(bound_domain(1, -1).is_err());
-}
-
-fn bound_domain(max_layers: usize, max_radius: i64) -> Result<(), String> {
-    if max_layers == 0 {
-        return Err(String::from("max_layers must admit at least one layer"));
-    }
-    if max_radius < 0 {
-        return Err(String::from("max_radius_units must be nonnegative"));
-    }
-    Ok(())
+    assert!(
+        complications > 0,
+        "the forest tree must expose at least one complication after a simplification"
+    );
 }
 
 #[allow(dead_code)]

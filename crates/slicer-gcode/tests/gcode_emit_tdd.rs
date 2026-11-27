@@ -2092,3 +2092,87 @@ fn coarse_pass_height_delta_matches_recorded_verdict() {
         cumulative_e[2]
     );
 }
+
+// ---------------------------------------------------------------------------
+// Regression: `role_equals` omitted the GapFill / SupportBaseInterface /
+// RaftInfill arms, so two consecutive entities of one of those roles fell
+// through to `_ => false` and re-emitted an identical `;TYPE:` label.
+//
+// Root cause: the role-change detector compared by variant identity through an
+// explicit match table that never listed those three same-variant pairs, which
+// contradicts its own documented contract ("functionally equal for ;TYPE:
+// labeling") and the emitter's "emit ;TYPE: when the role changes" rule.
+//
+// Formerly failing input: one layer with two consecutive `ExtrusionRole::GapFill`
+// entities (each a two-point open path). Formerly emitted output:
+// `;TYPE:Gap infill` before the first entity AND `;TYPE:Gap infill` before the
+// second. Now exactly one label is emitted; a genuine role change still emits a
+// second label.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn same_role_entities_emit_one_type_label_including_gap_fill() {
+    let gap_a = print_entity_fixture_with_id(
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+        ],
+        ExtrusionRole::GapFill,
+        1,
+    );
+    let gap_b = print_entity_fixture_with_id(
+        vec![
+            point3_with_width(2.0, 0.0, 0.2),
+            point3_with_width(3.0, 0.0, 0.2),
+        ],
+        ExtrusionRole::GapFill,
+        2,
+    );
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![gap_a.clone(), gap_b],
+        ..layer_collection_fixture(0, 0.2)
+    };
+
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let gcode_ir = emitter.emit_gcode(&[layer]).expect("emission must succeed");
+    let labels = positions_of(&gcode_ir, |command| is_raw_eq(command, ";TYPE:Gap infill"));
+    assert_eq!(
+        labels.len(),
+        1,
+        "two consecutive GapFill entities must emit exactly one ;TYPE:Gap infill label, got {} at {labels:?}",
+        labels.len()
+    );
+
+    // A genuine role change still re-emits the label.
+    let sparse = print_entity_fixture_with_id(
+        vec![
+            point3_with_width(4.0, 0.0, 0.2),
+            point3_with_width(5.0, 0.0, 0.2),
+        ],
+        ExtrusionRole::SparseInfill,
+        3,
+    );
+    let layer = LayerCollectionIR {
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![gap_a, sparse],
+        ..layer_collection_fixture(0, 0.2)
+    };
+    let gcode_ir = emitter.emit_gcode(&[layer]).expect("emission must succeed");
+    assert_eq!(
+        positions_of(&gcode_ir, |command| is_raw_eq(command, ";TYPE:Gap infill")).len(),
+        1,
+        "the GapFill label must appear once before the role change"
+    );
+    assert_eq!(
+        positions_of(&gcode_ir, |command| is_raw_eq(
+            command,
+            ";TYPE:Sparse infill"
+        ))
+        .len(),
+        1,
+        "a role change must still emit the new role's label"
+    );
+}

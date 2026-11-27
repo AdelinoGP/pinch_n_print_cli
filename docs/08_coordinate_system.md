@@ -182,10 +182,21 @@ Rules:
 - **Rigid-body.** All objects receive the same translation, so multi-object
   scenes keep their relative arrangement. A SCAD script's disconnected bodies
   live in one object's single indexed mesh and move together by construction.
-- **Placement refreshes the cached Z extent.** `world_z_extent` is cached at
+  `H-IO-PLACEMENT` (`docs/testing/properties.md#h-io-placement`) pins the
+  whole-scene translation, the derived float envelopes (z-min zero, centre
+  within `2 ulp`, pairwise AABB differences within `4 * EPSILON * max_abs`) and
+  the per-object non-recentring rule.
+- **Placement refreshes the cached extents.** `world_z_extent` is cached at
   assembly, so `place_model_on_bed` (`crates/pnp-cli/src/main.rs`) recomputes it
   after translating; otherwise a model loaded below the plate would keep
-  reporting a negative world Z minimum while its vertices rest on the bed.
+  reporting a negative world Z minimum while its vertices rest on the bed. The
+  same rule applies to `MeshIR::build_volume`: `place_bare_mesh_on_bed` recomputes
+  it as the **world-space** union of `object_world_aabb` (not the raw-vertex
+  union, which is unchanged when the shift lives in `transform.matrix`). The
+  former raw-vertex recompute left a stale pre-placement box and is the confirmed
+  SUT defect pinned by
+  `bed_placement_tdd::identity_matrix_placement_updates_build_volume_to_the_world_union`;
+  `H-IO-PLACEMENT` asserts the world union for every generated scene.
 - **Bed geometry comes from `printable_area`** (`ResolvedConfig`), an interleaved
   `[x0, y0, x1, y1, ...]` mm polygon defaulting to a 250 x 250 square. When it
   cannot describe a plate, placement is skipped with a warning rather than
@@ -215,7 +226,10 @@ internally would double-scale at the boundary.
 
 `ExtrusionPath3D.speed_factor: f32` is a per-move multiplier applied at
 F-token emission. `resolve_feedrate` clamps it to **`[0.05, 5.0]`** before
-multiplying by the role-resolved base speed.
+multiplying by the role-resolved base speed. The clamp is **PnP ADR-0052**,
+not an OrcaSlicer-derived behaviour; the 60× mm/min conversion, the clamp
+ends, the round-to-millidegree step and the per-role table are pinned by
+`H-GCODE-FEEDRATE` (`docs/testing/properties.md#h-gcode-feedrate`).
 
 ---
 

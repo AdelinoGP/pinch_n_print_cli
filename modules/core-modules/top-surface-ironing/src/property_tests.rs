@@ -335,6 +335,10 @@ impl IronCase {
     }
 
     fn geometry_domain(&self) -> GeometryDomain {
+        // The outer topology domain pins class, hole count, component count,
+        // boundary rule and the measured bounds together; a FRU would silently
+        // default an axis of the topology contract.
+        // exhaustive: complete topology domain.
         GeometryDomain {
             class: self.shape.topology(),
             min_holes: self.shape.min_holes(),

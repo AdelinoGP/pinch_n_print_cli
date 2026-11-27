@@ -811,10 +811,11 @@ pub(crate) fn run(
     log_path: &Path,
     summary: bool,
 ) -> i32 {
-    let result =
-        Metadata::load(root).and_then(|metadata| parse_registry(&prepared.input, &metadata));
-    let registry = match result {
-        Ok(registry) => registry,
+    let result = Metadata::load(root).and_then(|metadata| {
+        parse_registry(&prepared.input, &metadata).map(|registry| (metadata, registry))
+    });
+    let (metadata, registry) = match result {
+        Ok(loaded) => loaded,
         Err(error) => {
             eprintln!("xtask test: property registry: {error}");
             return 1;
@@ -837,9 +838,20 @@ pub(crate) fn run(
         &CargoLauncher {
             ws_root: root.to_path_buf(),
         },
+        // Every real property run audits the whole lane, not just the
+        // selected records, so a deleted record cannot hide its target.
+        Some(&CensusScope {
+            metadata: &metadata,
+            with_scad: selection.with_scad,
+            packages: None,
+        }),
     )
 }
 
+/// `census` is `None` only for executor unit fixtures whose synthetic
+/// registry and launcher exercise record execution in isolation; `run`, the
+/// only production caller, always supplies the lane-wide census.
+#[allow(clippy::too_many_arguments)]
 fn execute(
     root: &Path,
     registry: &Registry,
@@ -848,6 +860,7 @@ fn execute(
     log_path: &Path,
     summary: bool,
     launcher: &impl ChildLauncher,
+    census_scope: Option<&CensusScope<'_>>,
 ) -> i32 {
     let file = match File::create(log_path) {
         Ok(file) => file,
@@ -861,6 +874,12 @@ fn execute(
         let _ = log.message("missing_property_execution: no selected properties");
         return 1;
     }
+    // A census failure is retained as the first failure, but the selected
+    // records still execute so their own evidence and status are logged.
+    let mut first_failure = match census_scope {
+        Some(scope) => census(root, &mut log, registry, scope, launcher),
+        None => 0,
+    };
     let version = match proptest_version(root) {
         Ok(version) => version,
         Err(error) => {
@@ -870,7 +889,6 @@ fn execute(
     };
     let token = run_token();
     let cargo_target_dir = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from);
-    let mut first_failure = 0;
     for record in selected {
         let dir = root
             .join("target/property-testing")
@@ -932,6 +950,481 @@ fn execute(
         }
     }
     first_failure
+}
+
+// ---------------------------------------------------------------------------
+// Fail-closed registry census.
+//
+// The census derives the eligible property owners and targets from Cargo
+// metadata and source, never from the registry alone, and lists every eligible
+// target through the same child path as `discover`. A target whose last record
+// was deleted therefore still appears, as does any discovered `proptest_` test
+// the registry does not claim.
+
+/// Marks the following `fn proptest_*` as a deliberate harness fixture that is
+/// intentionally not a registered property (it must still be discovered).
+const CENSUS_EXEMPTION: &str = "// property-census: harness-fixture";
+const CENSUS_LABEL: &str = "CENSUS";
+const APPROVED_MATRIX: &str = "docs/testing/properties.md";
+
+/// What the census audits: one lane, optionally narrowed to some packages.
+pub(crate) struct CensusScope<'a> {
+    pub(crate) metadata: &'a Metadata,
+    pub(crate) with_scad: bool,
+    /// `None` audits every eligible workspace owner.
+    pub(crate) packages: Option<&'a BTreeSet<String>>,
+}
+
+struct CensusTarget {
+    package: String,
+    kind: TargetKind,
+    name: String,
+    features: Vec<String>,
+    /// The target's own source defines at least one `fn proptest_`.
+    source_expected: bool,
+    registered: Vec<String>,
+    exemptions: BTreeSet<String>,
+}
+
+impl CensusTarget {
+    fn label(&self) -> String {
+        format!("{}/{}/{}", self.package, kind_name(self.kind), self.name)
+    }
+}
+
+fn kind_name(kind: TargetKind) -> &'static str {
+    match kind {
+        TargetKind::Test => "test",
+        TargetKind::Lib => "lib",
+    }
+}
+
+fn is_lib_kind(kind: &str) -> bool {
+    matches!(kind, "lib" | "rlib" | "dylib" | "cdylib" | "staticlib")
+}
+
+fn is_property_test(name: &str) -> bool {
+    name.rsplit("::")
+        .next()
+        .is_some_and(|part| part.starts_with("proptest_"))
+}
+
+/// Approved IDs are the matrix's exact `## <PROPERTY-ID>` headings.
+fn approved_ids(root: &Path) -> io::Result<BTreeSet<String>> {
+    let text = fs::read_to_string(root.join(APPROVED_MATRIX))?;
+    Ok(text
+        .lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .filter(|id| {
+            let mut chars = id.chars();
+            chars.next().is_some_and(|c| c.is_ascii_uppercase())
+                && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
+        })
+        .map(str::to_owned)
+        .collect())
+}
+
+/// Read a target's sources: a test target's own file, or a library's whole
+/// source directory (unit-test modules live in submodule files).
+fn target_source(kind: TargetKind, src_path: &Path) -> io::Result<String> {
+    match kind {
+        TargetKind::Test => fs::read_to_string(src_path),
+        TargetKind::Lib => {
+            let dir = src_path
+                .parent()
+                .ok_or_else(|| io::Error::other("library source has no parent directory"))?;
+            let mut text = String::new();
+            let mut files: Vec<_> = walkdir::WalkDir::new(dir)
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(io::Error::other)?
+                .into_iter()
+                .filter(|entry| {
+                    entry.file_type().is_file()
+                        && entry.path().extension().is_some_and(|ext| ext == "rs")
+                })
+                .map(walkdir::DirEntry::into_path)
+                .collect();
+            files.sort();
+            for file in files {
+                text.push_str(&fs::read_to_string(file)?);
+                text.push('\n');
+            }
+            Ok(text)
+        }
+    }
+}
+
+/// Function names marked by `CENSUS_EXEMPTION`. An annotation that does not
+/// precede a `fn proptest_*` is kept verbatim so it can never match a
+/// discovered test and is reported as stale.
+fn census_exemptions(text: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut lines = text.lines().map(str::trim);
+    while let Some(line) = lines.next() {
+        if line != CENSUS_EXEMPTION {
+            continue;
+        }
+        let mut name = None;
+        for next in lines.by_ref() {
+            if next.is_empty() || next.starts_with("#[") || next.starts_with("//") {
+                continue;
+            }
+            name = next
+                .strip_prefix("fn ")
+                .and_then(|rest| {
+                    rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                        .next()
+                })
+                .filter(|name| name.starts_with("proptest_"))
+                .map(str::to_owned)
+                .or_else(|| Some(format!("<annotation before `{next}`>")));
+            break;
+        }
+        names.insert(name.unwrap_or_else(|| "<annotation at end of file>".to_owned()));
+    }
+    names
+}
+
+fn push_unique(features: &mut Vec<String>, feature: String) {
+    if !features.contains(&feature) {
+        features.push(feature);
+    }
+}
+
+/// Enumerate eligible targets for the lane. Problems that need no Cargo run
+/// (unreadable sources, registered targets absent from metadata) are logged
+/// and reported through the returned flag.
+fn census_targets(
+    log: &mut ExecutionLog,
+    registry: &Registry,
+    scope: &CensusScope<'_>,
+) -> (Vec<CensusTarget>, bool) {
+    let metadata = scope.metadata;
+    let in_scope = |name: &str| scope.packages.is_none_or(|set| set.contains(name));
+    let lane_record = |record: &PropertyRecord| {
+        in_scope(&record.package) && (scope.with_scad || !record.requires_scad)
+    };
+    let mut targets = Vec::new();
+    let mut failed = false;
+    let mut matched = BTreeSet::new();
+    for package in metadata
+        .packages
+        .iter()
+        .filter(|p| metadata.workspace_members.contains(&p.id) && in_scope(&p.name))
+    {
+        let has_core = package.features.contains_key("property_testing");
+        let has_scad = package.features.contains_key("property_testing_scad");
+        let owner = has_core || (scope.with_scad && has_scad);
+        for target in &package.targets {
+            let kind = if target.kind.iter().any(|k| is_lib_kind(k)) {
+                TargetKind::Lib
+            } else if target.kind.iter().any(|k| k == "test") {
+                TargetKind::Test
+            } else {
+                continue;
+            };
+            let records: Vec<&PropertyRecord> = registry
+                .property
+                .iter()
+                .filter(|r| {
+                    r.package == package.name
+                        && r.target_kind == kind
+                        && r.target_name == target.name
+                })
+                .collect();
+            // The registered target exists in metadata; whether it is listed
+            // in this lane is decided below.
+            for record in &records {
+                matched.insert(record.id.clone());
+            }
+            if !owner && records.is_empty() {
+                continue;
+            }
+            let label = format!("{}/{}/{}", package.name, kind_name(kind), target.name);
+            let source = match target_source(kind, Path::new(&target.src_path)) {
+                Ok(source) => source,
+                Err(error) => {
+                    let _ = log.message(&format!(
+                        "property_census_failure: {label}: cannot read source: {error}"
+                    ));
+                    failed = true;
+                    continue;
+                }
+            };
+            let source_expected = source.contains("fn proptest_");
+            let requires = |feature: &str| target.required_features.iter().any(|f| f == feature);
+            let opportunistic = kind == TargetKind::Test
+                && (source.contains("property_testing")
+                    || requires("property_testing")
+                    || requires("property_testing_scad"));
+            if !source_expected && records.is_empty() && !opportunistic {
+                continue;
+            }
+            let scad_only = requires("property_testing_scad")
+                || records.iter().any(|r| r.requires_scad)
+                || (kind == TargetKind::Test && source.contains("property_testing_scad"));
+            // An engine-requiring target is impossible in the core lane:
+            // exclude it rather than activate OpenRSCAD there.
+            if scad_only && !scope.with_scad {
+                for record in records.iter().filter(|r| !r.requires_scad) {
+                    let _ = log.message(&format!(
+                        "missing_property_execution: {label} needs the SCAD lane but core record {} is registered on it",
+                        record.id
+                    ));
+                    failed = true;
+                }
+                continue;
+            }
+            let mut features = Vec::new();
+            let owner_feature = if (scad_only && has_scad) || !has_core {
+                has_scad.then_some("property_testing_scad")
+            } else {
+                Some("property_testing")
+            };
+            if let Some(feature) = owner_feature {
+                push_unique(&mut features, format!("{}/{feature}", package.name));
+            }
+            for required in &target.required_features {
+                let qualified = if required.contains('/') {
+                    required.clone()
+                } else {
+                    format!("{}/{required}", package.name)
+                };
+                push_unique(&mut features, qualified);
+            }
+            if records.iter().any(|r| r.requires_host_algos)
+                && metadata.can_see(&package.name, "slicer-core")
+                && metadata
+                    .package("slicer-core")
+                    .is_some_and(|core| core.features.contains_key("host-algos"))
+            {
+                push_unique(&mut features, "slicer-core/host-algos".to_owned());
+            }
+            targets.push(CensusTarget {
+                package: package.name.clone(),
+                kind,
+                name: target.name.clone(),
+                features,
+                source_expected,
+                registered: records.iter().map(|r| r.test_name.clone()).collect(),
+                exemptions: census_exemptions(&source),
+            });
+        }
+    }
+    for record in registry
+        .property
+        .iter()
+        .filter(|r| lane_record(r) && !matched.contains(&r.id))
+    {
+        let _ = log.message(&format!(
+            "missing_property_execution: registered target {}/{}/{} for {} is not an eligible workspace target",
+            record.package,
+            kind_name(record.target_kind),
+            record.target_name,
+            record.id
+        ));
+        failed = true;
+    }
+    (targets, failed)
+}
+
+/// List one eligible target with the real child path and compare both ways.
+fn census_target(
+    launcher: &impl ChildLauncher,
+    log: &mut ExecutionLog,
+    target: &CensusTarget,
+    artifact_dir: &Path,
+) -> i32 {
+    let label = target.label();
+    let plan = |kind| ChildPlan {
+        property_id: CENSUS_LABEL.to_owned(),
+        package: target.package.clone(),
+        target_kind: target.kind,
+        target_name: target.name.clone(),
+        features: target.features.clone(),
+        test_name: String::new(),
+        kind,
+        context_json: None,
+        artifact_dir: artifact_dir.to_path_buf(),
+        timeout_ms: None,
+    };
+    let listed = launch_checked(launcher, log, &plan(ChildKind::ListAll)).and_then(|all| {
+        launch_checked(launcher, log, &plan(ChildKind::ListIgnored)).map(|ignored| (all, ignored))
+    });
+    let (all, ignored) = match listed {
+        Ok((all, ignored)) => (discovered(&all), discovered(&ignored)),
+        Err(code) => {
+            let _ = log.message(&format!(
+                "missing_property_execution: {label} discovery failed with status {code} (features {:?})",
+                target.features
+            ));
+            return code;
+        }
+    };
+    let properties: BTreeSet<_> = all
+        .iter()
+        .filter(|n| is_property_test(n))
+        .cloned()
+        .collect();
+    let _ = writeln!(
+        log.file,
+        "property_census_target: {label} features={:?} discovered={:?} registered={:?} exempt={:?}",
+        target.features, properties, target.registered, target.exemptions
+    );
+    let leaf = |name: &str| name.rsplit("::").next().unwrap_or(name).to_owned();
+    let exempt = |name: &str| target.exemptions.contains(&leaf(name));
+    let mut failed = false;
+    let mut registered = BTreeSet::new();
+    for name in &target.registered {
+        if !registered.insert(name) {
+            let _ = log.message(&format!(
+                "duplicate_test_identity: {label}: {name} is registered more than once"
+            ));
+            failed = true;
+        }
+    }
+    for name in &target.exemptions {
+        if !properties.iter().any(|p| leaf(p) == *name) {
+            let _ = log.message(&format!(
+                "stale_property_census_exemption: {name} ({label}) names no discovered proptest_ test"
+            ));
+            failed = true;
+        }
+    }
+    for name in registered.iter().filter(|n| !properties.contains(**n)) {
+        let _ = log.message(&format!(
+            "missing_property_execution: registered test {name} not discovered"
+        ));
+        failed = true;
+    }
+    for name in properties
+        .iter()
+        .filter(|n| !registered.contains(n) && !exempt(n))
+    {
+        let _ = log.message(&format!("unregistered_property_test: {label}: {name}"));
+        failed = true;
+    }
+    for name in properties
+        .iter()
+        .filter(|n| ignored.contains(*n) && !exempt(n))
+    {
+        let _ = log.message(&format!(
+            "missing_property_execution: {label}: property test {name} is ignored"
+        ));
+        failed = true;
+    }
+    if (target.source_expected || !target.registered.is_empty()) && properties.is_empty() {
+        let _ = log.message(&format!(
+            "missing_property_execution: {label} discovered no proptest_ tests"
+        ));
+        failed = true;
+    }
+    i32::from(failed)
+}
+
+/// Run the whole census, reporting every mismatch rather than stopping at the
+/// first. Returns the first nonzero child status, else 1 on any mismatch.
+fn census(
+    root: &Path,
+    log: &mut ExecutionLog,
+    registry: &Registry,
+    scope: &CensusScope<'_>,
+    launcher: &impl ChildLauncher,
+) -> i32 {
+    let mut code = 0;
+    let mut fail = |value: i32| {
+        if code == 0 {
+            code = value;
+        }
+    };
+    let lane = if scope.with_scad { "scad" } else { "core" };
+    let _ = log.message(&format!(
+        "property_census: lane={lane} packages={:?}",
+        scope.packages
+    ));
+    match approved_ids(root) {
+        Ok(approved) => {
+            let registered: BTreeSet<_> = registry.property.iter().map(|r| r.id.clone()).collect();
+            for id in approved.difference(&registered) {
+                let _ = log.message(&format!("missing_property_record: {id}"));
+                fail(1);
+            }
+            for id in registered.difference(&approved) {
+                let _ = log.message(&format!("unapproved_property_record: {id}"));
+                fail(1);
+            }
+        }
+        Err(error) => {
+            let _ = log.message(&format!(
+                "property_census_failure: cannot read approved matrix {APPROVED_MATRIX}: {error}"
+            ));
+            fail(1);
+        }
+    }
+    let (targets, failed) = census_targets(log, registry, scope);
+    if failed {
+        fail(1);
+    }
+    if targets.is_empty() {
+        let _ =
+            log.message("missing_property_execution: property census found no eligible targets");
+        fail(1);
+    }
+    let artifact_dir = root.join("target/property-testing/census");
+    for target in &targets {
+        let status = census_target(launcher, log, target, &artifact_dir);
+        if status != 0 {
+            fail(status);
+        }
+    }
+    let _ = log.message(&format!(
+        "property_census: lane={lane} targets={} status={code}",
+        targets.len()
+    ));
+    code
+}
+
+/// Test entry point: the same census `execute` runs, with real metadata, the
+/// real Cargo launcher and one combined log, narrowed to `packages`.
+pub(crate) fn census_scoped(
+    root: &Path,
+    registry: &Registry,
+    with_scad: bool,
+    packages: &BTreeSet<String>,
+    log_path: &Path,
+) -> i32 {
+    let metadata = match Metadata::load(root) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            eprintln!("property_census_failure: {error}");
+            return 1;
+        }
+    };
+    let file = match File::create(log_path) {
+        Ok(file) => file,
+        Err(error) => {
+            eprintln!("property_log_failure: {}: {error}", log_path.display());
+            return 1;
+        }
+    };
+    let mut log = ExecutionLog {
+        file,
+        summary: true,
+    };
+    census(
+        root,
+        &mut log,
+        registry,
+        &CensusScope {
+            metadata: &metadata,
+            with_scad,
+            packages: Some(packages),
+        },
+        &CargoLauncher {
+            ws_root: root.to_path_buf(),
+        },
+    )
 }
 
 #[cfg(test)]
@@ -1055,6 +1548,7 @@ mod tests {
             &log,
             true,
             &launcher,
+            None,
         );
         (code, fs::read_to_string(log).expect("read fixture log"))
     }
@@ -1384,7 +1878,8 @@ mod tests {
                 &selection(),
                 &absent_log,
                 true,
-                &launcher
+                &launcher,
+                None
             ),
             1
         );
@@ -1577,7 +2072,8 @@ mod tests {
                 &selection(),
                 &log_path,
                 true,
-                &launcher
+                &launcher,
+                None
             ),
             1
         );
@@ -1648,7 +2144,8 @@ mod tests {
                 &selection(),
                 &dir,
                 true,
-                &launcher
+                &launcher,
+                None
             ),
             1,
             "directory cannot be a log file"

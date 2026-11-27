@@ -120,6 +120,12 @@ In test code, a struct literal of a watched type (a `pub` struct with ≥5 named
 
 Test code is also governed by `docs/22_test_quality.md`: a test may only claim what it can falsify. The recurring false-green patterns (self-referential oracle, success-only assertion, vacuous loop, hand-maintained roster, source-grep assertion, silent fixture skip, scaffolding self-assertion, decorative assert) are listed in `docs/22_test_quality.md`; the mechanically detectable subset is enforced by `cargo xtask check-test-quality` (R1/R3/R6/R8 implemented; R2/R4/R5/R7 review-guided until later waves; waiver `// test-quality: <reason>` naming the protected surface/contract/gate). Retire-if-unjustified is the standard for existing tests (ADR-0064). The gate ships in **report mode** until the test-quality remediation program's final wave flips enforce mode (ADR-0065); until then, before committing, run `cargo xtask check-test-quality --report` and fix or waive findings in the code you touched.
 
+### Property tests (Proptest/OpenRSCAD)
+
+Run property tests through the registry lane: `cargo xtask test --summary --properties --tier routine` (`--with-scad` adds the SCAD records; `--seed <u64>` replays a retained seed). The owner features `property_testing` / `property_testing_scad` are default-off, so a bare `cargo test -p <crate>` compiles the properties out.
+The runner's census fails any missing, ignored or unregistered `proptest_*` test (`missing_property_execution`, `unregistered_property_test`); a green zero-test lane is never acceptance.
+Registry: `test-properties.toml`. Charters, profiles, replay and failure artifacts: `docs/testing/properties.md`. Windows PR lanes and the manual `properties-extended-windows` dispatch: `.github/workflows/ci.yml`. Rollout status and open gates: `docs/testing/proptest-rollout-evidence.md`.
+
 ## Coordinate System Hazard
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.

@@ -170,3 +170,7 @@ impl FinalizationModule for PartCooling {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

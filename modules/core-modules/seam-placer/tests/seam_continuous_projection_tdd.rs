@@ -85,7 +85,13 @@ fn aligned_region_with_candidate(
 fn projects_onto_nearest_segment_point() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
+    // Closed loop (explicit closing repeat). An open polyline carries no seam
+    // and stays open through projection, so the rotation these assertions pin
+    // requires the canonical wall-loop representation.
+    let wall = ir_wall(
+        0.2,
+        &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (0.0, 0.0)],
+    );
     let regions = vec![aligned_region(vec![wall], Some(ir_point(1.5, 0.8, 0.2)))];
     let mut output = PerimeterOutputBuilder::new();
 
@@ -119,7 +125,11 @@ fn projects_onto_nearest_segment_point() {
 fn projects_with_existing_candidates() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
+    // Closed loop (explicit closing repeat); see `projects_onto_nearest_segment_point`.
+    let wall = ir_wall(
+        0.2,
+        &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (0.0, 0.0)],
+    );
     let regions = vec![aligned_region_with_candidate(
         vec![wall],
         ir_point(1.5, 0.8, 0.2),

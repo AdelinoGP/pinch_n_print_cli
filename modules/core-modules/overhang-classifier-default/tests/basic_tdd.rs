@@ -499,6 +499,44 @@ fn calculate_speed_matches_canonical_interpolation_and_clamps() {
 }
 
 #[module_test]
+fn calculate_speed_last_boundary_rounds_and_caps_last_section_speed() {
+    // Concrete regression for the H-OVERHANG-SPEED confirmed defect. Root
+    // cause: `calculate_speed`'s `distance >= last` branch returned
+    // `sections[len - 1].1` verbatim, skipping both the documented `round`
+    // and the `original_speed` cap that every other branch applies.
+    //
+    // Formerly failing input/output: sections `[(0.0, 1.0), (1.0, 1.75)]`,
+    // `original_speed = 2.0`, distance `1.0` returned `1.75` (an unrounded
+    // last value, so the speed dropped from `2.0` at `0.875` to `1.75` at the
+    // boundary). Expected `min(round(1.75), 2.0) = 2.0`.
+    let sections = [(0.0_f32, 1.0_f32), (1.0_f32, 1.75_f32)];
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(0.875, &sections, 2.0),
+        2.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(1.0, &sections, 2.0),
+        2.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(5.0, &sections, 2.0),
+        2.0
+    );
+
+    // The cap half of the same branch: a last-section speed above
+    // `original_speed` must not be returned verbatim.
+    let fast = [(0.0_f32, 10.0_f32), (1.0_f32, 20.0_f32)];
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(1.5, &fast, 15.0),
+        15.0
+    );
+    assert_eq!(
+        overhang_classifier_default::calculate_speed(1.5, &fast, 25.0),
+        20.0
+    );
+}
+
+#[module_test]
 fn sixth_speed_section_follows_slowdown_for_curled_perimeters() {
     let false_sections =
         overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &overhang_config())

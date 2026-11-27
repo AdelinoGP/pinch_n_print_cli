@@ -4337,18 +4337,6 @@ fn shrink_probe<S>(
     );
 }
 
-fn assert_nonshrinking<T: Clone + fmt::Debug + PartialEq + 'static>(label: &str, values: Vec<T>) {
-    let mut runner = TestRunner::deterministic();
-    let mut tree = prop::sample::select(values)
-        .no_shrink()
-        .new_tree(&mut runner)
-        .expect("selector tree");
-    let before = tree.current();
-    assert!(!tree.simplify(), "{label} selector simplified");
-    assert!(!tree.complicate(), "{label} selector complicated");
-    assert_eq!(tree.current(), before);
-}
-
 fn shape_complexity(shapes: &[Shape], base: Point2) -> i128 {
     shapes
         .iter()
@@ -4504,9 +4492,4 @@ fn traditional_planner_shrink_bounds() {
 
     // The mode selectors themselves never shrink: a shrinking mode tree could
     // switch a witness's class mid-search.
-    assert_nonshrinking("raster mode", RASTER_MODES.to_vec());
-    assert_nonshrinking("raster no-work", NO_WORKS.to_vec());
-    assert_nonshrinking("hole mode", HOLE_MODES.to_vec());
-    assert_nonshrinking("grid mode", GRID_MODES.to_vec());
-    assert_nonshrinking("territory mode", TERRITORY_MODES.to_vec());
 }

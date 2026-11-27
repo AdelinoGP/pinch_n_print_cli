@@ -1,7 +1,7 @@
 //! TDD tests for Track B: use_relative_e_distances config key and G-code relative extrusion.
 
 use slicer_gcode::{DefaultGCodeSerializer, GCodeSerializer};
-use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata};
+use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata, RetractMode};
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal GCodeIR with a sequence of extrusion moves.
@@ -414,6 +414,101 @@ fn rejects_xyzf_drift_across_modes() {
         assert_eq!(
             rel_xyzf, abs_xyzf,
             "X/Y/Z/F MUST be identical â€” drift detected.\n  relative: {rel_line}\n  absolute: {abs_line}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Regression: absolute-mode Gcode retract/unretract emitted deltas and never
+// maintained the E accumulator.
+//
+// Root cause: `DefaultGCodeSerializer::serialize_commands_chunk` took its
+// `Retract`/`Unretract` absolute branch from the relative branch's text
+// (`G1 E-<length>` / `G1 E<length>` with the retract length printed at four
+// trimmed decimals) and updated `e_accumulator` only in relative mode; the
+// absolute `Move` branch also never set the accumulator, and a `G92 E<value>`
+// reset was honoured only in relative mode. The documented contract
+// (`docs/02_ir_schemas.md` § Stream-level extrusion mode) is absolute E
+// positions in both modes.
+//
+// Formerly failing input: M82 stream with Move e=2.0, Retract 0.5 mm at 40 mm/s,
+// Unretract 0.5 mm at 40 mm/s, Move e=2.6, `G92 E0`, Retract 0.5, Unretract 0.5,
+// Move e=0.1. Formerly emitted `G1 E-0.5 F40` / `G1 E0.5 F40` for both retract
+// pairs (bare deltas, stale accumulator); the `G92 E0` had no effect in
+// absolute mode, so the second retract pair repeated the same delta text.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn absolute_mode_gcode_retract_emits_updated_absolute_e_position() {
+    let mut commands: Vec<GCodeCommand> = vec![GCodeCommand::ExtrusionMode { absolute: true }];
+    let extrude = |x: f32, e: f32| GCodeCommand::Move {
+        x: Some(x),
+        y: Some(2.0),
+        z: Some(0.2),
+        e: Some(e),
+        f: Some(3000.0),
+        role: ExtrusionRole::OuterWall,
+    };
+    commands.push(extrude(1.0, 2.0));
+    commands.push(GCodeCommand::Retract {
+        length: 0.5,
+        speed: 40.0,
+        mode: RetractMode::Gcode,
+    });
+    commands.push(GCodeCommand::Unretract {
+        length: 0.5,
+        speed: 40.0,
+        mode: RetractMode::Gcode,
+    });
+    commands.push(extrude(2.0, 2.6));
+    commands.push(GCodeCommand::Raw {
+        text: "G92 E0".to_string(),
+    });
+    commands.push(GCodeCommand::Retract {
+        length: 0.5,
+        speed: 40.0,
+        mode: RetractMode::Gcode,
+    });
+    commands.push(GCodeCommand::Unretract {
+        length: 0.5,
+        speed: 40.0,
+        mode: RetractMode::Gcode,
+    });
+    commands.push(extrude(3.0, 0.1));
+
+    let ir = GCodeIR {
+        commands,
+        metadata: PrintMetadata {
+            filament_used_mm: vec![0.0],
+            layer_count: 1,
+            slicer_version: "regression".to_string(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = DefaultGCodeSerializer::with_extrusion_mode(false)
+        .serialize_gcode(&ir)
+        .expect("absolute-mode serialization must succeed");
+
+    for expected in [
+        "G1 X1 Y2 Z0.2 E2.00000 F3000",
+        "G1 E1.50000 F40",
+        "G1 E2.00000 F40",
+        "G1 X2 Y2 Z0.2 E2.60000 F3000",
+        "G92 E0",
+        "G1 E-0.50000 F40",
+        "G1 E0.00000 F40",
+        "G1 X3 Y2 Z0.2 E0.10000 F3000",
+    ] {
+        assert!(
+            output.lines().any(|line| line == expected),
+            "absolute mode must emit `{expected}`; output:\n{output}"
+        );
+    }
+    for former_delta in ["G1 E-0.5 F40", "G1 E0.5 F40", "G1 E2.1 F40"] {
+        assert!(
+            !output.lines().any(|line| line == former_delta),
+            "the former delta/stale-accumulator output `{former_delta}` must not appear; output:\n{output}"
         );
     }
 }

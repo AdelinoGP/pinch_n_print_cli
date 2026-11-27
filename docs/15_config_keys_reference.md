@@ -727,6 +727,15 @@ For an extrusion-role change, the order is
 `process_change_extrusion_role_gcode` -> `;TYPE:<label>`. All three role
 injection points are emitted before the `;TYPE:` raw marker.
 
+The template semantics are pinned by `H-GCODE-TEMPLATE`
+(`docs/testing/properties.md#h-gcode-template`): single-pass left-to-right
+substitution, no rescan of substituted values, unresolved keys left verbatim and
+reported sorted/deduplicated, an empty `List` renders as an empty string and a
+`List` recurses on its first renderable element, and unknown placeholders are
+warned about and passed through (canonical throws). The cooling/overhang/skirt/
+wipe-tower module-owned keys are pinned by `H-COOLING`, `H-OVERHANG-SPEED`,
+`H-SKIRT-BRIM` and `H-WIPE-TOWER`.
+
 Placeholder availability is site-specific. The common layer context is
 available as `[layer_num]`, `[layer_z]`, and `[max_layer_z]` at
 `before_layer_change_gcode`, `time_lapse_gcode`, `layer_change_gcode`, and

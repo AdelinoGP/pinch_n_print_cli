@@ -125,11 +125,17 @@ remain parallel to the mesh triangles, with `None` meaning unpainted.
 `crates/slicer-model-io/src/loader.rs`, as:
 
 ```text
-uuid5(NAMESPACE_OID, "<file basename>#<per-file object index>")
+uuid5(NS_X500, "<file basename>#<per-file object index>")
 ```
 
-e.g. `uuid5(NS_OID, "cube.stl#0")`. STL and OBJ always yield index `0`; a 3MF
-yields one id per build item, indexed in document order.
+e.g. `uuid5(NS_X500, "cube.stl#0")`. The 16 namespace bytes are RFC 4122's
+**X.500** namespace (`6ba7b814-9dad-11d1-80b4-00c04fd430c8`), **not** the OID
+namespace (`6ba7b812-…`). The source's local constant was historically named
+`NS_OID`; that name is a misnomer and does not change the bytes or the minted
+ids. `H-IO-ID` (`docs/testing/properties.md#h-io-id`) pins this with an
+independent `Uuid::new_v5` oracle plus a control that rejects the OID
+substitution. STL and OBJ always yield index `0`; a 3MF yields one id per build
+item, indexed in document order.
 
 **The key is the basename, never the absolute path.** This is a hard requirement,
 not an implementation detail: the id is emitted into shipped G-code as the
@@ -156,7 +162,10 @@ Consequences to respect when changing this:
 
 Regression coverage: `object_id_is_identical_across_different_absolute_directories`
 and `object_id_is_the_documented_basename_uuid5` in
-`crates/slicer-model-io/tests/model_loader_tdd.rs`.
+`crates/slicer-model-io/tests/model_loader_tdd.rs`, plus the generated
+`H-IO-ID` property (`docs/testing/properties.md#h-io-id`). The property's
+distinct-id assertions are **bounded-domain observations**, not a uuid5
+injectivity theorem: it never claims unequal ids for arbitrary inputs.
 
 ### Shared geometry types
 
@@ -2376,7 +2385,11 @@ speed_factor) -> f32` is invoked at the print-move and z-hop builders
 when `Move.f` is `None`; the resulting F-token is computed as
 `round(speed_mm_per_s * 60.0 * speed_factor * 1000.0) / 1000.0`
 (mm/min, three decimal places). `speed_factor` is clamped to
-`[0.05, 5.0]` before multiplication (OrcaSlicer parity).
+`[0.05, 5.0]` before multiplication. **The clamp is PnP ADR-0052, not
+OrcaSlicer parity**: a delegated read of the canonical checkout found no such
+clamp in `GCode::_extrude_piece`, `GCodeWriter::set_speed` or the `GCode/`
+extrusion path. The bounded role/factor/clamp/rounding contract is pinned by
+`H-GCODE-FEEDRATE` (`docs/testing/properties.md#h-gcode-feedrate`).
 
 First-layer detection: `resolve_feedrate` selects the `initial_layer_*`
 override variants (`initial_layer_speed`, `initial_layer_infill_speed`,
@@ -2401,7 +2414,12 @@ opens the stream with `GCodeCommand::ExtrusionMode { absolute }` (packet
 59) and resets the E-accumulator with `G92 E0` on mode change or layer
 reset. Mode is selected by the config key `use_relative_e_distances`
 (boolean; default `true` → M83). Carrier helper:
-`DefaultGCodeSerializer::with_extrusion_mode(mode)`.
+`DefaultGCodeSerializer::with_extrusion_mode(mode)`. In **absolute** mode the
+serializer must keep the accumulator equal to the last emitted absolute E:
+Moves set it, `G92 E<value>` resets it, and Gcode retracts/unretracts emit the
+updated absolute position (never a bare delta). The exact text/state contract
+in both modes is pinned by `H-GCODE-SERIALIZE`
+(`docs/testing/properties.md#h-gcode-serialize`).
 
 ### M73 progress emission (Normative — packet 175)
 

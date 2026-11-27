@@ -168,7 +168,10 @@ fn aligned_back_snaps_to_nearest_candidate() {
 fn aligned_empty_candidates_projects_onto_segment_interior() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
+    // Closed loop (explicit closing repeat): continuous projection inserts into
+    // a loop and the loop is then rotated to the seam; an open polyline carries
+    // no seam, stays open, and is never rotated.
+    let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (0.0, 0.0)]);
     let regions = vec![aligned_region(
         vec![wall],
         vec![],

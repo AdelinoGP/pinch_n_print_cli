@@ -865,3 +865,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "property_testing")]
+mod property_tests;

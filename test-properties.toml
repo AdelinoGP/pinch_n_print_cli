@@ -2871,3 +2871,895 @@ rng_algorithm = "chacha"
 isolation = "in_process"
 timeout_ms = 0
 bounds = { max_abs_units = 100000, max_vertices = 8, max_holes = 1, max_components = 1, max_shrink_candidates = 1, max_width_units = 5000, max_walls = 2, max_rows = 10 }
+
+# Packet proptest-openrscad_15 (PBT-LAYERS-SEAMS): measured Windows profiles. Both the
+# routine and extended tiers passed for all eleven records with these values
+# (see docs/testing/proptest-layers-seams-evidence.md section 9.4).
+# M-SEAM-PLANNER-PICK is generator_version = 2: its RearY fixture generator changed.
+
+[[property]]
+id = "M-LAYERS-SEQ"
+package = "layer-planner-default"
+target_kind = "lib"
+target_name = "layer_planner_default"
+test_name = "property_tests::proptest_layer_sequence"
+production_symbol = "layer_planner_default::generate_object_layers"
+production_path = "modules/core-modules/layer-planner-default/src/lib.rs"
+features = ["layer-planner-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-layers-seq"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layer_steps = 16, max_raft_layers = 4, max_z_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layer_steps = 16, max_raft_layers = 4, max_z_quanta = 8192 }
+
+[[property]]
+id = "M-LAYERS-MERGE"
+package = "layer-planner-default"
+target_kind = "lib"
+target_name = "layer_planner_default"
+test_name = "property_tests::proptest_layer_merge"
+production_symbol = "layer_planner_default::merge_layer_sequences"
+production_path = "modules/core-modules/layer-planner-default/src/lib.rs"
+features = ["layer-planner-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-layers-merge"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 4, max_layer_steps = 16, max_raft_layers = 4, max_z_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 4, max_layer_steps = 16, max_raft_layers = 4, max_z_quanta = 8192 }
+
+[[property]]
+id = "M-SEAM-PLANNER-PICK"
+package = "seam-planner-default"
+target_kind = "lib"
+target_name = "seam_planner_default"
+test_name = "property_tests::proptest_planner_pick"
+production_symbol = "seam_planner_default::comparator::pick_seam_point"
+production_path = "modules/core-modules/seam-planner-default/src/comparator.rs"
+features = ["seam-planner-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 2
+charter = "docs/testing/properties.md#m-seam-planner-pick"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192, max_score_quanta = 4096 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192, max_score_quanta = 4096 }
+
+[[property]]
+id = "M-SEAM-PLANNER-PAINT"
+package = "seam-planner-default"
+target_kind = "lib"
+target_name = "seam_planner_default"
+test_name = "property_tests::proptest_planner_paint"
+production_symbol = "seam_planner_default::region_candidates"
+production_path = "modules/core-modules/seam-planner-default/src/lib.rs"
+features = ["seam-planner-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-seam-planner-paint"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192 }
+
+[[property]]
+id = "M-SEAM-PLANNER-SPLINE"
+package = "seam-planner-default"
+target_kind = "lib"
+target_name = "seam_planner_default"
+test_name = "property_tests::proptest_planner_spline"
+production_symbol = "seam_planner_default::align::fit_cubic_bspline"
+production_path = "modules/core-modules/seam-planner-default/src/align.rs"
+features = ["seam-planner-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-seam-planner-spline"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_observations = 16, max_segments = 8, max_coord_quanta = 8192, max_weight_quanta = 4096 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_observations = 16, max_segments = 8, max_coord_quanta = 8192, max_weight_quanta = 4096 }
+
+[[property]]
+id = "M-SEAM-PLACER-SELECT"
+package = "seam-placer"
+target_kind = "lib"
+target_name = "seam_placer"
+test_name = "property_tests::proptest_placer_select"
+production_symbol = "seam_placer::select_seam_candidate"
+production_path = "modules/core-modules/seam-placer/src/lib.rs"
+features = ["seam-placer/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-seam-placer-select"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192, max_score_quanta = 4096 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192, max_score_quanta = 4096 }
+
+[[property]]
+id = "M-SEAM-PLACER-PROJECT"
+package = "seam-placer"
+target_kind = "lib"
+target_name = "seam_placer"
+test_name = "property_tests::proptest_placer_project"
+production_symbol = "seam_placer::project_onto_wall_segment"
+production_path = "modules/core-modules/seam-placer/src/lib.rs"
+features = ["seam-placer/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-seam-placer-project"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_wall_points = 16, max_walls = 4, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_wall_points = 16, max_walls = 4, max_coord_quanta = 8192 }
+
+[[property]]
+id = "M-SEAM-PLACER-ROTATE"
+package = "seam-placer"
+target_kind = "lib"
+target_name = "seam_placer"
+test_name = "property_tests::proptest_placer_rotate"
+production_symbol = "seam_placer::rotate_wall_loop"
+production_path = "modules/core-modules/seam-placer/src/lib.rs"
+features = ["seam-placer/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-seam-placer-rotate"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_wall_points = 16, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_wall_points = 16, max_coord_quanta = 8192 }
+
+[[property]]
+id = "M-PATH-NEAREST"
+package = "path-optimization-default"
+target_kind = "lib"
+target_name = "path_optimization_default"
+test_name = "property_tests::proptest_path_nearest"
+production_symbol = "path_optimization_default::nearest_neighbor_permutation"
+production_path = "modules/core-modules/path-optimization-default/src/lib.rs"
+features = ["path-optimization-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-path-nearest"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_candidates = 16, max_coord_quanta = 8192 }
+
+[[property]]
+id = "M-PATH-LOCKS"
+package = "path-optimization-default"
+target_kind = "lib"
+target_name = "path_optimization_default"
+test_name = "property_tests::proptest_path_locks"
+production_symbol = "path_optimization_default::coalesce_locked_candidates"
+production_path = "modules/core-modules/path-optimization-default/src/lib.rs"
+features = ["path-optimization-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-path-locks"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_coord_quanta = 8192 }
+
+[[property]]
+id = "M-PATH-GROUPS"
+package = "path-optimization-default"
+target_kind = "lib"
+target_name = "path_optimization_default"
+test_name = "property_tests::proptest_path_groups"
+production_symbol = "path_optimization_default::PathOptimizationDefault::group_then_nearest_neighbor"
+production_path = "modules/core-modules/path-optimization-default/src/lib.rs"
+features = ["path-optimization-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#m-path-groups"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_coord_quanta = 8192 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_entities = 16, max_coord_quanta = 8192 }
+
+# --- packet proptest-openrscad_16_pbt-io-gcode -------------------------------
+# Windows profiles for the eleven packet-16 records: 64/32/64 (routine) and
+# 256/128/256 (extended), zero rejection/regeneration budgets, chacha,
+# in_process, no timeout; measured in
+# docs/testing/proptest-io-gcode-evidence.md §7. Bounds are maximum
+# sizes/magnitudes, never average case sizes.
+
+[[property]]
+id = "H-IO-ID"
+package = "slicer-model-io"
+target_kind = "lib"
+target_name = "slicer_model_io"
+test_name = "loader::property_tests::proptest_object_id_and_basename_collisions"
+production_symbol = "slicer_model_io::loader::path_object_id"
+production_path = "crates/slicer-model-io/src/loader.rs"
+features = ["slicer-model-io/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-io-id"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_basename_bytes = 32, max_paths = 8, max_index = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_basename_bytes = 32, max_paths = 8, max_index = 64 }
+
+[[property]]
+id = "H-IO-EXTENT"
+package = "slicer-model-io"
+target_kind = "test"
+target_name = "property_io"
+test_name = "proptest_object_world_z_extent"
+production_symbol = "slicer_model_io::loader::object_world_z_extent"
+production_path = "crates/slicer-model-io/src/loader.rs"
+features = ["slicer-model-io/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-io-extent"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_vertices = 16, max_abs_mm = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_vertices = 16, max_abs_mm = 64 }
+
+[[property]]
+id = "H-IO-PLACEMENT"
+package = "slicer-model-io"
+target_kind = "test"
+target_name = "property_io"
+test_name = "proptest_place_bare_mesh_on_bed"
+production_symbol = "slicer_model_io::loader::place_bare_mesh_on_bed"
+production_path = "crates/slicer-model-io/src/loader.rs"
+features = ["slicer-model-io/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-io-placement"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 4, max_vertices_per_object = 8, max_abs_mm = 64, max_translation_mm = 200 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_objects = 4, max_vertices_per_object = 8, max_abs_mm = 64, max_translation_mm = 200 }
+
+[[property]]
+id = "H-GCODE-FEEDRATE"
+package = "slicer-gcode"
+target_kind = "test"
+target_name = "property_gcode"
+test_name = "proptest_feedrate_resolution"
+production_symbol = "slicer_gcode::emit::DefaultGCodeEmitter::resolve_feedrate"
+production_path = "crates/slicer-gcode/src/emit.rs"
+features = ["slicer-gcode/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-gcode-feedrate"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_base_speed_mm_s = 1000, max_factor_milli = 10000 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_base_speed_mm_s = 1000, max_factor_milli = 10000 }
+
+[[property]]
+id = "H-GCODE-EMIT"
+package = "slicer-gcode"
+target_kind = "test"
+target_name = "property_gcode"
+test_name = "proptest_emission_state_sequence"
+production_symbol = "slicer_gcode::emit::DefaultGCodeEmitter::emit_gcode"
+production_path = "crates/slicer-gcode/src/emit.rs"
+features = ["slicer-gcode/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-gcode-emit"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_entities_per_layer = 3, max_points_per_entity = 4, max_abs_mm = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layers = 3, max_entities_per_layer = 3, max_points_per_entity = 4, max_abs_mm = 64 }
+
+[[property]]
+id = "H-GCODE-SERIALIZE"
+package = "slicer-gcode"
+target_kind = "test"
+target_name = "property_gcode"
+test_name = "proptest_serializer_extrusion_state"
+production_symbol = "slicer_gcode::serialize::DefaultGCodeSerializer::serialize_gcode"
+production_path = "crates/slicer-gcode/src/serialize.rs"
+features = ["slicer-gcode/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-gcode-serialize"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_commands = 12, max_abs_mm = 64, max_abs_e_mm = 100 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_commands = 12, max_abs_mm = 64, max_abs_e_mm = 100 }
+
+[[property]]
+id = "H-GCODE-TEMPLATE"
+package = "machine-gcode-emit"
+target_kind = "lib"
+target_name = "machine_gcode_emit"
+test_name = "property_tests::proptest_placeholder_substitution"
+production_symbol = "machine_gcode_emit::substitute_placeholders"
+production_path = "modules/core-modules/machine-gcode-emit/src/lib.rs"
+features = ["machine-gcode-emit/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-gcode-template"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_template_bytes = 64, max_placeholders = 6 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_template_bytes = 64, max_placeholders = 6 }
+
+[[property]]
+id = "H-COOLING"
+package = "part-cooling"
+target_kind = "lib"
+target_name = "part_cooling"
+test_name = "property_tests::proptest_cooling_decision_table"
+production_symbol = "part_cooling::PartCooling::cooling_decision_for_event"
+production_path = "modules/core-modules/part-cooling/src/lib.rs"
+features = ["part-cooling/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-cooling"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layer_index = 8, max_close_layers = 4 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_layer_index = 8, max_close_layers = 4 }
+
+[[property]]
+id = "H-OVERHANG-SPEED"
+package = "overhang-classifier-default"
+target_kind = "test"
+target_name = "property_overhang_speed"
+test_name = "proptest_overhang_speed_sections"
+production_symbol = "overhang_classifier_default::calculate_speed"
+production_path = "modules/core-modules/overhang-classifier-default/src/lib.rs"
+features = ["overhang-classifier-default/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-overhang-speed"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_path_width_mm = 4, max_speed_mm_s = 200, max_interpolation_samples = 8 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_path_width_mm = 4, max_speed_mm_s = 200, max_interpolation_samples = 8 }
+
+[[property]]
+id = "H-SKIRT-BRIM"
+package = "skirt-brim"
+target_kind = "lib"
+target_name = "skirt_brim"
+test_name = "property_tests::proptest_skirt_brim_enclosure"
+production_symbol = "skirt_brim::SkirtBrim::generate"
+production_path = "modules/core-modules/skirt-brim/src/lib.rs"
+features = ["skirt-brim/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-skirt-brim"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 64, max_skirt_distance_mm = 8, max_loops = 3, max_line_width_mm = 2 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 64, max_skirt_distance_mm = 8, max_loops = 3, max_line_width_mm = 2 }
+
+[[property]]
+id = "H-WIPE-TOWER"
+package = "wipe-tower"
+target_kind = "lib"
+target_name = "wipe_tower"
+test_name = "property_tests::proptest_generate_purge_paths"
+production_symbol = "wipe_tower::WipeTower::generate_purge_paths"
+production_path = "modules/core-modules/wipe-tower/src/lib.rs"
+features = ["wipe-tower/property_testing"]
+requires_host_algos = false
+requires_scad = false
+generator_version = 1
+charter = "docs/testing/properties.md#h-wipe-tower"
+
+[property.routine]
+cases = 64
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 32
+max_shrink_iters = 64
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 64, max_scan_lines = 64, max_line_width_mm = 2, max_purge_volume_mm3 = 64 }
+
+[property.extended]
+cases = 256
+max_local_rejects = 0
+max_global_rejects = 0
+max_flat_map_regens = 0
+max_default_size_range = 128
+max_shrink_iters = 256
+max_shrink_time_ms = 0
+rng_algorithm = "chacha"
+isolation = "in_process"
+timeout_ms = 0
+bounds = { max_abs_mm = 64, max_scan_lines = 64, max_line_width_mm = 2, max_purge_volume_mm3 = 64 }
