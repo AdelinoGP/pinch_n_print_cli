@@ -1696,12 +1696,15 @@ fn check_band_case(
         let mut per_class = class_nonempty.get();
         per_class[case.class.index()] += 1;
         class_nonempty.set(per_class);
-    }
-    let mut counts = mode_counts.get();
-    counts[case.emit.index()] += 1;
-    mode_counts.set(counts);
-    if case.wall_count == MIN_WALL_COUNT {
-        single_band_cases.set(single_band_cases.get() + 1);
+        // Population counters describe nonempty SUT output, not generated
+        // input: a mode or single-band case that emitted nothing must not
+        // satisfy the charter's coverage assertions.
+        let mut counts = mode_counts.get();
+        counts[case.emit.index()] += 1;
+        mode_counts.set(counts);
+        if case.wall_count == MIN_WALL_COUNT {
+            single_band_cases.set(single_band_cases.get() + 1);
+        }
     }
     match classic_band_oracle(case, &output) {
         Ok(()) => Ok(()),

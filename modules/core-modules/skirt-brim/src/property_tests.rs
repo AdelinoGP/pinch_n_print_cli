@@ -865,7 +865,7 @@ fn config_for(case: &SkirtBrimCase) -> ConfigView {
             ConfigValue::Float(f64::from(case.line_width)),
         ),
         (
-            "first_layer_height".to_string(),
+            "initial_layer_print_height".to_string(),
             ConfigValue::Float(f64::from(FIRST_LAYER_HEIGHT_MM)),
         ),
     ]))
@@ -1822,46 +1822,38 @@ fn check_observed(
             }
         }
 
-        // Nesting: the sawtooth is the documented `tryExPolygonOffset` shape
-        // (outer contour then hole boundary per band). It needs the exact
-        // two-rings-per-band pairing, which the classified thin tail breaks.
+        // Nesting: the documented `tryExPolygonOffset` shape is outer contour
+        // then hole boundary per band, emitted outermost first. The classified
+        // thin tail is excluded above; on the exact sub-domain a wrong ring
+        // order must fail rather than silently skip the check.
         if !summary.tail_classified {
-            let mut sawtooth = true;
             for band in 0..bands_effective as usize {
                 let outer = clearances[2 * band];
                 let hole = clearances[2 * band + 1];
                 if !(outer > hole) {
-                    sawtooth = false;
+                    return Err(format!(
+                        "brim band {band}: outer clearance {outer:.6} must exceed its hole \
+                         clearance {hole:.6}"
+                    ));
                 }
-                if band + 1 < bands_effective as usize
-                    && !(clearances[2 * band] >= clearances[2 * (band + 1)] - BBOX_ENV_MM)
-                {
-                    sawtooth = false;
-                }
-            }
-            if sawtooth {
-                for band in 0..bands_effective as usize {
-                    let outer = clearances[2 * band];
-                    let hole = clearances[2 * band + 1];
-                    if band + 1 < bands_effective as usize {
-                        let next_outer = clearances[2 * (band + 1)];
-                        let next_hole = clearances[2 * (band + 1) + 1];
-                        if next_outer > outer + BBOX_ENV_MM {
-                            return Err(format!(
-                                "brim band {}'s outer clearance {outer:.6} is inside band {}'s \
-                                 {next_outer:.6}; bands must be emitted outermost first",
-                                band,
-                                band + 1
-                            ));
-                        }
-                        if hole > next_hole + BBOX_ENV_MM {
-                            return Err(format!(
-                                "brim band {}'s hole clearance {hole:.6} is outside band {}'s \
-                                 {next_hole:.6}",
-                                band,
-                                band + 1
-                            ));
-                        }
+                if band + 1 < bands_effective as usize {
+                    let next_outer = clearances[2 * (band + 1)];
+                    let next_hole = clearances[2 * (band + 1) + 1];
+                    if next_outer > outer + BBOX_ENV_MM {
+                        return Err(format!(
+                            "brim band {}'s outer clearance {outer:.6} is inside band {}'s \
+                             {next_outer:.6}; bands must be emitted outermost first",
+                            band,
+                            band + 1
+                        ));
+                    }
+                    if hole > next_hole + BBOX_ENV_MM {
+                        return Err(format!(
+                            "brim band {}'s hole clearance {hole:.6} is outside band {}'s \
+                             {next_hole:.6}",
+                            band,
+                            band + 1
+                        ));
                     }
                 }
             }

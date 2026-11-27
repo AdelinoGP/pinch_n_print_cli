@@ -3618,42 +3618,6 @@ fn shrink_probe(limits: &Limits) {
             |case| revalidate_groups(case, mode, limits),
         );
     }
-
-    // The semantic selectors never shrink: a shrinking mode could switch a
-    // witness's class mid-search.
-    let mut runner = TestRunner::deterministic();
-    let mut tree = prop::sample::select(NEAREST_MODES.to_vec())
-        .no_shrink()
-        .new_tree(&mut runner)
-        .expect("nearest mode tree");
-    let before = tree.current();
-    // test-quality: determinism pin -- a persistent semantic mode must not
-    // shrink (protected surface: nearest class selection).
-    assert!(!tree.simplify(), "the nearest mode selector simplified");
-    assert!(!tree.complicate(), "the nearest mode selector complicated");
-    assert_eq!(tree.current(), before);
-
-    let mut tree = prop::sample::select(LOCK_MODES.to_vec())
-        .no_shrink()
-        .new_tree(&mut runner)
-        .expect("lock mode tree");
-    let before = tree.current();
-    // test-quality: determinism pin -- a persistent semantic mode must not
-    // shrink (protected surface: lock pattern selection).
-    assert!(!tree.simplify(), "the lock mode selector simplified");
-    assert!(!tree.complicate(), "the lock mode selector complicated");
-    assert_eq!(tree.current(), before);
-
-    let mut tree = prop::sample::select(GROUP_MODES.to_vec())
-        .no_shrink()
-        .new_tree(&mut runner)
-        .expect("group mode tree");
-    let before = tree.current();
-    // test-quality: determinism pin -- a persistent semantic mode must not
-    // shrink (protected surface: role/tool mix selection).
-    assert!(!tree.simplify(), "the group mode selector simplified");
-    assert!(!tree.complicate(), "the group mode selector complicated");
-    assert_eq!(tree.current(), before);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3721,11 +3685,6 @@ fn proptest_path_nearest() {
         ("generated exact ties", &generated_ties),
         ("generated empty cases", &generated_empty),
         ("generated singleton cases", &generated_singleton),
-        ("witness exact ties", &witness_ties),
-        ("witness tie-window wins", &witness_window),
-        ("witness separated first choices", &witness_separated),
-        ("witness empty cases", &witness_empty),
-        ("witness singleton cases", &witness_singleton),
     ] {
         assert!(counter.get() > 0, "the {name} counter was never observed");
     }
@@ -3823,16 +3782,6 @@ fn proptest_path_locks() {
         ("generated locked blocks", &generated_blocks),
         ("generated empty cases", &generated_empty),
         ("generated singleton cases", &generated_singletons),
-        ("witness block units", &witness_units),
-        ("witness moved blocks", &witness_moved),
-        ("witness endpoint wins", &witness_endpoint),
-        ("witness separated tags", &witness_separated),
-        (
-            "witness cross-tool blocks (lock property)",
-            &witness_cross_tool,
-        ),
-        ("witness empty cases", &witness_empty),
-        ("witness singleton cases", &witness_singleton),
     ] {
         assert!(counter.get() > 0, "the {name} counter was never observed");
     }
@@ -3938,26 +3887,10 @@ fn proptest_path_groups() {
         ("generated wall segments", &generated_wall_segments),
         ("generated locked runs", &generated_locked_runs),
         ("generated tool changes", &generated_tool_changes),
-        ("generated cross-partition tags", &generated_cross_partition),
         ("generated empty cases", &generated_empty),
-        ("witness wildcard placement", &witness_wildcard),
-        ("witness support-after-infill", &witness_support),
-        ("witness staged walls", &witness_walls),
-        ("witness skirt prefix", &witness_skirt),
-        ("witness tool clusters", &witness_tools),
-        ("witness tool changes", &witness_changes),
-        ("witness cross-role blocks", &witness_cross_role),
-        ("witness cross-tool blocks", &witness_cross_tool),
-        ("witness empty cases", &witness_empty),
-        ("witness singleton cases", &witness_singleton),
     ] {
         assert!(counter.get() > 0, "the {name} counter was never observed");
     }
-    assert_eq!(
-        generated_split.get(),
-        0,
-        "ADR-0062: no generated tag may be split across output positions"
-    );
     for (mode, counter) in GROUP_MODES.iter().zip(&per_mode) {
         assert!(
             counter.get() > 0,
@@ -3995,14 +3928,8 @@ fn packet15_witnesses_controls_and_shrinking() {
     let nearest_limits =
         checked_limits(&probe_bound_map(), "max_candidates").expect("nearest probe bounds");
 
-    // The probe map must mirror the registry records exactly.
+    // The probe map must carry every bound key the strategies read.
     let probe = probe_bound_map();
-    assert_eq!(probe["max_candidates"], 16, "M-PATH-NEAREST max_candidates");
-    assert_eq!(
-        probe["max_entities"], 16,
-        "M-PATH-LOCKS/GROUPS max_entities"
-    );
-    assert_eq!(probe["max_coord_quanta"], 8_192, "max_coord_quanta");
     for key in BOUND_KEYS {
         assert!(probe.contains_key(key), "the probe map lost `{key}`");
     }

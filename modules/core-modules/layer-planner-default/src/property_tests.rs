@@ -641,6 +641,12 @@ fn explicit_credit(spec: &ObjectSpec, index: usize) -> f32 {
     }
 }
 
+// test-quality: characterisation pin — these builders transcribe the production
+// merge (`merge_raft_sequences`, `merge_same_height`, `merge_different_heights`,
+// `raft_top`), including the 1e-6 coincidence and sentinel rules. The comparison
+// pins stable characterisation, not an independent oracle. The independent
+// evidence is `integer_native_tops` plus the closed form and the deterministic
+// A/B, raft, mixed and exact-end witnesses.
 fn model_raft_top(specs: &[ObjectSpec]) -> f64 {
     specs
         .iter()

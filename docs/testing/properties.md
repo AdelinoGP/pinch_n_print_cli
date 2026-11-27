@@ -7722,7 +7722,7 @@ Nonshrinking `prop::sample::select(modes).no_shrink()` for explicit-vs-uniform a
 
 ### Oracle
 
-Independently derived native tops, raft prefix + common raft offset, per-object first credits and catch-up envelopes; NEVER calls the SUT to produce expected values. Midpoint termination recomputed from the model, not copied from the kernel.
+**Characterisation pin, not an independent oracle.** Independently derived native tops, raft prefix + common raft offset, per-object first credits and catch-up envelopes; NEVER calls the SUT to produce expected values. Midpoint termination recomputed from the model, not copied from the kernel. The merge-plane builders transcribe the production merge semantics (union of native tops, per-object catch-up, raft prefix, the 1e-6 coincidence and sentinel rules), so the generated merge-plane comparison pins stable characterisation and must not be credited as independent correctness; the independent evidence is the native-top model plus the deterministic A/B, raft, mixed and exact-end witnesses.
 
 ### Tolerance
 
@@ -7794,7 +7794,7 @@ Nonshrinking mode selector for fast/general + raft/no-raft + explicit/uniform pa
 
 ### Oracle
 
-Independently constructs the expected global event table (union of native tops, per-object catch-up from last participating Z, raft prefix) and each `RegionLayerProposal` (`object_id`, `region_id=="0"`, `effective_layer_height`, `is_catchup`, `catchup_z_bottom`) without calling the merge kernels. `MergedLayer` carries only `z` and `regions` -- no invented `is_raft`.
+**Characterisation pin, not an independent oracle.** The builders construct the expected global event table (union of native tops, per-object catch-up from last participating Z, raft prefix) and each `RegionLayerProposal` (`object_id`, `region_id=="0"`, `effective_layer_height`, `is_catchup`, `catchup_z_bottom`) without calling the merge kernels, but they transcribe the production merge semantics (including the 1e-6 coincidence and sentinel rules). The generated merge-plane comparison pins stable characterisation and must not be credited as independent correctness; the independent evidence is the native-top model plus the deterministic A/B, raft, mixed and exact-end witnesses. `MergedLayer` carries only `z` and `regions` -- no invented `is_raft`.
 
 ### Tolerance
 

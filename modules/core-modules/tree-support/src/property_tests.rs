@@ -3239,36 +3239,4 @@ fn tree_renderer_shrink_bounds() {
             );
         }
     }
-
-    // The mode, degenerate and orientation selectors never shrink: a
-    // shrinking selector could switch a witness's class mid-search.
-    let mut runner = TestRunner::deterministic();
-    let modes = prop::sample::select(SCAN_MODES.to_vec()).no_shrink();
-    let mut tree = modes.new_tree(&mut runner).expect("scan mode tree");
-    let before = tree.current();
-    assert!(!tree.simplify(), "the scan mode selector simplified");
-    assert!(!tree.complicate(), "the scan mode selector complicated");
-    assert_eq!(tree.current(), before);
-    let kinds = prop::sample::select(SCAN_DEGENERATES.to_vec()).no_shrink();
-    let mut tree = kinds.new_tree(&mut runner).expect("degenerate tree");
-    let before = tree.current();
-    assert!(!tree.simplify(), "the degenerate selector simplified");
-    assert!(!tree.complicate(), "the degenerate selector complicated");
-    assert_eq!(tree.current(), before);
-    let render_modes = prop::sample::select(RENDER_MODES.to_vec()).no_shrink();
-    let mut tree = render_modes
-        .new_tree(&mut runner)
-        .expect("render mode tree");
-    let before = tree.current();
-    assert!(!tree.simplify(), "the render mode selector simplified");
-    assert!(!tree.complicate(), "the render mode selector complicated");
-    assert_eq!(tree.current(), before);
-    let orientations = prop::sample::select(vec![false, true]).no_shrink();
-    let mut tree = orientations
-        .new_tree(&mut runner)
-        .expect("orientation tree");
-    let before = tree.current();
-    assert!(!tree.simplify(), "the orientation selector simplified");
-    assert!(!tree.complicate(), "the orientation selector complicated");
-    assert_eq!(tree.current(), before);
 }

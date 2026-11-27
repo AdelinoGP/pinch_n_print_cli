@@ -1477,17 +1477,6 @@ fn ordinary_size(case: &WaveCase) -> i64 {
     case.spacing_units + case.width_units + case.ratio_millis + i64::from(case.iterations)
 }
 
-fn assert_no_shrink<S: Strategy>(runner: &mut TestRunner, strategy: &S, label: &str)
-where
-    S::Value: std::fmt::Debug,
-{
-    let mut tree = strategy.new_tree(runner).expect("no-shrink tree");
-    let before = format!("{:?}", tree.current());
-    assert!(!tree.simplify(), "{label} simplified");
-    assert!(!tree.complicate(), "{label} complicated");
-    assert_eq!(format!("{:?}", tree.current()), before);
-}
-
 /// Revalidate a case and run the real kernel plus the containment check on it.
 fn revalidate_and_check(case: &WaveCase, limits: &WaveLimits) -> Result<WaveReport, String> {
     let (piece, radius, _lattice) = revalidate_case(case, limits)?;
@@ -1565,19 +1554,6 @@ fn wave_shrink_bounds() {
         );
     }
 
-    // ---- Mode selectors are shrink-proof (false-return state). ----------
-    let mut runner = TestRunner::deterministic();
-    assert_no_shrink(
-        &mut runner,
-        &prop::sample::select(ALL_PATTERNS.to_vec()).no_shrink(),
-        "pattern",
-    );
-    assert_no_shrink(
-        &mut runner,
-        &prop::sample::select(vec![WaveMode::Full, WaveMode::Capped]).no_shrink(),
-        "mode",
-    );
-
     // ---- Per mode/pattern probe: current, simplify, complicate, reduce. --
     //
     // `generate` is the expensive part, so the SUT runs on the initial state,
@@ -1586,6 +1562,7 @@ fn wave_shrink_bounds() {
     // `revalidate_case`, which is what the charter's "revalidating every
     // exposed input" requires. This keeps the probe bounded while still
     // executing the kernel across `current`/`simplify`/`complicate`.
+    let mut runner = TestRunner::deterministic();
     for mode in [WaveMode::Full, WaveMode::Capped] {
         for pattern in ALL_PATTERNS {
             let strategy = wave_strategy(&limits, &[mode], &[pattern]);

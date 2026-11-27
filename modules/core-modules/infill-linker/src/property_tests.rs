@@ -1713,22 +1713,12 @@ fn proptest_linker_ring_walks() {
         }
     })
     .expect("M-LINKER-GRAPH ring walks");
-    assert!(
-        generated.cases.get() > 0 && generated.queries.get() + generated.empty_graphs.get() > 0
-    );
     // Per-case invariants only: the graph mode is drawn per case, so a
     // particular ring class, arc direction or stub class can legitimately be
     // absent from a 64-case run. `linker_controls`' deterministic witness
     // asserts every one of those populations on every run. `queries +
     // empty_graphs` is guaranteed positive because every case is one or the
-    // other.
-    assert_generated_populations(
-        "M-LINKER-GRAPH",
-        &[(
-            "queries+empty_graphs",
-            generated.queries.get() + generated.empty_graphs.get(),
-        )],
-    );
+    // other, so it is not asserted as coverage.
     println!("{}", witness.report("M-LINKER-GRAPH witness"));
     println!("{}", generated.report("M-LINKER-GRAPH generated"));
 }
@@ -4032,12 +4022,8 @@ fn proptest_linker_chain_and_origins() {
     // A specific mode can legitimately be absent from a 64-case run, so the
     // per-mode populations are proven by the deterministic witness above
     // (`chain_witnesses` + `ChainCounters::assert_nonvacuous`) rather than by
-    // sampling.
-    assert_eq!(
-        generated.chain_only.get() + generated.chain_connect.get() + generated.orchestrate.get(),
-        generated.cases.get(),
-        "M-LINKER-CHAIN every generated case must take exactly one chain mode"
-    );
+    // sampling. The one-mode-per-case sum is true by construction and is not
+    // asserted as coverage.
     println!("{}", witness.report("M-LINKER-CHAIN witness"));
     println!("{}", generated.report("M-LINKER-CHAIN generated"));
 }

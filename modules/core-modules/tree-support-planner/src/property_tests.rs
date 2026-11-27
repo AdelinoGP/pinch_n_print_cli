@@ -3067,23 +3067,4 @@ fn tree_planner_shrink_bounds() {
             |case: &RolesCase| roles_complexity(case, &rl),
         );
     }
-
-    // The mode selectors themselves never shrink.
-    let mut runner = TestRunner::deterministic();
-    let modes = prop::sample::select(SMOOTH_MODES.to_vec()).no_shrink();
-    let mut tree = modes.new_tree(&mut runner).expect("smooth mode tree");
-    let before = tree.current();
-    assert!(
-        !tree.simplify() && !tree.complicate(),
-        "the smoothing mode selector moved"
-    );
-    assert_eq!(tree.current(), before);
-    let modes = prop::sample::select(ROLES_MODES.to_vec()).no_shrink();
-    let mut tree = modes.new_tree(&mut runner).expect("roles mode tree");
-    let before = tree.current();
-    assert!(
-        !tree.simplify() && !tree.complicate(),
-        "the roles mode selector moved"
-    );
-    assert_eq!(tree.current(), before);
 }

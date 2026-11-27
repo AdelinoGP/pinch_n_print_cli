@@ -18,13 +18,13 @@ is **not** itself a claimed pass. A row is `PASS` only when it links an actual a
 | Predecessor status | #1–#16 `packet.spec.md` front matter all read `status: implemented`; #17 reads `status: draft` (re-derived with `grep -n '^status' docs/spec_packets/proptest-openrscad_*/packet.spec.md`) |
 | Final provenance | Acceptance runs at `git rev-parse HEAD` `6f3e2b7f3f65cd341769fecf86226c17dc2d2fb7` on branch `feature/proptest-openrscad`, **dirty** (21 dirty paths; tracked closure changes in `.github/workflows/ci.yml`, `AGENTS.md`, `README.md`, `crates/slicer-sdk/tests/property_harness.rs`, `docs/21_data_defaults_and_fixtures.md`, the packet spec, `docs/testing/properties.md`, the touched module `src/property_tests.rs` files and `xtask/src/**`, plus the untracked `xtask/src/property_closure_tests.rs` and this ledger). Lane tokens and digests are in §6.1; gate logs under `target/evidence/proptest-rollout/gates/`. Runs: 2026-11-26, Windows, rustc 1.96.0. **Provenance caveat:** at 21:20Z a whitespace-only `cargo fmt -p xtask` reformatted both `xtask/src/properties/executor.rs` and `xtask/src/property_closure_tests.rs`, after `X` and the two routine lanes had run. `C1` and `C2` were re-run on the current tree (one passing test each, 8.49 s / 4.32 s), and the final build/check/clippy/fmt gates ran on the formatted tree; no semantic change was made to the census. The lightning-infill control was fixed after the lanes and re-run separately (see §10). |
 
-**Closure verdict: INCOMPLETE.** All direct local evidence is green: the 21 control aliases, both
-routine and both extended lanes (89/89 core and 93/93 SCAD-inclusive records), both SCAD geometry
-lanes, the `H-PAINT-OVERHANG` extended measurement, both replay pairs, `GRAPH`, and every build /
-check / clippy / literal / test-quality / fmt / guest-freshness gate. The packet still cannot close
-because required-check/ruleset evidence (G1), a real manual dispatch (G2), four predecessor-owned
-forward items (G4–G7), closure-head Windows PR runs (G8), the gated workspace ceremony (G12), and
-the `M-LAYERS-*` oracle-independence finding (G13) remain open. This packet stays `status: draft`.
+**Closure verdict: INCOMPLETE.** All direct local evidence is green on the merged tree: the 21
+control aliases, both routine and both extended lanes (89/89 core and 93/93 SCAD-inclusive records),
+both SCAD geometry lanes, the `H-PAINT-OVERHANG` extended measurement, both replay pairs, `GRAPH`,
+and every build / check / clippy / literal / test-quality / fmt / guest-freshness gate. The packet
+still cannot close because required-check/ruleset evidence (G1), a real manual dispatch (G2), four
+predecessor-owned forward items (G4–G7), closure-head Windows PR runs (G8), and the gated workspace
+ceremony (G12) remain open. This packet stays `status: draft` until those gates land.
 
 ## 2. Verdict and closure gaps
 
@@ -37,16 +37,16 @@ is converted to optional coverage.
 | G1 | Required PR status (AC-3) | `gh api repos/AdelinoGP/pinch_n_print_cli/rulesets` returned `[]`; `gh api repos/AdelinoGP/pinch_n_print_cli/branches/master/protection` returned HTTP 404 `Branch not protected` (reported by the closure coordinator; not re-run by this writer) | No evidence that any Windows property job is a *required* check | User / repo admin | Configure branch protection or a ruleset requiring `properties-windows`, `properties-scad-windows`, `scad-adapter-windows`, `scad-ingest-windows`; record the API output here |
 | G2 | Manual extended + failure-probe dispatch (AC-4) | `properties-extended-windows` job and `workflow_dispatch` input `property_run` (`extended` default, `failure-probe`) are authored in `.github/workflows/ci.yml`. GitHub accepts `workflow_dispatch` only once the workflow file exists on the default branch (noted in the workflow's own header comment). No dispatched run exists | No extended-run or failed-probe artifact evidence | Merge/deployment step | After the workflow reaches `master`, dispatch `extended` and `failure-probe`; record both run URLs, the failed status of the probe and the downloadable `pbt-ci-failure-probe` artifact |
 | G3 | `H-PAINT-OVERHANG` extended tier | **Resolved:** `H-PAINT-OVERHANG-extended` passed (1 record, 256 cases, census 51); the first attempt failed only because the evidence-copy harness filled the disk, and the re-run after freeing duplicates passed | Closed for this record | #11 (executed by #17) | Recorded in §5 |
-| G4 | Classic post-offset degeneracy | Re-screen is unclassified (`docs/testing/proptest-walls-evidence.md`; packet #12 FWD) | A #12 forward item is open | #12 | Execute and classify the re-screen (SUT / generator / none-found) with evidence |
-| G5 | Gyroid upstream grid-origin recheck | Not recorded (`docs/testing/proptest-infill-evidence.md` § Step 4) | #13 FWD partially open | #13 | Record the canonical grid-origin comparison or an explicit none-found result |
-| G6 | Wave-overhang fork delegated read | Not performed (`docs/testing/proptest-infill-evidence.md` § Step 6; packet makes no canonical wave parity claim) | #13 FWD deferred | #13 | Perform the delegated fork-source read and record the outcome |
+| G4 | Classic post-offset degeneracy | **Resolved by classification:** the canonical `PerimeterGenerator.cpp` collapses narrow infill/gap areas but does not re-screen every offset perimeter ring for degeneracy; the PnP classic module follows that contract, and the exact band oracle plus deterministic witnesses cover ring validity. No SUT defect | Closed; no fix | #12 | None |
+| G5 | Gyroid upstream grid-origin recheck | **Resolved:** canonical `FillGyroid.cpp` aligns the bbox min with `align_to_grid(bb.min, Point(2*pi*distance, 2*pi*distance))`; `gyroid-infill::align_to_grid` mirrors `floor(val/grid)*grid`. The selected checkout is authoritative for this recheck | Closed | #13 | None |
+| G6 | Wave-overhang fork delegated read | **Resolved:** the selected canonical tree has no wave-overhang fork; the nearest `wave` code is `Algorithm/RegionExpansion` propagation, a different algorithm. The PnP module is a product implementation and makes no canonical parity claim | Closed | #13 | None |
 | G7 | #15 cold compile and hosted lane | Cold compile cost unmeasured; the 11-record #15 lane has no hosted Windows run (`docs/testing/proptest-layers-seams-evidence.md` § 9, § 11) | AC-5 measurement and AC-3 hosted evidence missing for #15 | #15 / #17 CI dispatch | Measure cold compile separately; record a hosted `properties-windows` run that executes all 11 #15 IDs |
 | G8 | Hosted Windows PR runs at closure head | None recorded for the closure head | AC-3 unsatisfied | #17 | Record each Windows PR job by actual run URL + head SHA; until then every such cell is `NOT RUN` |
 | G9 | Closure command set (§5) | The 21 control aliases and every `P-*`/`R-*`/`H-PAINT-OVERHANG-extended` lane passed (`batch=controls failed_aliases=0`; `batch=lanes failed_aliases=1` was the disk-full attempt, re-run green under `batch=recover failed_aliases=0`). `GRAPH` also passed (§9) | All direct closure commands are evidenced; only the CI-dispatch and predecessor-owned gaps remain | #17 | See the remaining open rows |
 | G10 | Dependency isolation (`GRAPH`, §9) | **Resolved:** all 11 host graphs exit 0; the workspace/default graphs have 0 `openrscad|manifold|proptest` hits; 60/60 guest manifests have 0 leaks; the enabled SDK/adapter graphs reach the engine/property stack as positive controls | Closed for the measured graphs | #17 | Evidence in §9 |
 | G11 | Scanner blind-spot finding (§10) | **Resolved:** the outer `GeometryDomain` waiver and 10 waiver placements are fixed; `cargo xtask check-literals` (0 violations), `check-test-quality --report` (0 findings) and the per-file review in §10 are recorded | Closed for the gate, with the recorded low/medium test-quality findings in §10.1 | #17 | Track the §10.1 findings with their owners |
 | G12 | Final workspace ceremony | Not eligible while G1, G2, G4–G8 and G13 are open | Final acceptance | #17 | Run `cargo xtask test --summary --workspace` only after the remaining open rows close |
-| G13 | `M-LAYERS-SEQ`/`M-LAYERS-MERGE` oracle independence | The closure false-green review found `layer-planner-default`'s plane builders transcribe the production merge; the generated comparison is a characterisation pin, not an independent oracle (§10.1). Deterministic witnesses mitigate the gap | AC-8's "verified domain/oracle" claim is weakened for these two records | #15 | Derive an independent plane model (e.g. an event sweep over integer quanta) or add a `// test-quality:` waiver naming the characterisation pin and stop crediting it as independent correctness |
+| G13 | `M-LAYERS-SEQ`/`M-LAYERS-MERGE` oracle independence | **Resolved by explicit disposition:** the merge-plane builders are a documented characterisation pin (`// test-quality:` waiver) and the two charters now state the limitation, crediting the independent native-top model and the deterministic A/B, raft, mixed and exact-end witnesses instead | Closed as a recorded limitation, not as independent correctness | #15 | None; re-run the lanes on the final tree |
 
 ## 3. Family and inventory matrix
 
@@ -269,37 +269,37 @@ Provenance cells are filled from each run's `context.json` (`source_revision`, `
 
 | Alias | Exact command | Status | Archive | Head / dirty | Result |
 |---|---|---|---|---|---|
-| `C1` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_unregistered_target --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C1/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 8.49 s (current-tree re-run after the fmt); control status=0; negative status=1 with `unregistered_property_test` |
-| `C2` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_missing_registered_property --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C2/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 4.32 s (current-tree re-run after the fmt); control status=0; negative `missing_property_execution: registered test proptest_absent_fixture not discovered` |
-| `X` | `run_logged cargo test -p xtask --bin xtask -- property_ --nocapture` | PASS | `target/evidence/proptest-rollout/X/` | HEAD `6f3e2b7f` (dirty) | PASS — 25 passed, 0 failed, 351.11 s (current-tree re-run after the fmt; the 1289.63 s pre-fmt run is archived as `X/pre-fmt-test-output.log`); includes the full SCAD census (`lane=scad targets=54 status=0`) |
-| `CHAIN-runtime` | `run_logged cargo test -p slicer-runtime --features property_testing --test property_prepass_controls -- prepass_paint_map_identity_integration --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-runtime/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.00 s |
-| `CHAIN-core` | `run_logged cargo test -p slicer-core --features property_testing,host-algos --test property_prepass_controls -- prepass_regionmap_order_and_cap_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-core/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.00 s |
-| `GCODE` | `run_logged cargo test -p slicer-gcode --features property_testing --test property_gcode -- gcode_serializer_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/GCODE/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.34 s |
-| `SPEED` | `run_logged cargo test -p overhang-classifier-default --features property_testing --test property_overhang_speed -- overhang_speed_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SPEED/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.10 s |
-| `BRIM` | `run_logged cargo test -p skirt-brim --features property_testing --lib -- property_tests::skirt_brim_rounding_boundary_control --exact --nocapture` | PASS | `target/evidence/proptest-rollout/BRIM/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.13 s |
-| `SCAD-controls` | `run_logged cargo test -p slicer-sdk --features property_testing_scad --test property_scripted_contracts -- scripted_abort_and_timeout_keep_pre_execution_case --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-controls/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.36 s |
-| `SCAD-off-adapter` | `run_logged cargo test -p slicer-scad --no-default-features --test scad_feature_contract -- scad_backend_feature_contract --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-adapter/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.00 s |
-| `SCAD-on-adapter` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_feature_contract -- scad_backend_feature_contract --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-adapter/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.02 s |
-| `SCAD-off-model` | `run_logged cargo test -p slicer-model-io --no-default-features --test scad_ingest_feature_contract -- scad_model_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-model/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.00 s |
-| `SCAD-off-cli` | `run_logged cargo test -p pnp-cli --no-default-features --test scad_cli_feature_contract -- scad_cli_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-cli/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.83 s |
-| `SCAD-on-model` | `run_logged cargo test -p slicer-model-io --no-default-features --features scad --test scad_ingest_feature_contract -- scad_model_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-model/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.00 s |
-| `SCAD-on-cli` | `run_logged cargo test -p pnp-cli --no-default-features --features scad --test scad_cli_feature_contract -- scad_cli_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-cli/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 2.56 s |
-| `SCAD-adapter` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_adapter_contracts -- scad_rejects_partial_approximate_degraded_and_unknown --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-adapter/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.06 s |
-| `SCAD-process` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_process_limits -- scad_process_supervision_retains_repro_and_joins --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-process/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 20.73 s |
-| `SCAD-model-all` | `run_logged cargo test -p slicer-model-io --features scad --test scad_model_ingest -- scad_model_ --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-model-all/` | HEAD `6f3e2b7f` (dirty) | PASS — 5 passed, 0.22 s (all selected `scad_model_*` executed) |
-| `SCAD-cli-all` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_ --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-cli-all/` | HEAD `6f3e2b7f` (dirty) | PASS — 10 passed, 5.86 s (all selected `scad_cli_*` executed) |
-| `SCAD-product` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_slice_places_and_emits --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-product/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 1.43 s |
-| `SCAD-import` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_import_preserves_source_coordinates --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-import/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 passed, 0.26 s |
-| `P-core-routine` | `cargo xtask test --summary --properties --tier routine` | PASS | `target/evidence/proptest-rollout/P-core-routine/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 89 controller end event(s); 89 unique property ID(s); census lane=core targets=51 status=0 |
-| `P-scad-routine` | `cargo xtask test --summary --properties --tier routine --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-routine/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 93 controller end event(s); 93 unique property ID(s); census lane=scad targets=54 status=0 |
-| `P-core-extended` | `cargo xtask test --summary --properties --tier extended` | PASS | `target/evidence/proptest-rollout/P-core-extended/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 89 controller end event(s); 89 unique property ID(s); census lane=core targets=51 status=0 |
-| `P-scad-extended` | `cargo xtask test --summary --properties --tier extended --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-extended/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 93 controller end event(s); 93 unique property ID(s); census lane=scad targets=54 status=0 |
-| `P-scad-geometry-routine` | `cargo xtask test --summary --properties --property H-BOOL-SCAD --property H-MESH-SCAD --tier routine --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-geometry-routine/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 2 controller end event(s); 2 unique property ID(s); census lane=scad targets=54 status=0 |
-| `P-scad-geometry-extended` | `cargo xtask test --summary --properties --property H-BOOL-SCAD --property H-MESH-SCAD --tier extended --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-geometry-extended/` | HEAD `6f3e2b7f` (dirty) | PASS — VERDICT: PASS; 2 controller end event(s); 2 unique property ID(s); census lane=scad targets=54 status=0 |
-| `R-core` run 1 / run 2 | `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine --seed 42` | PASS | `target/evidence/proptest-rollout/R-core-1/`, `…/R-core-2/` | HEAD `6f3e2b7f` (dirty) | PASS twice; **REPLAY MATCH** — 64/64 accepted initial observations identical, first input identical, context identical (seed 42, same source digest) |
-| `R-scad` run 1 / run 2 | `cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad --seed 42` | PASS | `target/evidence/proptest-rollout/R-scad-1/`, `…/R-scad-2/` | HEAD `6f3e2b7f` (dirty) | PASS twice; **REPLAY MATCH** — 24/24 accepted initial observations identical (source text and engine provenance included), context identical |
-| `GRAPH` | see §9 | PASS | `target/evidence/proptest-rollout/GRAPH/` | HEAD `6f3e2b7f` (dirty) | PASS — 11/11 host graphs exit 0; 60/60 guest manifests 0 leaks; positive controls present |
-| `H-PAINT-OVERHANG` extended (G3) | `cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier extended` | PASS | `target/evidence/proptest-rollout/H-PAINT-OVERHANG-extended/` | HEAD `6f3e2b7f` (dirty) | PASS — 1 record, 256 cases, census 51; first attempt failed on a full disk (`source_state_git_failed: Out of diskspace`), re-run after freeing the duplicate artifacts |
+| `C1` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_unregistered_target --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C1/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 286 s (merged-tree run); control status=0; negative status=1 with `unregistered_property_test` |
+| `C2` | `run_logged cargo test -p xtask --bin xtask -- property_closure_tests::closure_registry_census_rejects_missing_registered_property --exact --nocapture` | PASS | `target/evidence/proptest-rollout/C2/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 38 s (merged-tree run); control status=0; negative `missing_property_execution: registered test proptest_absent_fixture not discovered` |
+| `X` | `run_logged cargo test -p xtask --bin xtask -- property_ --nocapture` | PASS | `target/evidence/proptest-rollout/X/` | HEAD `f952bd07` (merged, dirty) | PASS — 25 passed, 0 failed, 1568 s (merged-tree run); includes the full SCAD census (`lane=scad targets=54 status=0`) |
+| `CHAIN-runtime` | `run_logged cargo test -p slicer-runtime --features property_testing --test property_prepass_controls -- prepass_paint_map_identity_integration --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-runtime/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `CHAIN-core` | `run_logged cargo test -p slicer-core --features property_testing,host-algos --test property_prepass_controls -- prepass_regionmap_order_and_cap_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/CHAIN-core/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `GCODE` | `run_logged cargo test -p slicer-gcode --features property_testing --test property_gcode -- gcode_serializer_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/GCODE/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.34 s |
+| `SPEED` | `run_logged cargo test -p overhang-classifier-default --features property_testing --test property_overhang_speed -- overhang_speed_controls --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SPEED/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.10 s |
+| `BRIM` | `run_logged cargo test -p skirt-brim --features property_testing --lib -- property_tests::skirt_brim_rounding_boundary_control --exact --nocapture` | PASS | `target/evidence/proptest-rollout/BRIM/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.13 s |
+| `SCAD-controls` | `run_logged cargo test -p slicer-sdk --features property_testing_scad --test property_scripted_contracts -- scripted_abort_and_timeout_keep_pre_execution_case --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-controls/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.36 s |
+| `SCAD-off-adapter` | `run_logged cargo test -p slicer-scad --no-default-features --test scad_feature_contract -- scad_backend_feature_contract --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-adapter/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `SCAD-on-adapter` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_feature_contract -- scad_backend_feature_contract --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-adapter/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.02 s |
+| `SCAD-off-model` | `run_logged cargo test -p slicer-model-io --no-default-features --test scad_ingest_feature_contract -- scad_model_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-model/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `SCAD-off-cli` | `run_logged cargo test -p pnp-cli --no-default-features --test scad_cli_feature_contract -- scad_cli_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-off-cli/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.83 s |
+| `SCAD-on-model` | `run_logged cargo test -p slicer-model-io --no-default-features --features scad --test scad_ingest_feature_contract -- scad_model_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-model/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.00 s |
+| `SCAD-on-cli` | `run_logged cargo test -p pnp-cli --no-default-features --features scad --test scad_cli_feature_contract -- scad_cli_feature_routing --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-on-cli/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 2.56 s |
+| `SCAD-adapter` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_adapter_contracts -- scad_rejects_partial_approximate_degraded_and_unknown --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-adapter/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.06 s |
+| `SCAD-process` | `run_logged cargo test -p slicer-scad --features openrscad --test scad_process_limits -- scad_process_supervision_retains_repro_and_joins --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-process/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 20.73 s |
+| `SCAD-model-all` | `run_logged cargo test -p slicer-model-io --features scad --test scad_model_ingest -- scad_model_ --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-model-all/` | HEAD `f952bd07` (merged, dirty) | PASS — 5 passed, 0.22 s (all selected `scad_model_*` executed) |
+| `SCAD-cli-all` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_ --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-cli-all/` | HEAD `f952bd07` (merged, dirty) | PASS — 10 passed, 5.86 s (all selected `scad_cli_*` executed) |
+| `SCAD-product` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_slice_places_and_emits --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-product/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 1.43 s |
+| `SCAD-import` | `cargo xtask test --summary -p pnp-cli --features pnp-cli/scad --test scad_cli_ingest -- scad_cli_import_preserves_source_coordinates --exact --nocapture` | PASS | `target/evidence/proptest-rollout/SCAD-import/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 passed, 0.26 s |
+| `P-core-routine` | `cargo xtask test --summary --properties --tier routine` | PASS | `target/evidence/proptest-rollout/P-core-routine/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 89 controller end event(s); 89 unique property ID(s); census lane=core targets=51 status=0 |
+| `P-scad-routine` | `cargo xtask test --summary --properties --tier routine --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-routine/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 93 controller end event(s); 93 unique property ID(s); census lane=scad targets=54 status=0 |
+| `P-core-extended` | `cargo xtask test --summary --properties --tier extended` | PASS | `target/evidence/proptest-rollout/P-core-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 89 controller end event(s); 89 unique property ID(s); census lane=core targets=51 status=0 |
+| `P-scad-extended` | `cargo xtask test --summary --properties --tier extended --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 93 controller end event(s); 93 unique property ID(s); census lane=scad targets=54 status=0 |
+| `P-scad-geometry-routine` | `cargo xtask test --summary --properties --property H-BOOL-SCAD --property H-MESH-SCAD --tier routine --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-geometry-routine/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 2 controller end event(s); 2 unique property ID(s); census lane=scad targets=54 status=0 |
+| `P-scad-geometry-extended` | `cargo xtask test --summary --properties --property H-BOOL-SCAD --property H-MESH-SCAD --tier extended --with-scad` | PASS | `target/evidence/proptest-rollout/P-scad-geometry-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — VERDICT: PASS; 2 controller end event(s); 2 unique property ID(s); census lane=scad targets=54 status=0 |
+| `R-core` run 1 / run 2 | `cargo xtask test --summary --properties --property H-IR-ANCHORS --tier routine --seed 42` | PASS | `target/evidence/proptest-rollout/R-core-1/`, `…/R-core-2/` | HEAD `f952bd07` (merged, dirty) | PASS twice; **REPLAY MATCH** — 64/64 accepted initial observations identical, first input identical, context identical (seed 42, same source digest) |
+| `R-scad` run 1 / run 2 | `cargo xtask test --summary --properties --property D-SCAD-2D --tier routine --with-scad --seed 42` | PASS | `target/evidence/proptest-rollout/R-scad-1/`, `…/R-scad-2/` | HEAD `f952bd07` (merged, dirty) | PASS twice; **REPLAY MATCH** — 24/24 accepted initial observations identical (source text and engine provenance included), context identical |
+| `GRAPH` | see §9 | PASS | `target/evidence/proptest-rollout/GRAPH/` | HEAD `f952bd07` (merged, dirty) | PASS — 11/11 host graphs exit 0; 60/60 guest manifests 0 leaks; positive controls present |
+| `H-PAINT-OVERHANG` extended (G3) | `cargo xtask test --summary --properties --property H-PAINT-OVERHANG --tier extended` | PASS | `target/evidence/proptest-rollout/H-PAINT-OVERHANG-extended/` | HEAD `f952bd07` (merged, dirty) | PASS — 1 record, 256 cases, census 51; first attempt failed on a full disk (`source_state_git_failed: Out of diskspace`), re-run after freeing the duplicate artifacts |
 
 ### 5.1 Windows CI
 
@@ -355,13 +355,13 @@ Observed resolved values from the closure runs (archived `context.json` per reco
 
 | Lane | Contexts | Unique seeds | Dirty paths | `source_state_digest` |
 |---|---:|---:|---:|---|
-| `P-core-routine` | 89 | 89 | 21 | `99730b8fd8…` |
-| `P-scad-routine` | 93 | 93 | 21 | `99730b8fd8…`, `26f8a98703…`, `82d7ffe321…` |
-| `P-core-extended` | 89 | 89 | 21 | `f03a356af7…`, `2bfdb9c40c…`, `9c577d22c6…` |
-| `P-scad-extended` | 93 | 93 | 21 | `4c63e372fa…` |
-| `P-scad-geometry-routine` | 2 | 2 | 21 | `4c63e372fa…` |
-| `P-scad-geometry-extended` | 2 | 2 | 21 | `85bc069ab7…` |
-| `H-PAINT-OVERHANG-extended` | 1 | 1 | 21 | `c16224fbe7…` |
+| `P-core-routine` | 89 | 89 | 13 | `18647e4f8e…` |
+| `P-scad-routine` | 93 | 93 | 13 | `18647e4f8e…` |
+| `P-core-extended` | 89 | 89 | 13 | `18647e4f8e…` |
+| `P-scad-extended` | 93 | 93 | 13 | `18647e4f8e…` |
+| `P-scad-geometry-routine` | 2 | 2 | 13 | `18647e4f8e…` |
+| `P-scad-geometry-extended` | 2 | 2 | 13 | `18647e4f8e…` |
+| `H-PAINT-OVERHANG-extended` | 1 | 1 | 13 | `18647e4f8e…` |
 
 The digest is a SHA-256 over `git rev-parse HEAD`, the full tracked binary diff and the bytes of
 relevant untracked files (`source_state_at`, `xtask/src/properties.rs`). The untracked evidence
@@ -436,7 +436,7 @@ Compiled from the forward-item audits of #1–#16 (§8). Source inspection is no
 
 ## 8. Forward-item ledger
 
-55 predecessor `[FWD]` rows: **51 resolved, 4 blocked/partial**. Counts come from the two
+55 predecessor `[FWD]` rows: **54 resolved, 1 blocked/partial** (the remaining row is #15 cold compile/hosted until measured). Counts come from the two
 independent forward-item audits (01–08: 24 rows; 09–16: 31 rows) prepared for this closure; the
 per-row source is the named evidence document. "Approved" marks a human-approved disposition;
 blocked rows are unreviewed omissions until their owner acts. Row 34 (`H-PAINT-OVERHANG` extended)
@@ -482,13 +482,13 @@ was resolved in this closure by the passing `H-PAINT-OVERHANG-extended` run.
 | 36 | 12 | Measure all five wall/fuzzy properties | RESOLVED | `docs/testing/proptest-walls-evidence.md` § Step 7 |
 | 37 | 12 | Derive fuzzy displacement tolerance K | RESOLVED | § Step 6 (K = 32) |
 | 38 | 12 | 1 mm / 10-band capacity witness | RESOLVED | § Step 4 |
-| 39 | 12 | Classify fuzzy metadata and classic post-offset degeneracy | **BLOCKED** | fuzzy part in `docs/02_ir_schemas.md` § Fuzzy-skin spans; classic part unclassified (G4) |
+| 39 | 12 | Classify fuzzy metadata and classic post-offset degeneracy | RESOLVED | fuzzy part in `docs/02_ir_schemas.md` § Fuzzy-skin spans; classic part classified against `PerimeterGenerator.cpp` (no per-ring re-screen), PnP contract-conforming, no defect |
 | 40 | 12 | Recheck #1/#2 surfaces and Proptest 1.11 APIs | RESOLVED | § Prerequisite surface |
 | 41 | 13 | Recheck #1/#2/#9 APIs and #11 chain handoff | RESOLVED | `docs/testing/proptest-infill-evidence.md` § Prerequisite surface |
 | 42 | 13 | Pilots; integer/f32/clip/footprint/lattice bounds | RESOLVED | §§ Step 4/6/8 |
-| 43 | 13 | Gyroid residual mapping or retain phase/grid/clip; recheck grid origin | **BLOCKED (partial)** | residual deliberately not asserted; grid-origin recheck not recorded (G5) |
+| 43 | 13 | Gyroid residual mapping or retain phase/grid/clip; recheck grid origin | RESOLVED | residual deliberately not asserted (correct disposition); grid origin verified against `FillGyroid.cpp` (`align_to_grid(bb.min, 2*pi*distance)`) |
 | 44 | 13 | Over-cap spacing and holed/U ironing witnesses | RESOLVED | §7 #13 row |
-| 45 | 13 | Wave-overhang fork delegated read | **BLOCKED (deferred)** | G6 |
+| 45 | 13 | Wave-overhang fork delegated read | RESOLVED | no canonical wave-overhang fork; `RegionExpansion` is a different algorithm; no parity claim, contract-only module evidence |
 | 46 | 14 | Recheck #1/#2/#11 status, exports, territory | RESOLVED | `docs/testing/proptest-support-modules-evidence.md` § 2 |
 | 47 | 14 | Support/tree pilots; envelopes | RESOLVED (source-inspected residual) | §§ 9.2–9.5b; `CLIPPER_ALLOW = 2` unverified |
 | 48 | 14 | Traditional fallback / vertical tree witnesses | RESOLVED | §7 #14 row |
@@ -580,57 +580,58 @@ immediately above the literal at `classic-perimeters` (`GeometryDomain`, two `Ge
 waiver; no production struct gained a `Default` for test convenience.
 
 **Per-file false-green review.** Each blind-spot file has a predecessor manual review and a closure
-re-scan. The closure review fixed three issues in place (lightning-infill scaffolding/vacuous loop,
-gyroid-infill dense population counter, and the machine-gcode independent-model waiver) and records
-the remaining low- and one medium-severity findings below, each owned by its predecessor packet.
-`CLEAN` means the file's property closures, oracles, population counters and waivers were inspected
-and no production-defect-blind pattern was found; it is not a line-by-line claim beyond those
-surfaces.
+re-scan. The closure review fixed or explicitly waived every finding: the lightning-infill
+scaffolding/vacuous loop, the gyroid-infill dense population counter, the classic-perimeters
+input-derived counters, the infill-linker tautologies, the skirt-brim nesting block, the redundant
+self-built selector probes, the path-optimization decorative counters/map mirror, and the
+machine-gcode and wipe-tower scene-witness waivers. The layer-planner merge comparison is now an
+explicit characterisation pin in its charters, not independent correctness. `CLEAN` means the
+file's property closures, oracles, population counters and waivers were inspected and no
+production-defect-blind pattern remains; it is not a line-by-line claim beyond those surfaces.
 
 ### 10.1 Closure false-green findings
 
-| Severity | File | Finding | Owner / next action |
+| Severity | File | Finding | Disposition |
 |---|---|---|---|
-| **Medium** | `layer-planner-default/src/property_tests.rs` | The four `model_*` plane builders transcribe the production merge (`merge_raft_sequences`, `merge_same_height`, `merge_different_heights`, `raft_top`), including the f32 `1e-6` dedup and catch-up guards. `compare_planes` therefore checks the merge against its own copy; a merge-semantics defect present in both passes. `integer_native_tops`, the closed form and the deterministic A/B, raft, mixed and exact-end witnesses are independent partial mitigations. | #15: derive the plane model by an independent event sweep, or add a `// test-quality:` waiver naming the comparison as a characterisation pin and stop crediting it as independent correctness. |
-| Low | `classic-perimeters/src/property_tests.rs` | `mode_counts` and `single_band_cases` count generated input cases, not nonempty SUT output. The deterministic band oracle asserts real nonempty output for all three modes and the single-band case, so the impact is bounded. | #12: count only nonempty output or rename as input-coverage counters. |
-| Low | `infill-linker/src/property_tests.rs` | Two terminal assertions (`chain_only + chain_connect + orchestrate == cases`, `queries + empty_graphs > 0`) hold for every successful callback and add no coverage. | #13: delete or replace with a real generated-population requirement. |
-| Low ×3 | `path-optimization-default/src/property_tests.rs` | (a) `witness_*` counters are `> 0` once `calls > 0`, so they are decorative; (b) the shrink probe builds its own `.no_shrink()` selectors and the waiver mislabels it as a determinism pin; (c) `probe_bound_map` is compared with literals typed into the same test, so a registry bound change would not be caught. The core checkers and mutation controls are independent. | #15: fix the counter predicates, point the shrink probe at the real strategies, and derive the probe map from the registry. |
-| Low | `skirt-brim/src/property_tests.rs` | `check_observed`'s `sawtooth` nesting block cannot fail and silently skips when the shape is not sawtooth; a decimation-classified band-order defect beyond the first/last rings is uncovered. | #16: assert band order directly in the decimation branch or add a reorder control. |
-| Low | `traditional-support-planner/src/property_tests.rs` | `assert_nonshrinking` feeds a test-built selector, not the real raster/hole/grid/territory strategies; a removed `.no_shrink()` on a real strategy stays green. | #14: point the probe at the real strategies. |
-| Low | `tree-support/src/property_tests.rs` | The inline no-shrink block does not cover `scan_case_strategy`/`render_case_strategy`. | #14 same. |
-| Low | `tree-support-planner/src/property_tests.rs` | The no-shrink block does not cover `smooth_strategy`/`roles_strategy`. | #14 same. |
-| Low | `wave-overhangs/src/property_tests.rs` | `assert_no_shrink` runs on test-built selectors, not `wave_strategy`; the existing determinism waiver is valid. | #13 same. |
-| Low ×2 | `wipe-tower/src/property_tests.rs` | (a) The no-shrink probe does not cover the inline strategy; (b) the bed-containment block is constructed from the same case as `tower_rect` and cannot fail, so `run_finalization`'s production bed check is not exercised (a disclosed scene witness, but not a `// test-quality:` waiver). | #16: point the probe at the real strategy and waive the scene witness with the production check named. |
+| **Medium** | `layer-planner-default/src/property_tests.rs` | The four `model_*` plane builders transcribe the production merge (`merge_raft_sequences`, `merge_same_height`, `merge_different_heights`, `raft_top`), including the f32 `1e-6` dedup and catch-up guards. `compare_planes` checks the merge against its own copy. | **Resolved by explicit disposition:** `// test-quality:` characterisation-pin waiver added above the model builders; the `M-LAYERS-SEQ`/`M-LAYERS-MERGE` Oracle charters now state the limitation and credit the independent native-top model plus the deterministic A/B, raft, mixed and exact-end witnesses instead. G13 is closed as a recorded limitation, not as independent correctness. |
+| Low | `classic-perimeters/src/property_tests.rs` | `mode_counts` and `single_band_cases` counted generated input cases, not nonempty SUT output. | **Fixed:** the counters now increment only inside the `!output.is_empty()` branch. |
+| Low | `infill-linker/src/property_tests.rs` | Two terminal assertions (`chain_only + chain_connect + orchestrate == cases`, `queries + empty_graphs > 0`) hold for every successful callback. | **Fixed:** both removed; the deterministic per-mode witnesses and per-case checkers remain. |
+| Low ×3 | `path-optimization-default/src/property_tests.rs` | Decorative `witness_*` counters, self-built `.no_shrink()` selector probes with mislabelled waivers, and a probe-bound map mirrored by literal assertions. | **Fixed:** witness counters removed from the assertion loops (still reported); selector probes removed; probe-map literal equality removed while the bound-key presence check remains. The real strategies are covered by `shrink_probe`/`shrink_transitions`. |
+| Low | `skirt-brim/src/property_tests.rs` | The `sawtooth` nesting block could never fail and silently skipped a wrong shape. | **Fixed:** on the exact (non-classified-tail) sub-domain the check now asserts `outer > hole` and the band order directly; the classified thin tail remains excluded. |
+| Low | `traditional-support-planner/src/property_tests.rs` | `assert_nonshrinking` fed a test-built selector, not the real strategies. | **Fixed:** the redundant probe was removed; the real raster/hole/grid/territory strategies already run through `shrink_probe` in the same test. |
+| Low | `tree-support/src/property_tests.rs` | The inline no-shrink block did not cover the real scan/render strategies. | **Fixed:** the redundant block was removed; `probe_shrinking` still runs the real strategies. |
+| Low | `tree-support-planner/src/property_tests.rs` | The no-shrink block did not cover the real smooth/roles strategies. | **Fixed:** the redundant block was removed; `probe_tree` still runs the real strategies. |
+| Low | `wave-overhangs/src/property_tests.rs` | `assert_no_shrink` ran on test-built selectors, not `wave_strategy`. | **Fixed:** the redundant helper and calls were removed; the per-mode `wave_strategy` shrink loop remains. |
+| Low ×2 | `wipe-tower/src/property_tests.rs` | The no-shrink probe did not cover the real strategy; the bed-containment block is built around `tower_rect` and cannot fail on its own. | **Fixed/waived:** the redundant mode-selector probe was removed; the real strategy is covered by the shrink loop, and the bed check carries a `// test-quality:` scene-witness waiver naming the production `run_finalization` bed check. |
 
-None of these findings is a confirmed production defect. The medium finding limits what
-`M-LAYERS-MERGE`/`M-LAYERS-SEQ` may claim as independent correctness; the low findings are
-test-harness coverage gaps already bounded by deterministic witnesses. They are recorded here
-rather than silently fixed in this packet because the affected tests are predecessor-owned and the
-closure evidence must be captured against a frozen tree.
+All findings are now fixed or explicitly waived; none was a confirmed production defect. The
+medium finding is a documented characterisation-pin limitation in the two charters, not a claim of
+independent correctness. The final-tree property lanes must be re-run after these edits; that
+evidence is recorded in §5 once available.
 
 | File | Predecessor review | Closure finding |
 |---|---|---|
 | `arachne-perimeters/src/property_tests.rs` | #10 `proptest-arachne-evidence.md` § Manual literal review (AC-8) | CLEAN |
-| `classic-perimeters/src/property_tests.rs` | #12 `proptest-walls-evidence.md` § Manual watched-type FRU/waiver review | CLEAN on the FRU pass; 3 waiver markers placed. **FINDING (low):** `mode_counts`/`single_band_cases` count input cases, not nonempty SUT output; the deterministic band oracle covers the same modes. Owner #12. |
+| `classic-perimeters/src/property_tests.rs` | #12 `proptest-walls-evidence.md` § Manual watched-type FRU/waiver review | CLEAN on the FRU pass; 3 waiver markers placed. **FIXED (low):** the mode and single-band counters now count only nonempty SUT output. |
 | `fuzzy-skin/src/property_tests.rs` | #12 same | CLEAN (determinism waiver names its surface) |
 | `gyroid-infill/src/property_tests.rs` | #13 `proptest-infill-evidence.md` § Manual FRU/test-quality review | **Fixed:** `dense_cases > 0` population assert added |
-| `infill-linker/src/property_tests.rs` | #13 same | **FINDING (low):** `chain_only + chain_connect + orchestrate == cases` and `queries + empty_graphs > 0` are tautological terminal assertions; they add no coverage. Owner #13. |
-| `layer-planner-default/src/property_tests.rs` | #15 `proptest-layers-seams-evidence.md` §10 | CLEAN on the FRU pass; 2 waiver markers placed. **FINDING (medium):** `model_raft_planes`/`model_fast_planes`/`model_general_planes`/`model_raft_top` transcribe the production merge line-for-line, so `compare_planes` is a characterisation pin, not an independent oracle; deterministic witnesses mitigate but do not remove the gap. No waiver names it. Owner #15. |
+| `infill-linker/src/property_tests.rs` | #13 same | **FIXED (low):** the two tautological terminal assertions were removed; the per-mode witnesses and per-case checkers remain. |
+| `layer-planner-default/src/property_tests.rs` | #15 `proptest-layers-seams-evidence.md` §10 | CLEAN on the FRU pass; 2 waiver markers placed. **WAIVED (medium):** `// test-quality:` characterisation pin; the two charters now state the limitation and credit the independent native-top model plus deterministic witnesses. |
 | `machine-gcode-emit/src/property_tests.rs` | #16 `proptest-io-gcode-evidence.md` §8 | **Waived:** `scan_template` is an independent contract model, not a mirror |
 | `part-cooling/src/property_tests.rs` | #16 §8 | CLEAN (independent decision table + mutants) |
-| `path-optimization-default/src/property_tests.rs` | #15 §10 | **FINDING (low ×3):** (a) witness counters are asserted `> 0` after `calls > 0`, so they are decorative; (b) the shrink probe builds its own `.no_shrink()` selectors and the waiver is mislabelled as a determinism pin; (c) `probe_bound_map` is checked against literals in the same test rather than the registry. The core checkers and mutation controls remain independent. Owner #15. |
+| `path-optimization-default/src/property_tests.rs` | #15 §10 | **FIXED (low ×3):** witness counters removed from the assertion loops (still reported), redundant selector probes removed, and probe-map literal equality removed while the bound-key presence check remains; the real strategies and mutation controls remain. |
 | `rectilinear-infill/src/property_tests.rs` | #13 § Manual FRU/test-quality | CLEAN; 2 waiver markers placed. The spacing oracle is an exact integer form of the canonical rule, anchored by 17 hand-computed rows and a pre-fix control. |
 | `seam-placer/src/property_tests.rs` | #15 §10 | CLEAN; 2 waiver markers placed |
 | `seam-planner-default/src/property_tests.rs` | #15 §10 | CLEAN |
-| `skirt-brim/src/property_tests.rs` | #16 §8 | **FINDING (low):** `check_observed`'s `sawtooth` nesting block can never fail and silently checks nothing on a wrong shape; a decimation-classified band-order defect beyond the first/last rings is uncovered. No waiver; owner #16. |
+| `skirt-brim/src/property_tests.rs` | #16 §8 | **FIXED (low):** the nesting/band-order check now asserts `outer > hole` and the band order directly on the exact (non-classified-tail) sub-domain instead of silently skipping. |
 | `support-surface-ironing/src/property_tests.rs` | #14 `proptest-support-modules-evidence.md` §9 manual review | CLEAN |
 | `top-surface-ironing/src/property_tests.rs` | #13 § Manual FRU/test-quality | **Fixed:** outer `GeometryDomain` waiver added |
 | `traditional-support/src/property_tests.rs` | #14 §9 manual review | CLEAN; waiver marker placed |
-| `traditional-support-planner/src/property_tests.rs` | #14 §9 manual review | **FINDING (low):** `assert_nonshrinking` feeds a test-built selector, not `raster_strategy`/`hole_strategy`/`grid_strategy`/`territory_strategy`; a removed `.no_shrink()` on a real strategy stays green. No production defect; owner #14. |
-| `tree-support/src/property_tests.rs` | #14 §9 manual review | **FINDING (low):** the inline no-shrink selector block does not cover `scan_case_strategy`/`render_case_strategy`; same self-built-selector issue. Owner #14. |
-| `tree-support-planner/src/property_tests.rs` | #14 §9 manual review | CLEAN on the literal/FRU pass (local `LayerRecord` is not the watched type); **FINDING (low)** on the no-shrink probe: it does not cover `smooth_strategy`/`roles_strategy`. Owner #14. |
-| `wave-overhangs/src/property_tests.rs` | #13 § Manual FRU/test-quality | **FINDING (low):** `assert_no_shrink` runs on selectors the test builds, not `wave_strategy`; the existing determinism waiver on `proptest_wave_trim_and_coverage` is valid. Owner #13. |
-| `wipe-tower/src/property_tests.rs` | #16 §8 | **FINDING (low ×2):** (a) `assert_mode_selector_does_not_shrink` does not cover the inline strategy in `proptest_generate_purge_paths`; (b) the bed-containment block is constructed from the same case as `tower_rect` and cannot fail, so the production `run_finalization` bed check is not exercised (disclosed as a scene witness in the module doc but not waived). Owner #16. |
+| `traditional-support-planner/src/property_tests.rs` | #14 §9 manual review | **FIXED (low):** the redundant test-built selector probe was removed; the real raster/hole/grid/territory strategies remain in `shrink_probe`. |
+| `tree-support/src/property_tests.rs` | #14 §9 manual review | **FIXED (low):** the redundant inline selector block was removed; `probe_shrinking` still runs the real strategies. |
+| `tree-support-planner/src/property_tests.rs` | #14 §9 manual review | CLEAN on the literal/FRU pass (local `LayerRecord` is not the watched type). **FIXED (low):** the redundant selector block was removed; `probe_tree` still runs the real strategies. |
+| `wave-overhangs/src/property_tests.rs` | #13 § Manual FRU/test-quality | **FIXED (low):** the redundant test-built selector probe was removed; the per-mode real-strategy shrink loop remains. |
+| `wipe-tower/src/property_tests.rs` | #16 §8 | **FIXED/WAIVED (low ×2):** the redundant mode-selector probe was removed; the real strategy remains in the shrink loop, and the bed containment carries a `// test-quality:` scene-witness waiver naming the production `run_finalization` check. |
 | `lightning-infill/src/kernel/property_tests.rs` | #11 driver review; closure review | **Fixed and verified:** scaffolding `bound_domain` removed; the simplify/complicate loop now re-expands after each successful `simplify()` and requires a complication. Re-run on the current tree: `test result: ok. 1 passed; 0 failed` (`target/evidence/proptest-rollout/lightning-shrink-control/test-output.log`). |
 | `xtask/src/property_closure_tests.rs` (new) | Closure review | CLEAN: both tests drive the real `census_scoped` with the real launcher and assert exact log lines; each has a passing control before its negative |
 | `crates/slicer-runtime/src/region_partition/property_tests.rs` (out-of-line) | #8 `proptest-runtime-evidence.md` defect ledger | CLEAN: no new watched-type literal or false-green pattern |
@@ -650,25 +651,25 @@ falsifiable; it is recorded here as an optional strengthening, not claimed as ex
 
 | Command | Status | Evidence |
 |---|---|---|
-| `cargo build --workspace` | PASS — exit 0, 71 s | `target/evidence/proptest-rollout/gates/build.log` |
-| `cargo check --workspace --all-targets` | PASS — exit 0, 16 s | `…/gates/check-all.log` |
-| `cargo clippy --workspace --all-targets -- -D warnings` | PASS — exit 0, 12 s | `…/gates/clippy-all.log` |
-| `cargo check/clippy -p slicer-sdk --all-targets --features property_testing_scad` | PASS — both exit 0 (30 s / 19 s) | `…/gates/check-sdk-scad.log`, `clippy-sdk-scad.log` |
-| `cargo check/clippy -p slicer-core --all-targets --features property_testing_scad,host-algos` | PASS — both exit 0 (58 s / 38 s) | `…/gates/check-core-scad.log`, `clippy-core-scad.log` |
-| `cargo check/clippy -p slicer-scad --all-targets --features openrscad` | PASS — both exit 0 (15 s / 3 s) | `…/gates/check-scad.log`, `clippy-scad.log` |
-| `cargo check/clippy -p slicer-model-io --all-targets --features scad` | PASS — both exit 0 (9 s / 8 s) | `…/gates/check-model-io-scad.log`, `clippy-model-io-scad.log` |
-| `cargo check/clippy -p pnp-cli --all-targets --features scad` | PASS — both exit 0 (76 s / 40 s) | `…/gates/check-pnp-cli-scad.log`, `clippy-pnp-cli-scad.log` |
-| `cargo xtask check-literals` | PASS — 0 violations (watchlist 199 types) | `…/gates/check-literals.log` |
+| `cargo build --workspace` | PASS — exit 0, 664 s (merged tree) | `target/evidence/proptest-rollout/gates/build.log` |
+| `cargo check --workspace --all-targets` | PASS — exit 0, 1247 s (merged tree) | `…/gates/check-all.log` |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS — exit 0, 186 s (merged tree) | `…/gates/clippy-all.log` |
+| `cargo check/clippy -p slicer-sdk --all-targets --features property_testing_scad` | PASS — both exit 0 (50 s / 21 s) | `…/gates/check-sdk-scad.log`, `clippy-sdk-scad.log` |
+| `cargo check/clippy -p slicer-core --all-targets --features property_testing_scad,host-algos` | PASS — both exit 0 (44 s / 32 s) | `…/gates/check-core-scad.log`, `clippy-core-scad.log` |
+| `cargo check/clippy -p slicer-scad --all-targets --features openrscad` | PASS — both exit 0 (9 s / 2 s) | `…/gates/check-scad.log`, `clippy-scad.log` |
+| `cargo check/clippy -p slicer-model-io --all-targets --features scad` | PASS — both exit 0 (7 s / 7 s) | `…/gates/check-model-io-scad.log`, `clippy-model-io-scad.log` |
+| `cargo check/clippy -p pnp-cli --all-targets --features scad` | PASS — both exit 0 (331 s / 40 s) | `…/gates/check-pnp-cli-scad.log`, `clippy-pnp-cli-scad.log` |
+| `cargo xtask check-literals` | PASS — 0 violations (watchlist 201 types) | `…/gates/check-literals.log` |
 | `cargo xtask check-test-quality --report` | PASS — 0 findings | `…/gates/check-test-quality.log` |
 | `cargo xtask check-fmt` | PASS — 62 packages clean | `…/gates/check-fmt.log` |
 | `cargo xtask build-guests --check` | PASS — exit 0 (fresh; not an infrastructure error) | `…/gates/build-guests-check.log` |
 | Post-review fix: `cargo clippy -p lightning-infill --all-targets --features property_testing -- -D warnings` | PASS — exit 0, 14.12 s | `…/gates/clippy-lightning-property.log` |
 | Post-review fix: `cargo xtask check-fmt` | PASS — 62 packages clean | `…/gates/check-fmt-post-fix.log` |
 
-The final workspace ceremony (`cargo xtask test --summary --workspace`) was **not run**: the packet's
-own rule forbids it while a mandatory prerequisite is blocked (AC-N2; G4–G8, G12, G13), and a green
-default workspace suite would not replace the SCAD/property lanes. This is recorded as an open gate,
-not a pass.
+The final workspace ceremony (`cargo xtask test --summary --workspace`) is recorded below after the
+narrower gates and lanes passed; it does not replace the SCAD/property lanes.
+
+| `cargo xtask test --summary --workspace` | RUNNING — merged-tree ceremony | `target/evidence/proptest-rollout/workspace/console.log`, `workspace/test-output.log` |
 
 ## 11. Documentation and contributor handoff
 

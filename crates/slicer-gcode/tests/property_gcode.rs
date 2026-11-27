@@ -394,7 +394,9 @@ fn expected_base_speed_mm_per_s(config: &FeedrateConfig, slot: RoleSlot) -> f32 
             config.support_interface_speed
         }
         RoleSlot::Skirt | RoleSlot::Brim => config.skirt_speed,
-        RoleSlot::WipeTower => config.wipe_tower_speed,
+        RoleSlot::WipeTower => config
+            .wipe_tower_max_purge_speed
+            .min(config.sparse_infill_speed),
         RoleSlot::PrimeTower => config.prime_tower_speed,
         RoleSlot::GapFill => config.gap_infill_speed,
         RoleSlot::RaftInfill => config.outer_wall_speed,
@@ -541,7 +543,7 @@ fn feedrate_config_for_case(case: &FeedrateCase) -> FeedrateConfig {
         gap_infill_speed: 21.0,
         ironing_speed: 22.0,
         skirt_speed: 23.0,
-        wipe_tower_speed: 24.0,
+        wipe_tower_max_purge_speed: 24.0,
         prime_tower_speed: 25.0,
         travel_speed: 26.0,
         wipe_speed: 27.0,
@@ -572,7 +574,7 @@ fn feedrate_config_for_case(case: &FeedrateCase) -> FeedrateConfig {
             config.support_interface_speed = base;
         }
         RoleSlot::Skirt | RoleSlot::Brim => config.skirt_speed = base,
-        RoleSlot::WipeTower => config.wipe_tower_speed = base,
+        RoleSlot::WipeTower => config.wipe_tower_max_purge_speed = base,
         RoleSlot::PrimeTower => config.prime_tower_speed = base,
         RoleSlot::GapFill => config.gap_infill_speed = base,
         RoleSlot::Ironing => {
@@ -647,7 +649,9 @@ fn expected_feedrate(
 ) -> f32 {
     let base = match mutation {
         FeedrateMutation::RoleSwap => match slot {
-            RoleSlot::Skirt => config.wipe_tower_speed,
+            RoleSlot::Skirt => config
+                .wipe_tower_max_purge_speed
+                .min(config.sparse_infill_speed),
             RoleSlot::WipeTower => config.skirt_speed,
             _ => expected_base_speed_mm_per_s(config, slot),
         },
@@ -885,7 +889,7 @@ fn witness_feedrate_config(slot: RoleSlot, base: f32) -> FeedrateConfig {
         gap_infill_speed: 41.0,
         ironing_speed: 42.0,
         skirt_speed: 43.0,
-        wipe_tower_speed: 44.0,
+        wipe_tower_max_purge_speed: 44.0,
         prime_tower_speed: 45.0,
         travel_speed: 46.0,
         wipe_speed: 47.0,
@@ -914,7 +918,12 @@ fn witness_feedrate_config(slot: RoleSlot, base: f32) -> FeedrateConfig {
             config.support_interface_speed = base;
         }
         RoleSlot::Skirt | RoleSlot::Brim => config.skirt_speed = base,
-        RoleSlot::WipeTower => config.wipe_tower_speed = base,
+        RoleSlot::WipeTower => {
+            // The merged emitter caps the wipe-tower rate by the sparse-infill
+            // speed; pin both fields so the witness still selects `base`.
+            config.wipe_tower_max_purge_speed = base;
+            config.sparse_infill_speed = base;
+        }
         RoleSlot::PrimeTower => config.prime_tower_speed = base,
         RoleSlot::GapFill => config.gap_infill_speed = base,
         RoleSlot::Ironing => {
@@ -1606,7 +1615,7 @@ fn emission_feedrate_config() -> FeedrateConfig {
         gap_infill_speed: 80.0,
         ironing_speed: 20.0,
         skirt_speed: 25.0,
-        wipe_tower_speed: 85.0,
+        wipe_tower_max_purge_speed: 85.0,
         prime_tower_speed: 90.0,
         travel_speed: 120.0,
         wipe_speed: 95.0,
@@ -1621,9 +1630,9 @@ fn emission_feedrate_config() -> FeedrateConfig {
 fn emission_resolved_config() -> slicer_ir::ResolvedConfig {
     slicer_ir::ResolvedConfig {
         disable_m73: true,
-        wipe_tower_enabled: false,
+        enable_prime_tower: false,
         filament_diameter: 1.75,
-        first_layer_height: 0.25,
+        initial_layer_print_height: 0.25,
         retract_length: 2.0,
         filament_density: Vec::new(),
         ..slicer_ir::ResolvedConfig::default()
@@ -1714,7 +1723,7 @@ fn build_emission_model(
     let mut emitted_layers = 0_u32;
     let mut current_tool = 0_u32;
     let mut prev_layer_z: Option<f32> = None;
-    let first_layer_height = resolved.first_layer_height as f32;
+    let initial_layer_print_height = resolved.initial_layer_print_height as f32;
     let mut prev_role: Option<ExtrusionRole> = None;
     let mut tools_with_moves = std::collections::BTreeSet::new();
     let travel_f = feedrate_from_base_mm_per_s(
@@ -1736,7 +1745,7 @@ fn build_emission_model(
 
         let height_delta = match prev_layer_z {
             Some(previous) => layer.z - previous,
-            None => first_layer_height,
+            None => initial_layer_print_height,
         };
         prev_layer_z = Some(layer.z);
         commands.push(ModelCommand::Raw {
@@ -2540,10 +2549,10 @@ fn emission_negative_modes() -> Result<(), String> {
 
     let feedrate = emission_feedrate_config();
 
-    // (a) wipe_tower_enabled + tool change without a WipeTower entity.
+    // (a) enable_prime_tower + tool change without a WipeTower entity.
     let wipe_resolved = slicer_ir::ResolvedConfig {
         disable_m73: true,
-        wipe_tower_enabled: true,
+        enable_prime_tower: true,
         ..emission_resolved_config()
     };
     let layer = slicer_ir::LayerCollectionIR {
@@ -2624,11 +2633,11 @@ fn emission_negative_modes() -> Result<(), String> {
     let automatic_error = |width: f32,
                            flow: f32,
                            speed_factor: f32,
-                           first_layer_height: f64,
+                           initial_layer_print_height: f64,
                            maximum: Option<f64>|
      -> Result<String, String> {
         let mut resolved = slicer_ir::ResolvedConfig {
-            first_layer_height,
+            initial_layer_print_height,
             ..emission_resolved_config()
         };
         if let Some(maximum) = maximum {
@@ -2704,7 +2713,7 @@ fn emission_negative_modes() -> Result<(), String> {
     // A valid automatic witness must produce a finite positive F (never F0 or
     // FNaN): 8 mm3/s over 0.4 x 0.2 x 1.0 resolves to the canonical F6000.
     let mut resolved = emission_resolved_config();
-    resolved.first_layer_height = 0.2;
+    resolved.initial_layer_print_height = 0.2;
     resolved.extensions.insert(
         "filament_max_volumetric_speed".to_string(),
         slicer_ir::ConfigValue::Float(8.0),

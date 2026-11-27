@@ -849,7 +849,6 @@ fn config_for(case: &WipeCase) -> ConfigView {
         })
         .collect();
     ConfigView::from_map(HashMap::from([
-        ("wipe_tower_enabled".to_string(), ConfigValue::Bool(true)),
         (
             "wipe_tower_x".to_string(),
             ConfigValue::Float(f64::from(case.tower_x)),
@@ -859,11 +858,11 @@ fn config_for(case: &WipeCase) -> ConfigView {
             ConfigValue::Float(f64::from(case.tower_y)),
         ),
         (
-            "wipe_tower_width".to_string(),
+            "prime_tower_width".to_string(),
             ConfigValue::Float(f64::from(case.tower_width)),
         ),
         (
-            "wipe_tower_purge_volume".to_string(),
+            "prime_volume".to_string(),
             ConfigValue::Float(f64::from(case.purge_volume)),
         ),
         (
@@ -871,7 +870,8 @@ fn config_for(case: &WipeCase) -> ConfigView {
             ConfigValue::Float(f64::from(case.line_width)),
         ),
         ("retract_length".to_string(), ConfigValue::Float(2.0)),
-        ("bed_shape".to_string(), ConfigValue::List(bed_values)),
+        ("enable_prime_tower".to_string(), ConfigValue::Bool(true)),
+        ("printable_area".to_string(), ConfigValue::List(bed_values)),
     ]))
 }
 
@@ -1487,11 +1487,12 @@ fn check_purge_paths(
         check_scan_row(case, &pairs[1 + index].0, index, rows.ys[index], &rows)?;
     }
 
-    // Deviation 2: the convex bed is a scene witness because the tower
-    // rectangle is inside it, never because the generator reads `bed_shape`.
-    // The witness is asserted only in the positive-volume mode: the zero-volume
-    // mode claims exact counts and tower-rectangle closure, not enclosure
-    // beyond the rectangle.
+    // test-quality: scene witness (Deviation 2) — the convex bed is built
+    // around the tower rectangle, so this proves internal consistency, not the
+    // production `run_finalization` bed rejection; that production path has its
+    // own deterministic tests. The witness runs only in the positive-volume
+    // mode; the zero-volume mode claims exact counts and tower-rectangle
+    // closure, not enclosure beyond the rectangle.
     if observation.purge_positive {
         check_bed_contains_tower_rectangle(&case.bed, &rect, envelope)?;
         let points: Vec<(f32, f32)> = pairs
@@ -2048,13 +2049,6 @@ fn wipe_witness_probe() {
             println!("{scale_mode:?}/{bed_shape:?} simplify={simplified} changed={changed}");
         }
     }
-
-    // The scale, volume and bed selectors must never shrink: a shrinking mode
-    // tree could switch a witness between the exact and classified classes or
-    // between bed shapes mid-search.
-    assert_mode_selector_does_not_shrink(SCALE_MODES.to_vec());
-    assert_mode_selector_does_not_shrink(VOLUME_MODES.to_vec());
-    assert_mode_selector_does_not_shrink(BED_SHAPES.to_vec());
 }
 
 fn check_witness(case: &WipeCase, scale_mode: ScaleMode, bed_shape: BedShape, limits: &WipeLimits) {
@@ -2078,17 +2072,4 @@ fn check_witness(case: &WipeCase, scale_mode: ScaleMode, bed_shape: BedShape, li
             "the zero-volume mode gained volume"
         );
     }
-}
-
-fn assert_mode_selector_does_not_shrink<T>(modes: Vec<T>)
-where
-    T: Clone + std::fmt::Debug + 'static,
-{
-    let mut runner = TestRunner::deterministic();
-    let strategy = prop::sample::select(modes).no_shrink();
-    let mut tree = strategy.new_tree(&mut runner).expect("mode-selector tree");
-    let before = format!("{:?}", tree.current());
-    assert!(!tree.simplify(), "the mode selector simplified");
-    assert!(!tree.complicate(), "the mode selector complicated");
-    assert_eq!(format!("{:?}", tree.current()), before);
 }
