@@ -125,7 +125,7 @@ fn config(line_width: f64, density: f64) -> ConfigView {
     // are the keys read on the module-config path, also at defaults.
     ConfigViewBuilder::new()
         .float("line_width", line_width)
-        .float("infill_density", density)
+        .float("sparse_infill_density", density * 100.0)
         .float("layer_height", 0.2)
         .float("infill_overlap", 0.45)
         .float_or_percent("infill_anchor_max", 20.0, false)
@@ -140,7 +140,7 @@ fn config_with_anchor(
 ) -> ConfigView {
     ConfigViewBuilder::new()
         .float("line_width", line_width)
-        .float("infill_density", density)
+        .float("sparse_infill_density", density * 100.0)
         .float("layer_height", 0.2)
         .float("infill_overlap", 0.45)
         .float("infill_anchor", anchor_length)
@@ -703,7 +703,7 @@ fn absent_anchor_keys_fall_back_to_four_hundred_percent_of_flow_spacing() {
     assert!((anchor_length - 1.4283185).abs() < 1e-4);
     assert_eq!(
         sparse_anchor_lengths, dense_anchor_lengths,
-        "infill_density alone must not change the fallback anchor length"
+        "sparse_infill_density alone must not change the fallback anchor length"
     );
 }
 
@@ -857,14 +857,14 @@ fn internal_bridge_paths_stay_in_bridge_partition() {
         .tool_index(0)
         .build();
     view.set_config(
-        // Packet 06 (AC-3): `infill_density`, `layer_height`, and
+        // Packet 06 (AC-3): `sparse_infill_density`, `layer_height`, and
         // `infill_anchor_max` are required reads once a region config is
         // present; this fixture also needs the module-config path's
         // `line_width` and `infill_overlap`, all at manifest defaults — the
         // same baseline `config()` holds, keyed to this fixture's 0.45 width.
         ConfigViewBuilder::new()
             .float("line_width", 0.45)
-            .float("infill_density", 0.2)
+            .float("sparse_infill_density", 20.0)
             .float("layer_height", 0.2)
             .float("infill_overlap", 0.45)
             .float_or_percent("infill_anchor_max", 20.0, false)

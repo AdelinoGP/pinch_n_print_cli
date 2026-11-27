@@ -96,13 +96,13 @@ fn square_region(z: f32) -> SliceRegionView {
 /// Drive `run_perimeters` for `ClassicPerimeters` with the observed keys
 /// seeded at their manifest defaults (mirroring production's
 /// `seed_registry_defaults`), then read them back out of the emitted wall
-/// loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
+/// loops. Returns `(wall_loops, outer_wall_speed, inner_wall_speed)`.
 ///
 /// The baseline supplies every other contract-required key at its
 /// manifest-default value, and `line_width` supplies the already-expanded base
 /// width so the D-162 spacing gate passes. A 10mm square at the 0.4mm line
 /// width fits 3 walls, so the emitted loop count equals the seeded
-/// `wall_count`, and the outer (perimeter_index 0) / inner (perimeter_index
+/// `wall_loops`, and the outer (perimeter_index 0) / inner (perimeter_index
 /// >= 1) loops carry the seeded speeds as `speed_factor`.
 fn observed_seeded_defaults() -> (usize, f32, f32) {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
@@ -111,8 +111,8 @@ fn observed_seeded_defaults() -> (usize, f32, f32) {
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
         .int(
-            "wall_count",
-            manifest_default(CLASSIC_MANIFEST, "wall_count") as i64,
+            "wall_loops",
+            manifest_default(CLASSIC_MANIFEST, "wall_loops") as i64,
         )
         .float(
             "outer_wall_speed",
@@ -152,11 +152,11 @@ fn observed_seeded_defaults() -> (usize, f32, f32) {
     )
 }
 
-fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) {
+fn assert_reconciled(manifest: &str, wall_loops: usize, outer: f32, inner: f32) {
     assert_eq!(
-        wall_count as f64,
-        manifest_default(manifest, "wall_count"),
-        "wall_count code fallback must equal the manifest default"
+        wall_loops as f64,
+        manifest_default(manifest, "wall_loops"),
+        "wall_loops code fallback must equal the manifest default"
     );
     let expected_outer = manifest_default(manifest, "outer_wall_speed");
     assert!(
@@ -172,8 +172,8 @@ fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) 
 
 #[test]
 fn classic_perimeters_defaults_match_manifest() {
-    let (wall_count, outer, inner) = observed_seeded_defaults();
-    assert_reconciled(CLASSIC_MANIFEST, wall_count, outer, inner);
+    let (wall_loops, outer, inner) = observed_seeded_defaults();
+    assert_reconciled(CLASSIC_MANIFEST, wall_loops, outer, inner);
 }
 
 /// The converse half of the behavioral guard: with the observed keys absent
@@ -191,7 +191,7 @@ fn classic_perimeters_absent_observed_keys_are_a_config_defect() {
         Err(error) => error,
     };
     assert!(
-        error.message.contains("wall_count"),
+        error.message.contains("wall_loops"),
         "the abort must name the missing key, got: {error:?}"
     );
 }
@@ -229,7 +229,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     // Slicing-time contour simplification (t81 port): the module requires the
     // key, and the manifest declares the canonical 0.01 mm default.
     ("resolution", Float(0.01)),
-    ("wall_count", Int(3)),       // from_config `_ => 3`
+    ("wall_loops", Int(2)), // from_config `_ => 2` (Orca default; user ruling, ticket 102)
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
     // The two safety conjuncts of the `alternate_extra_wall` gate in
@@ -266,7 +266,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("top_bottom_infill_wall_overlap", Str("25%")),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
-    ("detect_thin_wall", Bool(true)),
+    ("detect_thin_wall", Bool(false)), // ticket 100: Orca coBool = 0
     ("seam_candidate_angle_threshold_deg", Float(30.0)),
     ("gap_infill_speed", Float(30.0)),
     ("filter_out_gap_fill", Float(0.5)),
@@ -280,7 +280,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     // PnP's name for canonical `raft_layers`; the first PRINTED layer.
     ("support_raft_layers", Int(0)), // get_int(..).unwrap_or(0)
     ("smaller_perimeter_line_width", Float(0.25)),
-    ("smaller_perimeter_threshold_mm", Float(0.8)),
+    ("small_perimeter_threshold", Float(0.0)),
     ("narrow_loop_length_threshold_mm", Float(10.0)),
     ("detect_overhang_wall", Unread), // declared; classic never reads it
     ("overhang_reverse", Unread),
@@ -335,10 +335,10 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("outer_wall_offset", Float(0.0)),               // units; defaults 0.0
     ("min_central_distance", Float(0.0)),            // units; defaults 0.0
     ("min_width", Float(4000.0)),                    // units; defaults 0.4mm
-    // 0 is the "auto: 2 * wall_count" sentinel; an absent key takes the same
+    // 0 is the "auto: 2 * wall_loops" sentinel; an absent key takes the same
     // branch, so 0 IS the code fallback.
     ("max_bead_count", Int(0)),
-    ("wall_count", Int(3)),
+    ("wall_loops", Int(2)),
     ("extra_perimeters", Int(0)), // get_int(..).unwrap_or(0).max(0)
     ("wall_direction", Str("counter_clockwise")),
     // Packet 185: `inner_wall_line_width` resolved via `get_abs_value` against

@@ -77,7 +77,7 @@ fn make_thin_protrusion_region(protrusion_width_mm: f32, z: f32) -> SliceRegionV
 /// yield at least one WallLoop with `loop_type == ThinWall`.
 ///
 /// Config: `inner_wall_line_width = 0.4 mm`, `nozzle_diameter = 0.4 mm`,
-/// `wall_count = 2`, `detect_thin_wall = true`.
+/// `wall_loops = 2`, `detect_thin_wall = true`.
 ///
 /// R4 (P105) thin-wall thresholds for this config:
 ///   min_width = nozzle_diameter / 3.0 = 0.4/3 ≈ 0.133 mm
@@ -96,7 +96,7 @@ fn thin_wall_emitted_for_thin_protrusion() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("nozzle_diameter", nozzle_d as f64)
@@ -206,7 +206,7 @@ fn detect_disabled_case() {
 
     // Bound-view baseline (packet 06 5c-prime): see the positive case above.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("nozzle_diameter", nozzle_d as f64)

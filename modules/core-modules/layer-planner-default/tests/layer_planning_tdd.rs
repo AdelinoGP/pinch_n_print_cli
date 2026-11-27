@@ -12,7 +12,7 @@ use slicer_sdk::traits::LayerPlanningObject;
 fn make_config(layer_height: f64, first_layer_height: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("layer_height", layer_height)
-        .float("first_layer_height", first_layer_height)
+        .float("initial_layer_print_height", first_layer_height)
         .build()
 }
 
@@ -56,7 +56,7 @@ fn test_single_object_uniform_layers() {
         );
     }
 
-    // First layer at first_layer_height
+    // First layer at initial_layer_print_height
     assert!(
         (layers[0].z - 0.2).abs() < 1e-4,
         "first layer z={}, expected 0.2",
@@ -75,7 +75,7 @@ fn test_single_object_uniform_layers() {
 // =============================================================================
 
 #[test]
-fn test_first_layer_height_respected() {
+fn test_initial_layer_print_height_respected() {
     // first_layer=0.3, rest=0.2 → layer 0 z=0.3, layer 1 z=0.5, ...
     let config = make_config(0.2, 0.3);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
@@ -97,7 +97,7 @@ fn test_first_layer_height_respected() {
 
     let layers = output.layers();
 
-    // First layer Z = first_layer_height = 0.3
+    // First layer Z = initial_layer_print_height = 0.3
     assert!(
         (layers[0].z - 0.3).abs() < 1e-4,
         "first layer z={}, expected 0.3",
@@ -138,7 +138,7 @@ fn test_first_layer_height_respected() {
 fn test_model_layers_start_above_raft_band() {
     let config = ConfigViewBuilder::new()
         .float("layer_height", 0.2)
-        .float("first_layer_height", 0.2)
+        .float("initial_layer_print_height", 0.2)
         .int("support_raft_layers", 2)
         .build();
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
@@ -624,7 +624,7 @@ fn explicit_schedule_mixed_with_uniform_object_catches_up() {
 fn explicit_schedule_with_raft_offsets_tops() {
     let config = ConfigViewBuilder::new()
         .float("layer_height", 0.2)
-        .float("first_layer_height", 0.2)
+        .float("initial_layer_print_height", 0.2)
         .int("support_raft_layers", 1)
         .build();
     let module = DefaultLayerPlanner::from_config(&config).unwrap();

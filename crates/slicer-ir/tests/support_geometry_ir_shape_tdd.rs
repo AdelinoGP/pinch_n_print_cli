@@ -134,7 +134,7 @@ fn support_geometry_ir_keys_and_sentinel() {
     let ir = SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
 
@@ -440,7 +440,7 @@ fn support_owner_postcard_populated_maps_preserve_full_identity() {
 
     let mut geometry = SupportGeometryIR {
         support_layer_height_mm: 0.35,
-        support_top_z_distance_mm: 0.25,
+        support_top_z_distance: 0.25,
         ..Default::default()
     };
     geometry
@@ -511,7 +511,7 @@ fn support_owner_postcard_populated_maps_preserve_full_identity() {
     );
     assert_ne!(geometry.schema_version, SemVer::default());
     assert_eq!(geometry.support_layer_height_mm, 0.35);
-    assert_eq!(geometry.support_top_z_distance_mm, 0.25);
+    assert_eq!(geometry.support_top_z_distance, 0.25);
     assert_eq!(geometry.entries.len(), 4);
 
     assert_eq!(
@@ -686,7 +686,7 @@ fn support_composite_map_json_rejects_populated_keys() {
         serde_json::json!({
             "schema_version": {"major": 2, "minor": 0, "patch": 0},
             "support_layer_height_mm": 0.0,
-            "support_top_z_distance_mm": 0.0,
+            "support_top_z_distance": 0.0,
             "entries": {}
         })
     );

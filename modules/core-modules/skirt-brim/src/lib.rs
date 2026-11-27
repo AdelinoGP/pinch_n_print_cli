@@ -66,9 +66,9 @@ pub struct SkirtBrim {
     brim_object_gap: f32,
     min_skirt_length: f32,
     line_width: f32,
-    /// First-layer height in mm, used for the canonical flow spacing. `0.0`
-    /// when neither `first_layer_height` nor `layer_height` is readable, which
-    /// falls back to `line_width` as the spacing.
+    /// Initial-layer height in mm, used for the canonical flow spacing. `0.0`
+    /// when neither `initial_layer_print_height` nor `layer_height` is
+    /// readable, which falls back to `line_width` as the spacing.
     first_layer_height: f32,
     enabled: bool,
 }
@@ -97,12 +97,13 @@ impl SkirtBrim {
 
         let line_width = config.require_float("line_width")? as f32;
 
-        // Canonical flow spacing needs the first-layer height. Both keys are
-        // global (typed `ResolvedConfig` fields, not module-declared), so the
-        // read is optional and falls back to `layer_height`, then to a plain
-        // `line_width` spacing when neither is present.
+        // Canonical flow spacing needs the initial-layer height. The key is the
+        // host's typed `initial_layer_print_height`, declared in this module's
+        // manifest so the filtered module view carries it; `layer_height` is a
+        // defensive fallback for a partial view, and a plain `line_width`
+        // spacing is used when neither is present.
         let first_layer_height = config
-            .get_float("first_layer_height")
+            .get_float("initial_layer_print_height")
             .or_else(|| config.get_float("layer_height"))
             .unwrap_or(0.0) as f32;
 

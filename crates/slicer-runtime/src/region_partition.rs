@@ -16,33 +16,43 @@
 //! conditional on `W` and on whether the donor has walls:
 //!
 //! ```text
-//! nonempty W:   bridge = bridge_areas ∩ W
-//!               bottom = (bottom_solid_fill ∩ W) − bridge
-//!               top    = (top_solid_fill ∩ W) − (bridge ∪ bottom)
-//!               sparse = W − (bridge ∪ bottom ∪ top)
-//! empty W, walls: all four roles empty (the walls consumed the cross-section)
+//! nonempty W:   bridge   = bridge_areas ∩ W
+//!               bottom   = (bottom_solid_fill ∩ W) − bridge
+//!               top      = (top_solid_fill ∩ W) − (bridge ∪ bottom)
+//!               internal = (internal_solid_fill ∩ W) − (bridge ∪ bottom ∪ top)
+//!               sparse   = W − (bridge ∪ bottom ∪ top ∪ internal)
+//! empty W, walls: all five roles empty (the walls consumed the cross-section)
 //! empty W, no walls: bridge = original bridge_areas
 //!                    top    = original top_solid_fill − bridge
-//!                    bottom = sparse = empty
+//!                    bottom = internal = sparse = empty
 //! ```
 //!
-//! Precedence is `bridge > bottom > top > sparse`, mirroring canonical
-//! `PrintObject::prepare_infill`. In the nonempty-`W` branch the four roles are
-//! pairwise disjoint subsets of `W` whose union is `W`; the empty-`W`/no-wall
-//! branch makes no subset claim. Fill claim holders (rectilinear, gyroid,
-//! lightning infill modules) emit each role over exactly one polygon with zero
-//! polygon math.
+//! Precedence is `bridge > bottom > top > internal > sparse`, mirroring
+//! canonical `PrintObject::prepare_infill`. In the nonempty-`W` branch the five
+//! roles are pairwise disjoint subsets of `W` whose union is `W`; the
+//! empty-`W`/no-wall branch makes no subset claim. Fill claim holders
+//! (rectilinear, gyroid, lightning infill modules) emit each role over exactly
+//! one polygon with zero polygon math.
+//!
+//! `internal_solid_fill` carries two contents by construction: the PrePass
+//! shell-band marker (`top_solid_fill − exposed seed`), which carves to empty
+//! here because it is a subset of `top_solid_fill`, and the converted sparse
+//! islands minted by the `minimum_sparse_infill_area` prepass block, which
+//! survive as the only polygons in the bucket. Net effect: `internal` is
+//! exactly the islands — canonical's `stInternalSolid` fill zone.
 //!
 //! Missing-donor behaviour: a slice region without a matching donor is skipped
-//! (its four canonical fill polygons stay at whatever PrePass left them) and the
-//! host emits a structured `log::warn!` naming the offending object/source
-//! region (a modifier child's warning also names its parent) so the failure mode
-//! is observable in production logs. Real configurations exist where a virtual
-//! variant region (region_split work, packets 92–95) is committed to `SliceIR`
-//! without a per-variant perimeter entry — the variant's wall geometry is shared
-//! with its base region. Treating that as fatal would poison the entire layer;
-//! the safer contract is "no donor → no repartition for this region, but log
-//! it". The IR-level fatals (`take_slice` / `arena.perimeter()` both `None`) are
+//! (its canonical fill polygons stay at whatever PrePass left them, minus the
+//! shell-band marker carve — see the skip arms in
+//! `sync_perimeter_infill_areas_into_slice`) and the host emits a structured
+//! `log::warn!` naming the offending object/source region (a modifier child's
+//! warning also names its parent) so the failure mode is observable in
+//! production logs. Real configurations exist where a virtual variant region
+//! (region_split work, packets 92–95) is committed to `SliceIR` without a
+//! per-variant perimeter entry — the variant's wall geometry is shared with its
+//! base region. Treating that as fatal would poison the entire layer; the safer
+//! contract is "no donor → no repartition for this region, but log it". The
+//! IR-level fatals (`take_slice` / `arena.perimeter()` both `None`) are
 //! preserved because those represent a genuine stage-ordering violation, not a
 //! per-region absence; a modifier-split rejection is also fatal but restores the
 //! entry-state slice before returning.
@@ -50,11 +60,12 @@
 //! Empty-wall-inset behaviour is conditional, not a universal "preserve":
 //!
 //! - Empty `infill_areas` **with** donor walls means the walls consumed the
-//!   whole cross-section; all four canonical fill roles are empty there (only
+//!   whole cross-section; all five canonical fill roles are empty there (only
 //!   walls print).
 //! - Empty `infill_areas` **without** donor walls keeps the original
 //!   `bridge_areas`, sets `top_solid_fill` to the original top minus that
-//!   bridge, and leaves `bottom_solid_fill` and `sparse_infill_area` empty. The
+//!   bridge, and leaves `bottom_solid_fill`, `internal_solid_fill` and
+//!   `sparse_infill_area` empty. The
 //!   preserved top keeps an exposed surface visible to surface-treatment
 //!   stages such as ironing; no role is claimed to be a subset of the empty
 //!   wall inset. See `cube_4color_ironing_per_painted_top_color_tdd` in
@@ -289,7 +300,7 @@ pub fn split_modifier_sub_regions_for_prepass(
     Ok(())
 }
 
-/// Reconcile the four canonical fill polygons on every `SliceIR` region
+/// Reconcile the five canonical fill polygons on every `SliceIR` region
 /// against the just-committed `PerimeterIR.infill_areas`. See module docs
 /// for the precedence rule and clip-in-place semantics.
 ///
@@ -305,8 +316,9 @@ pub fn split_modifier_sub_regions_for_prepass(
 ///   taken from the arena; earlier module commits are not rolled back.
 /// - `LayerStageError::ArenaCommit` if the post-mutation `set_slice` fails.
 ///
-/// A slice region without a matching perimeter donor is **not** fatal: the four
-/// fill roles stay at their PrePass values and a warning names the region.
+/// A slice region without a matching perimeter donor is **not** fatal: its fill
+/// roles stay at their PrePass values (minus the shell-band marker carve) and a
+/// warning names the region.
 pub fn sync_perimeter_infill_areas_into_slice(
     arena: &mut LayerArena,
     layer_index: u32,
@@ -402,22 +414,38 @@ pub fn sync_perimeter_infill_areas_into_slice(
                     slice_region.region_id,
                     perimeter_region_id
                 );
+                // The fill modules emit `internal_solid_fill` as a fill bucket
+                // now, so the PrePass shell-band marker (a subset of
+                // `top_solid_fill`) must not survive unpartitioned — it would
+                // double-fill the exposed top. Converted islands never overlap
+                // `top_solid_fill`, so only the marker dies.
+                slice_region.internal_solid_fill = difference(
+                    &slice_region.internal_solid_fill,
+                    &slice_region.top_solid_fill,
+                );
                 continue;
             }
             // No perimeter entry for this slice region — typically a virtual
             // variant region (region_split work, packets 92–95) sharing wall
-            // geometry with its base region. Leave the four canonical fill
-            // polygons untouched; the base region's partition is canonical
+            // geometry with its base region. Leave the fill polygons
+            // untouched; the base region's partition is canonical
             // for the variant's geometry too. Emit a structured warning so
             // the failure mode is observable in production logs (B3).
+            //
+            // Same carve as the modifier arm above: the shell-band marker must
+            // not survive unpartitioned into a fill-bucket emit.
             log::warn!(
                 "region_partition at layer {layer_index}: no PerimeterIR entry \
                  for SliceIR region (object_id='{}', region_id='{}'); skipping — \
                  variant region with shared base-region wall geometry \
-                 (packets 92–95). Top/bottom/bridge fill polygons remain at \
+                 (packets 92–95). Fill polygons remain at \
                  PrePass values for this region.",
                 slice_region.object_id,
                 slice_region.region_id
+            );
+            slice_region.internal_solid_fill = difference(
+                &slice_region.internal_solid_fill,
+                &slice_region.top_solid_fill,
             );
             continue;
         };
@@ -429,7 +457,7 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // an unsplit parent here and therefore remains unchanged.
         let wall_inset = intersection(&perim.infill_areas, &slice_region.polygons);
 
-        // Precedence: bridge > bottom > top > sparse.
+        // Precedence: bridge > bottom > top > internal > sparse.
         //
         // Edge case (fix): when the perimeter stage produces no infill area
         // for a region (e.g., a thin-walled region whose inset collapses to
@@ -510,11 +538,27 @@ pub fn sync_perimeter_infill_areas_into_slice(
             )
         };
         let bridge_or_bottom_or_top = union(&bridge_or_bottom, &top);
-        let sparse = difference(&wall_inset, &bridge_or_bottom_or_top);
+        // Internal solid (converted sparse islands; see the module header) has
+        // lower precedence than the three exposed-role fills and higher than
+        // sparse. Without the subtraction the sparse claim-holder re-absorbs
+        // the converted islands and fills them twice. The PrePass shell-band
+        // marker (`top_solid_fill − exposed seed`) is a subset of
+        // `top_solid_fill`, so this subtraction also removes it — leaving the
+        // converted islands as the bucket's only survivors. An empty
+        // `wall_inset` yields an empty bucket, matching the bottom arm: with
+        // no wall inset there is no sparse zone, so there is nothing to have
+        // converted (canonical's conversion runs on inset surfaces too).
+        let internal = difference(
+            &intersection(&slice_region.internal_solid_fill, &wall_inset),
+            &bridge_or_bottom_or_top,
+        );
+        let bridge_or_bottom_or_top_or_internal = union(&bridge_or_bottom_or_top, &internal);
+        let sparse = difference(&wall_inset, &bridge_or_bottom_or_top_or_internal);
 
         slice_region.bridge_areas = bridge;
         slice_region.bottom_solid_fill = bottom;
         slice_region.top_solid_fill = top;
+        slice_region.internal_solid_fill = internal;
         slice_region.sparse_infill_area = sparse;
     }
 

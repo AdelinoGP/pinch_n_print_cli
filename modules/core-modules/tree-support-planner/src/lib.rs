@@ -75,12 +75,6 @@ use slicer_sdk::host_batch::{clip_polygons_batch, ClipRequest, OffsetRequest};
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
-/// Canonical `support_line_width` (`PrintConfig.cpp`, `coFloatOrPercent`).
-/// Canonical derives the support extrusion width from
-/// `Flow::auto_extrusion_width(frSupportMaterial, nozzle_diameter)` when the
-/// setting is 0; this module has no nozzle diameter in scope, so it takes the
-/// same 0.35 mm default the G-code serializer already uses.
-const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
 /// Canonical libslic3r `EPSILON`, in mm.
 const CANONICAL_EPSILON_MM: f32 = 1e-4;
 const DEFAULT_MAX_BRANCHES_PER_LAYER: usize = 1024;
@@ -183,7 +177,7 @@ pub struct SupportPlanner {
     /// overhang plane that demanded it. Packet 224 RC-11: this key was
     /// declared in the manifest but read nowhere, so tree support printed its
     /// top interface fused to the model.
-    support_top_z_distance_mm: f32,
+    support_top_z_distance: f32,
     /// Support layer height in mm (0.0 = use the object's effective layer
     /// height, the documented sentinel).
     support_layer_height_mm: f32,
@@ -3085,7 +3079,7 @@ impl PrepassModule for SupportPlanner {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("enable_support") {
             Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
+            _ => false,
         };
         let support_family = canonical_support_family(config);
         let branch_angle_deg = match config.get("tree_support_branch_angle") {
@@ -3097,29 +3091,26 @@ impl PrepassModule for SupportPlanner {
         // registry default in the manifest, so a bound view always holds it;
         // a missing value is a contract violation, not a fallback case.
         let nozzle_diameter = config.require_float("nozzle_diameter")?;
+        let line_width_mm = match config.get("line_width") {
+            Some(ConfigValue::Float(w)) if *w > 0.0 => *w as f32,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => DEFAULT_LINE_WIDTH_MM,
+        };
         let support_line_width_mm = config
             .get_abs_value("support_line_width", nozzle_diameter)
             // Preserve hand-written legacy configs that encode an absolute
             // width as an integer rather than a Float/FloatOrPercent.
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
-            .map(|v| {
-                if v > 0.0 {
-                    v as f32
-                } else {
-                    nozzle_diameter as f32
-                }
-            })
+            .map(|v| if v > 0.0 { v as f32 } else { line_width_mm })
             .filter(|v| *v > 0.0)
-            .unwrap_or(DEFAULT_SUPPORT_LINE_WIDTH_MM);
+            .unwrap_or(line_width_mm);
         let max_branches_per_layer = match config.get("support_max_branches_per_layer") {
             Some(ConfigValue::Int(n)) => (*n as usize).clamp(1, 10_000),
             Some(ConfigValue::Float(n)) => (*n as usize).clamp(1, 10_000),
             _ => DEFAULT_MAX_BRANCHES_PER_LAYER,
         };
-        let line_width_mm = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => DEFAULT_LINE_WIDTH_MM,
-        };
+        // `line_width_mm` is read above (guarded positive, nozzle-backed) so the
+        // canonical `support_line_width` auto rule can fall back to it.
         // ── New Step-5 config keys (with legacy fallback) ─────────────────
         let tree_support_branch_diameter = match config.get("tree_support_branch_diameter") {
             Some(ConfigValue::Float(d)) => *d as f32,
@@ -3201,7 +3192,7 @@ impl PrepassModule for SupportPlanner {
             _ => false,
         };
         // Packet 224 RC-11: honour the top-Z gap the manifest already declared.
-        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
+        let support_top_z_distance = match config.get("support_top_z_distance") {
             Some(ConfigValue::Float(d)) => *d as f32,
             Some(ConfigValue::Int(d)) => *d as f32,
             _ => DEFAULT_TOP_Z_DISTANCE_MM,
@@ -3256,7 +3247,7 @@ impl PrepassModule for SupportPlanner {
             num_top_base_interface_layers,
             support_interface_bottom_layers,
             support_on_build_plate_only,
-            support_top_z_distance_mm,
+            support_top_z_distance,
             support_layer_height_mm,
             independent_support_layer_height,
             support_object_xy_distance,
@@ -3458,8 +3449,8 @@ impl SupportPlanner {
             .map(|layer| layer.effective_layer_height)
             .fold(f32::INFINITY, f32::min);
         let nominal_layer_height = layer_plan.layers[0].effective_layer_height;
-        let z_distance_top = if self.support_top_z_distance_mm > f32::EPSILON {
-            self.support_top_z_distance_mm.max(min_layer_height)
+        let z_distance_top = if self.support_top_z_distance > f32::EPSILON {
+            self.support_top_z_distance.max(min_layer_height)
         } else {
             0.0
         };
@@ -3962,7 +3953,7 @@ impl SupportPlanner {
         let tan_angle = self.branch_angle_deg.to_radians().tan();
         let tan_diameter_angle = self.tree_support_branch_diameter_angle.to_radians().tan();
         let branch_radius = self.tree_support_branch_diameter / 2.0;
-        // wall_count multiplier — fall back to 1 per canonical
+        // tree_support_wall_count multiplier — fall back to 1 per canonical
         // `generate_toolpaths` (`TreeSupport.cpp`)
         let wall_count_factor = self.tree_support_wall_count.max(1) as f32;
 
@@ -4336,7 +4327,7 @@ impl SupportPlanner {
             //
             // Until packet 224 step 5 this stepped toward a 1/d^2 weighted
             // *mean of neighbour positions*, capped the displacement at
-            // `tan_angle * layer_height * wall_count`, then post-hoc clamped
+            // `tan_angle * layer_height * tree_support_wall_count`, then post-hoc clamped
             // the result out of avoidance and dropped the node with a typed
             // code-1002 `node-clamped-out` diagnostic when the escape exceeded
             // that budget. None of the capping, the clamping or the escape
@@ -7652,6 +7643,10 @@ mod property_tests;
 
 #[cfg(test)]
 mod tests {
+    /// Legacy test width: the pre-P29 `from_config` default. Auto now resolves
+    /// to `line_width` (canonical `Flow::support_material_flow`), so this is
+    /// only a fixed input for geometry unit tests, not a default.
+    const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
 
     /// Canonical `SupportNode` ctor: `for (auto& neighbor : parent->merged_neighbours)
     /// { neighbor->child = this; parents.push_back(neighbor); }` (`TreeSupport.hpp`).
@@ -8837,7 +8832,7 @@ mod tests {
             num_top_base_interface_layers: 0,
             support_interface_bottom_layers: 2,
             support_on_build_plate_only: false,
-            support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
+            support_top_z_distance: DEFAULT_TOP_Z_DISTANCE_MM,
             support_layer_height_mm: 0.0,
             independent_support_layer_height: true,
             support_object_xy_distance: DEFAULT_SUPPORT_OBJECT_XY_DISTANCE_MM,
@@ -9057,7 +9052,7 @@ mod tests {
         // `DEFAULT_TOP_Z_DISTANCE_MM`; RC-11's own coverage lives in
         // `tests/orca_parity_tdd.rs::top_z_distance_lowers_the_tree_contact_layer`.
         let planner = SupportPlanner {
-            support_top_z_distance_mm: 0.0,
+            support_top_z_distance: 0.0,
             ..default_planner()
         };
         let lp = default_layer_plan(10, 0.0, 0.2);
@@ -10007,6 +10002,47 @@ mod tests {
             zero > 0,
             "plain (non-extra-wall) nodes must stay at 0, but every \
              wall_counts entry was nonzero"
+        );
+    }
+
+    /// P29 (ticket 36): `support_line_width` drives the planner's smoothing
+    /// width, with canonical auto (`Flow::support_material_flow`): explicit
+    /// zero falls back to `line_width`, and Orca's auto `line_width` of 0
+    /// resolves on to the nozzle diameter.
+    #[test]
+    fn support_line_width_explicit_and_auto_forms() {
+        use std::collections::HashMap;
+        let from_fields = |mut fields: HashMap<String, ConfigValue>| -> SupportPlanner {
+            // Fail-closed seeds: the two required reads, at manifest defaults.
+            fields
+                .entry("nozzle_diameter".to_string())
+                .or_insert(ConfigValue::Float(0.4));
+            fields
+                .entry("independent_support_layer_height".to_string())
+                .or_insert(ConfigValue::Bool(true));
+            <SupportPlanner as PrepassModule>::from_config(&ConfigView::from_map(fields))
+                .expect("planner from_config must succeed")
+        };
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.8));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.8).abs() < 0.001,
+            "a non-default value must drive the smoothing width"
+        );
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.5).abs() < 0.001,
+            "explicit zero must fall back to line_width"
+        );
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.6).abs() < 0.001,
+            "zero line_width must resolve on to the nozzle diameter"
         );
     }
 

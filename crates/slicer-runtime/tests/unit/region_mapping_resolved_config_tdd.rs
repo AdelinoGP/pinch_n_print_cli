@@ -101,7 +101,7 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
 
 // --- Packet `config-scope-resolution_09` Step 6c-2 fixtures -----------------
 //
-// These fixtures make `infill_density` an admitted Float key so a typed
+// These fixtures make `sparse_infill_density` an admitted Float key so a typed
 // `ScopedConfig` can carry a layer range for `obj-A`, then drive the real
 // `commit_region_mapping_builtin` with a `RegionResolutionAuthority`. The
 // expectations are literals: no production helper computes them.
@@ -113,12 +113,12 @@ fn float_field() -> ConfigFieldEntry {
     }
 }
 
-fn infill_density_registry() -> ConfigSchemaRegistry {
+fn sparse_infill_density_registry() -> ConfigSchemaRegistry {
     assemble_registry(
         &[ModuleDeclaration {
             module_id: "dev.pinch.test.region-mapping-layer-range".to_owned(),
             schema: ConfigSchema {
-                entries: BTreeMap::from([("infill_density".to_owned(), float_field())]),
+                entries: BTreeMap::from([("sparse_infill_density".to_owned(), float_field())]),
             },
             ..ModuleDeclaration::default()
         }],
@@ -159,20 +159,26 @@ fn range_scope_world(registry: &ConfigSchemaRegistry) -> ScopedConfig {
             0,
             0.4,
             0.8,
-            &[("infill_density", "0.35")],
+            &[("sparse_infill_density", "0.35")],
         )])
         .expect("the admitted layer range must load");
     let mut scoped = ingestor.finish().scoped;
     scoped.deltas.insert(
         ConfigScope::Global,
         ScopeDelta {
-            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.20))]),
+            values: BTreeMap::from([(
+                "sparse_infill_density".to_owned(),
+                ConfigValue::Float(0.20),
+            )]),
         },
     );
     scoped.deltas.insert(
         ConfigScope::Object("obj-A".to_owned()),
         ScopeDelta {
-            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.25))]),
+            values: BTreeMap::from([(
+                "sparse_infill_density".to_owned(),
+                ConfigValue::Float(0.25),
+            )]),
         },
     );
     scoped
@@ -203,7 +209,7 @@ fn commit_with_authority(
     resolved_configs.insert(
         "obj-A".to_string(),
         ResolvedConfig {
-            infill_density: 0.25,
+            sparse_infill_density: 0.25,
             ..ResolvedConfig::default()
         },
     );
@@ -288,13 +294,13 @@ fn modifier_box_mesh() -> IndexedTriangleSet {
 /// `0.25`.
 #[test]
 fn range_covering_layer_top_z_overrides_region_config() {
-    let registry = infill_density_registry();
+    let registry = sparse_infill_density_registry();
     let scoped = range_scope_world(&registry);
 
     let resolved = commit_and_read_region_config(&registry, &scoped, 0.6);
 
     assert_eq!(
-        resolved.infill_density, 0.35,
+        resolved.sparse_infill_density, 0.35,
         "the [0.4, 0.8) range covering z=0.6 must outrank the precomputed object value 0.25"
     );
 }
@@ -303,18 +309,18 @@ fn range_covering_layer_top_z_overrides_region_config() {
 /// `max_z` itself (`0.8`) is excluded by the half-open interval.
 #[test]
 fn range_uncovered_layer_keeps_precomputed_config() {
-    let registry = infill_density_registry();
+    let registry = sparse_infill_density_registry();
     let scoped = range_scope_world(&registry);
 
     let above = commit_and_read_region_config(&registry, &scoped, 0.9);
     assert_eq!(
-        above.infill_density, 0.25,
+        above.sparse_infill_density, 0.25,
         "z=0.9 is outside [0.4, 0.8), so the precomputed object value 0.25 survives"
     );
 
     let at_max_z = commit_and_read_region_config(&registry, &scoped, 0.8);
     assert_eq!(
-        at_max_z.infill_density, 0.25,
+        at_max_z.sparse_infill_density, 0.25,
         "max_z itself is excluded by the half-open interval, so 0.25 survives"
     );
 }
@@ -323,7 +329,7 @@ fn range_uncovered_layer_keeps_precomputed_config() {
 /// covering range `0.35`, and the modifier child region carries that value.
 #[test]
 fn range_covering_layer_top_z_overrides_region_config_at_object_range_modifier_precedence() {
-    let registry = infill_density_registry();
+    let registry = sparse_infill_density_registry();
     let mut scoped = range_scope_world(&registry);
     scoped.deltas.insert(
         ConfigScope::Modifier {
@@ -331,7 +337,10 @@ fn range_covering_layer_top_z_overrides_region_config_at_object_range_modifier_p
             modifier_id: "mod-A".to_owned(),
         },
         ScopeDelta {
-            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.45))]),
+            values: BTreeMap::from([(
+                "sparse_infill_density".to_owned(),
+                ConfigValue::Float(0.45),
+            )]),
         },
     );
 
@@ -355,7 +364,7 @@ fn range_covering_layer_top_z_overrides_region_config_at_object_range_modifier_p
         variant_chain: Vec::new(),
     };
     assert_eq!(
-        rm.config_for(&base_key).infill_density,
+        rm.config_for(&base_key).sparse_infill_density,
         0.35,
         "the base region must keep the covering range value 0.35, not the modifier value"
     );
@@ -373,7 +382,7 @@ fn range_covering_layer_top_z_overrides_region_config_at_object_range_modifier_p
         "exactly one modifier sub-region entry must be minted for obj-A"
     );
     assert_eq!(
-        rm.config_for(modifier_keys[0]).infill_density,
+        rm.config_for(modifier_keys[0]).sparse_infill_density,
         0.45,
         "the modifier sub-region must carry the modifier scope value 0.45, \
          outranking both the covering range 0.35 and the object value 0.25"

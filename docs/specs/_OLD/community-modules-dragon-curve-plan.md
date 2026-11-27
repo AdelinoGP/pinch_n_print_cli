@@ -77,7 +77,7 @@ packet must use exactly these spellings; reviewer subagents check consistency.
 - `ResolvedConfig` is declared via `declare_resolved_config!` in
   `crates/slicer-ir/src/resolved_config.rs`; fill-role holders
   (`sparse_fill_holder` etc.) are `cli "..." String = ... => extract_string`.
-  A list-valued field needs a list extractor; `bed_shape` uses
+  A list-valued field needs a list extractor; `printable_area` uses
   `extract_float_list` — no `extract_string_list` exists yet (net-new if used).
 - Claim vocabulary: `claim:sparse-fill` etc. are `claim:*` strings; `should_emit`
   (`crates/slicer-sdk/src/views.rs`) gates emission on the held set.

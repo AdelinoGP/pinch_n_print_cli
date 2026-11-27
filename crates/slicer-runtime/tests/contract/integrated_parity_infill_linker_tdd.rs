@@ -116,6 +116,11 @@ fn integrated_parity_infill_linker() {
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
         (
+            "sparse_infill_density".to_string(),
+            slicer_ir::ConfigValue::Float(20.0),
+        ),
+        // The linker's own density key is fraction-typed (`infill_density`).
+        (
             "infill_density".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),

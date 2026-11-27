@@ -124,7 +124,11 @@ fn linker_config_fields() -> HashMap<String, ConfigValue> {
         ),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
+        // Canonical percent key (20 = 20%), read via `require_abs_value`.
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
     ])
 }
 

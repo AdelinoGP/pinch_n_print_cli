@@ -187,6 +187,10 @@ interface ir-handles {
         sparse-infill-area: func() -> list<ex-polygon>;
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
+        // Partitioned internal-solid fill (converted sparse islands; the
+        // PrePass shell-band marker carves to empty in the partition).
+        // Rust binding: internal_solid_fill.
+        internal-solid-fill: func() -> list<ex-polygon>;
         bridge-areas: func() -> list<ex-polygon>;
         // Rust binding: raft_fill. Mirrored from slice-region-view.raft-fill
         // (packet 240a).

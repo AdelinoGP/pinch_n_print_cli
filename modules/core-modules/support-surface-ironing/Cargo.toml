@@ -21,6 +21,7 @@ property_testing = []
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test", "property_testing"] }
 proptest = { workspace = true }
+toml = "0.8"
 
 # Required by the `#[slicer_module]` macro's wasm32-only component export
 # glue. On native builds the emitted `wit_bindgen::generate!` call is

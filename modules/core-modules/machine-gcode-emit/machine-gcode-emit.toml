@@ -85,6 +85,18 @@ type    = "string"
 default = ""
 group   = "Machine G-code"
 
+# Canonical `GCode::process_layer` gates time-lapse injection on the printer's
+# physical structure: `need_insert_timelapse_gcode_for_traditional` is
+# `(is_i3_printer && !m_spiral_vase) || is_multi_extruder`, where `is_i3_printer`
+# is `printer_structure == PrinterStructure::psI3`. Declared here rather than on
+# the emitter because this module owns the `time_lapse_gcode` injection site.
+[config.schema.printer_structure]
+type    = "enum"
+values  = ["undefine", "corexy", "i3", "hbot", "delta"]
+default = "undefine"
+display = "Printer Structure"
+group   = "Machine G-code"
+
 [config.schema.bed_temperature_initial_layer_single]
 type    = "int"
 default = 60
@@ -111,6 +123,106 @@ display     = "Nozzle diameter"
 description = "OrcaSlicer coFloat key nozzle_diameter; exposed here so machine_start_gcode / machine_end_gcode templates can reference [nozzle_diameter] and have it substituted with the effective nozzle diameter. Bounds mirror the classic-perimeters declaration of the same key."
 group       = "Machine G-code"
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
+
+# P35 (ticket 42): static pressure-advance gate. Canonical `enable_pressure_advance`
+# (`coBools` false) + `pressure_advance` (`coFloats` 0.02, max 2) are per-extruder
+# vectors read at every `GCode.cpp` toolchange/start site; the port holds the
+# scalar-global subset here (per-tool values ride the existing
+# `tool_config:<idx>:` axis, Orca vector ingest rides ticket 125). Declared here
+# to close ticket 04's ResolvedConfig-only contract; the decision point lives in
+# the host emitter (`crates/slicer-gcode`), which reads the typed
+# `ResolvedConfig` fields directly (P18 `disable_m73` precedent). The manifest
+# default is dead for this class of key (see map Notes) — the macro default is
+# what the module receives. Bounds mirror canonical (`min 0`, `max 2`); the port
+# enforces them where canonical treats them as GUI hints (ticket 113 rule).
+[config.schema.enable_pressure_advance]
+type    = "bool"
+default = false
+display = "Enable pressure advance"
+group   = "Machine G-code"
+description = "OrcaSlicer coBools key enable_pressure_advance; when true the emitter prefixes the print and each toolchange with the flavor-specific pressure-advance command."
+
+[config.schema.pressure_advance]
+type    = "float"
+default = 0.02
+min     = 0.0
+max     = 2.0
+display = "Pressure advance"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key pressure_advance (PA value for Klipper pressure advance / Marlin linear advance). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+# P40 (ticket 47): flush temp/speed placeholder pair. Canonical
+# `filament_flush_temp` (`coInts` nullable, default 0, max `max_temp` = 1500)
+# + `filament_flush_volumetric_speed` (`coFloats` nullable, default 0,
+# max 200) are per-filament vectors read at every `GCode.cpp`
+# toolchange/placeholder site (`update_placeholder_parser_with_variant_params`,
+# `set_extruder`, toolchange config builder) and published as the
+# `flush_temperatures` / `flush_volumetric_speeds` placeholders for custom
+# G-code; a 0 entry falls back to `nozzle_temperature_range_high` /
+# `filament_max_volumetric_speed`. The port holds the scalar-global subset here
+# (per-tool via the `tool_config:<idx>:` axis, vector ingest rides ticket 125)
+# and applies both fallbacks in the substitution lookup; `0`/`0.0` still
+# publish as-is in CONFIG_BLOCK, matching canonical. The generic placeholder
+# sweep substitutes both keys into every template (`change_filament_gcode`,
+# machine start/end). Bounds mirror canonical; the port enforces them where
+# canonical treats them as GUI hints (ticket 113 rule).
+[config.schema.filament_flush_temp]
+type    = "int"
+default = 0
+min     = 0
+max     = 1500
+display = "Flush temperature"
+group   = "Machine G-code"
+description = "OrcaSlicer coInts key filament_flush_temp (flush temperature in degC; 0 falls back to nozzle_temperature_range_high). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+[config.schema.filament_flush_volumetric_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 200.0
+display = "Flush volumetric speed"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key filament_flush_volumetric_speed (flush volumetric speed in mm3/s; 0.0 falls back to filament_max_volumetric_speed). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+# Canonical fallbacks for the flush placeholders. `nozzle_temperature_range_high`
+# is `coInts` (default 240, max 1500); `filament_max_volumetric_speed` is
+# `coFloats` (default 0.0). Both are scalar-subsets here (first entry).
+[config.schema.nozzle_temperature_range_high]
+type    = "int"
+default = 240
+min     = 0
+max     = 1500
+display = "Nozzle temperature range high"
+group   = "Machine G-code"
+description = "OrcaSlicer coInts key nozzle_temperature_range_high; fallback for a zero filament_flush_temp. Scalar-subset: first entry (ticket 125 owns the vector)."
+
+[config.schema.filament_max_volumetric_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
+display = "Filament max volumetric speed"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key filament_max_volumetric_speed; fallback for a zero filament_flush_volumetric_speed. Scalar-subset: first entry (ticket 125 owns the vector)."
+
+# P43 (ticket 50): manual filament change. Canonical `manual_filament_change`
+# (`coBool`, default false) omits the custom `change_filament_gcode` on the
+# first toolchange (`GCode.cpp` toolchange path, `m_toolchange_count == 1`)
+# for manual multi-material printing (M600/PAUSE driven); the toolchange tag
+# line itself is emitted host-side by the serializer. Read here to gate the
+# FilamentChange injection point.
+[config.schema.manual_filament_change]
+type    = "bool"
+default = false
+display = "Manual filament change"
+group   = "Machine G-code"
+description = "OrcaSlicer coBool key manual_filament_change; when true the first change_filament_gcode injection is skipped (manual swap via M600/PAUSE)."
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
 
 [hints]
 estimated-ms-per-layer = 0

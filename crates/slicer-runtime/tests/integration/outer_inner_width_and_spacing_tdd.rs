@@ -1,7 +1,7 @@
 //! AC-1: outer/inner width and spacing contract (T-051/T-052, packet 105).
 //!
 //! Given an ExPolygon square of side 10 mm with outer_wall_line_width=0.5 mm,
-//! inner_wall_line_width=0.4 mm, wall_count=3:
+//! inner_wall_line_width=0.4 mm, wall_loops=3:
 //! - Outer wall (index 0) has every vertex width=0.5 mm
 //! - Inner walls (indices 1,2) have every vertex width=0.4 mm
 //! - Radial gap between outer and first-inner = ext_perimeter_spacing2, the mean
@@ -37,7 +37,7 @@ fn outer_inner_width_and_spacing() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .build();
@@ -145,7 +145,7 @@ fn negative_spacing_config_is_a_fatal_module_error() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .float("layer_height", 2.0)

@@ -689,7 +689,7 @@ adds the fixed 2 mm margin. Selecting a layer subset therefore changes neither
 the layer-0 image from an all-layer bundle are directly comparable.
 `frame: "plate"` frames the bed polygon exactly, with no geometry union, so a
 small part renders small; the preparation snapshot makes no bed claim beyond
-the resolved `bed_shape`.
+the resolved `printable_area`.
 
 Preparation shapes paint back to front in a fixed order: filled polygons,
 unfilled polygon outlines (contour and hole rings), polylines, points, then
@@ -766,7 +766,7 @@ geometry, or it would stop meaning "the plate" as soon as a part sat near an
 edge. Both sources support it, reading the bed from whichever definition that
 source has:
 
-- **model**: the resolved `bed_shape` config key.
+- **model**: the resolved `printable_area` config key.
 - **gcode**: the `printable_area` comment in the G-code's own config block
   (e.g. OrcaSlicer emits `; printable_area = 0x0,220x0,220x200,0x200`).
 

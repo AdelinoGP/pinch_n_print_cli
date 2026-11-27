@@ -25,17 +25,17 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.thickness]
+[config.schema.fuzzy_skin_thickness]
 type    = "float"
-default = 0.3
+default = 0.2
 min     = 0.0
 max     = 2.0
 display = "Fuzzy Skin Thickness"
 group   = "Fuzzy Skin"
 
-[config.schema.point_distance]
+[config.schema.fuzzy_skin_point_distance]
 type    = "float"
-default = 0.5
+default = 0.3
 min     = 0.01
 max     = 5.0
 display = "Point Distance"

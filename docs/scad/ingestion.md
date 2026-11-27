@@ -164,7 +164,7 @@ A successful 3D evaluation becomes **exactly one** `MeshIR` object:
 
 - **`slice`** treats an explicitly loaded SCAD model like a bare model: the
   established whole-model translation centres the XY bounding box on the bed
-  (`bed_shape`, default 250 × 250) and drops world Z minimum to zero. All bodies
+  (`printable_area`, default 250 × 250) and drops world Z minimum to zero. All bodies
   move by the same vector, so a multi-body print keeps its arrangement.
   A 3MF's authored placement is still untouched.
 - **`mesh import`** writes **source coordinates**. There is no bed placement

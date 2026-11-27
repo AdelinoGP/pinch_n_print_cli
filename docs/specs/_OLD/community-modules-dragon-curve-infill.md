@@ -109,7 +109,7 @@ a role means "the module that holds this role may self-color its output":
 fill_authored_coloring = ["claim:sparse-fill"]
 ```
 
-It is **overridable per region** (like `infill_density`).
+It is **overridable per region** (like `sparse_infill_density`).
 
 ### Grant — the intersection
 

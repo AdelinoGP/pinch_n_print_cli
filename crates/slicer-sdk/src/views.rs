@@ -51,7 +51,6 @@ pub struct SliceRegionView {
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
-    is_internal_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
     bridge_areas: Vec<ExPolygon>,
     /// Per-layer internal (over-sparse-infill) bridge polygons.
@@ -123,7 +122,6 @@ impl Default for SliceRegionView {
             bottom_solid_fill: Vec::new(),
             internal_solid_fill: Vec::new(),
             is_bridge: false,
-            is_internal_bridge: false,
             bridge_areas: Vec::new(),
             internal_bridge_areas: Vec::new(),
             internal_bridge_angles_deg: Vec::new(),
@@ -282,12 +280,6 @@ impl SliceRegionView {
         self.is_bridge = is_bridge;
     }
 
-    /// Override the internal-bridge classification flag for legacy module APIs.
-    #[doc(hidden)]
-    pub fn set_is_internal_bridge(&mut self, is_internal_bridge: bool) {
-        self.is_internal_bridge = is_internal_bridge;
-    }
-
     /// Override the bridge areas (host-only, for testing).
     #[doc(hidden)]
     pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
@@ -419,9 +411,10 @@ impl SliceRegionView {
     /// `sync_perimeter_infill_areas_into_slice`
     /// (`crates/slicer-runtime/src/region_partition.rs`) clips this polygon
     /// to `perimeter.infill_areas` and deduplicates it by precedence
-    /// `bridge > bottom > top > sparse`. So at Layer::Infill / Layer::InfillPostProcess
-    /// stages this getter returns the **post-partition clipped** polygon
-    /// (pairwise-disjoint with `bottom_solid_fill`, `bridge_areas`, and
+    /// `bridge > bottom > top > internal > sparse`. So at Layer::Infill /
+    /// Layer::InfillPostProcess stages this getter returns the
+    /// **post-partition clipped** polygon (pairwise-disjoint with
+    /// `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`, and
     /// `sparse_infill_area`). At earlier stages (PrePass, `Layer::Slice`,
     /// `Layer::SlicePostProcess`, `Layer::Perimeters` before the commit
     /// hook) it returns the raw `PrePass::ShellClassification` projection.
@@ -456,11 +449,6 @@ impl SliceRegionView {
     /// a different fill strategy.
     pub fn is_bridge(&self) -> bool {
         self.is_bridge
-    }
-
-    /// Returns the legacy internal-bridge classification flag.
-    pub fn is_internal_bridge(&self) -> bool {
-        self.is_internal_bridge
     }
 
     /// Returns the object ID this region belongs to.
@@ -740,6 +728,8 @@ pub struct PerimeterRegionView {
     top_solid_fill: Vec<ExPolygon>,
     /// Polygon-precise area to solid-fill from bottom shell projection (ADR-0028).
     bottom_solid_fill: Vec<ExPolygon>,
+    /// Partitioned internal-solid fill (converted sparse islands).
+    internal_solid_fill: Vec<ExPolygon>,
     /// Per-layer expanded bridge polygons (empty if not a bridge region) (ADR-0028).
     bridge_areas: Vec<ExPolygon>,
     /// Raft-substrate fill polygons mirrored from the corresponding
@@ -842,6 +832,12 @@ impl PerimeterRegionView {
         self.bridge_areas = bridge_areas;
     }
 
+    /// Override the internal-solid fill (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_internal_solid_fill(&mut self, internal_solid_fill: Vec<ExPolygon>) {
+        self.internal_solid_fill = internal_solid_fill;
+    }
+
     /// Override the tool index (host-only, for testing).
     #[doc(hidden)]
     pub fn set_tool_index(&mut self, tool_index: u32) {
@@ -904,6 +900,12 @@ impl PerimeterRegionView {
     /// Returns the polygon-precise bottom-shell solid-fill areas.
     pub fn bottom_solid_fill(&self) -> &[ExPolygon] {
         &self.bottom_solid_fill
+    }
+
+    /// Returns the partitioned internal-solid fill polygons (converted
+    /// sparse islands).
+    pub fn internal_solid_fill(&self) -> &[ExPolygon] {
+        &self.internal_solid_fill
     }
 
     /// Returns the per-layer expanded bridge polygons (empty if not a

@@ -446,6 +446,13 @@ pub enum SchedulerError {
     ClaimConflict {
         claim: String, module_a: ModuleId, module_b: ModuleId, scope: ConflictScope,
     },
+    UnmatchedClaimHolder {
+        claim: String, holder: String, candidates: Vec<ModuleId>,
+    },
+    ClaimHolderDoesNotDeclareClaim {
+        claim: String, holder: String, matched_modules: Vec<ModuleId>,
+        candidates: Vec<ModuleId>,
+    },
     IncompatibleModules {
         declared_by: ModuleId, conflicting: ModuleId, reason: String,
     },
@@ -503,7 +510,7 @@ active per region at a time.
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two effective modules hold the same claim with `ConflictScope::Global`. The four configured fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) are exempt from this arm: multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. `claim:raft-fill` is **ordinary** here — two effective holders conflict. The same exemption covers exactly four family-scoped support claims (`support-generator`, `support-planner`, `support-family:traditional`, `support-family:tree`); it is a finite table, not a `support-family:*` wildcard. Absence of any holder for one of the four fill claims is a `MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`. See `FILL_CLAIM_IDS` and `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`, and property `H-CLAIMS` (`docs/testing/properties.md#h-claims`).
+2. **Global claim conflicts** — two effective modules hold the same claim with `ConflictScope::Global`. The four configured fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) are exempt from this arm: multiple modules legitimately declare the same fill claim and per-region resolution at dispatch time picks the active holder. `claim:raft-fill` is **ordinary** here — two effective holders conflict. The same exemption covers exactly four family-scoped support claims (`support-generator`, `support-planner`, `support-family:traditional`, `support-family:tree`); it is a finite table, not a `support-family:*` wildcard. Absence of any holder for one of the four fill claims is a `MissingDependency { module: "fill-role-claim:<claim>", requires: "no module holds <claim>" }`. See `FILL_CLAIM_IDS` and `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`, and property `H-CLAIMS` (`docs/testing/properties.md#h-claims`). The configured holder check in `validate_startup_dag_with_configured_holders` (`crates/slicer-scheduler/src/validation.rs`) is attached to this pass: `UnmatchedClaimHolder` means no loaded module matches the configured ID, while `ClaimHolderDoesNotDeclareClaim` means a matching module does not declare the selected claim. Both are fatal.
 3. **Per-region claim conflicts** — the same claim with `ConflictScope::Region { object_id, region_id, global_layer_index }`. Holders are grouped by a typed key, never a concatenated string: ordinary and transition-capable claims key on the full `(object, region, layer)` triple, while the four non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`) key on the object alone, because `docs/01_system_architecture.md` §"Allowed Claim Transition Matrix" requires one holder across every layer **and** region of one object. A same-region cross-layer conflict reports the original region with `global_layer_index = None`.
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
@@ -573,6 +580,7 @@ Rules:
 - Global validation fails only if the effective holder set for a claim in one scope has more than one distinct module.
 - A module removed from the effective universe (disabled, not loaded, or shadowed) does not participate in claim conflicts, and its holder observations must not be retained.
 - If no holder remains for a required claim or fill role, this is a configuration error (`MissingDependency`).
+- A configured holder must match a loaded module that declares the selected claim. An unmatched name fails with `SchedulerError::UnmatchedClaimHolder`; a matching module without the claim fails with `SchedulerError::ClaimHolderDoesNotDeclareClaim`. There is no silent empty-set fallback for either case.
 - Stable claims are the four non-transitionable rows of the Allowed Claim Transition Matrix. Their holder must not change across layers **or regions** of one `(object_id, claim)`; the validator keys those by object alone and reports a conflict with the original object, the first holder's original region, and `global_layer_index = None`.
 - Transition-capable claims (for example `claim:sparse-fill`, `infill-generator`, `support-generator`) may vary per layer, and ordinary claims are compared only inside the same typed `(object, region, layer)` scope. `support-planner` is retained per support family at dispatch time, so family-scoped planners coexist rather than being deduplicated; no blanket cross-layer temporal policy is imposed on other claim ids.
 

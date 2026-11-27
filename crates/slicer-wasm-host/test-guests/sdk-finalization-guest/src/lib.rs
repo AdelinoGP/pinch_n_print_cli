@@ -67,9 +67,21 @@ impl FinalizationModule for SdkFinalizationModule {
         // round-trip step so a test can still assert the typed
         // `ModuleError { code, fatal, message }` marshalling.
         if let Some(code) = config.get_int("intentional_error_code") {
-            return Err(ModuleError::non_fatal(
+            return Err(ModuleError::fatal(
                 code as u32,
                 "sdk-finalization-guest: intentional typed error from config",
+            ));
+        }
+
+        // Non-fatal witness: `common.wit`'s `module-error.fatal` doc and
+        // `slicer_sdk::error::ModuleError` define `fatal = false` as
+        // "host logs and continues" — a degraded success, not a stage abort.
+        // Its own key keeps the fatal round-trip witness above intact while
+        // making the continuation path observable from a host test.
+        if let Some(code) = config.get_int("intentional_non_fatal_error_code") {
+            return Err(ModuleError::non_fatal(
+                code as u32,
+                "sdk-finalization-guest: intentional non-fatal error from config",
             ));
         }
 

@@ -15,10 +15,10 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+fn make_config(wall_loops: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
         .float("resolution", 0.01)
-        .int("wall_count", wall_count as i64)
+        .int("wall_loops", wall_loops as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
         // Required-read baseline (packet 06 5c', item 11): the classified

@@ -35,7 +35,7 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
 /// `None` exercises the default path (no `retract_mode` field present).
 fn config_for_external_travel(mode_override: Option<&str>) -> ConfigView {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert("retract_length".to_string(), ConfigValue::Float(0.8));
+    fields.insert("retraction_length".to_string(), ConfigValue::Float(0.8));
     fields.insert(
         "path_optimization_emit_layer_markers".to_string(),
         ConfigValue::Bool(false),

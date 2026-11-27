@@ -62,18 +62,14 @@ fn integrated_parity_rectilinear_infill() {
     // read at manifest defaults, with this fixture's density/line_width winning.
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (
-            "infill_density".to_string(),
-            slicer_ir::ConfigValue::Float(0.2),
+            "sparse_infill_density".to_string(),
+            slicer_ir::ConfigValue::Float(20.0),
         ),
         // Declared required reads since the guest's config-literal fallbacks
         // migrated to `require_*` (rectilinear-infill.toml manifest defaults).
         (
-            "infill_angle".to_string(),
+            "infill_direction".to_string(),
             slicer_ir::ConfigValue::Float(45.0),
-        ),
-        (
-            "infill_speed".to_string(),
-            slicer_ir::ConfigValue::Float(60.0),
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
         (

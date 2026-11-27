@@ -54,6 +54,9 @@ struct RoleBoundaries {
     sparse: Vec<ExPolygon>,
     top: Vec<ExPolygon>,
     bottom: Vec<ExPolygon>,
+    /// Partitioned internal-solid fill (converted sparse islands). Empty on
+    /// regions the host never partitioned, mirroring the other three.
+    internal: Vec<ExPolygon>,
     bridge: Vec<ExPolygon>,
     /// `infill_areas` — the union. Only used for views the host never
     /// partitioned, and for roles that have no dedicated partition.
@@ -66,6 +69,7 @@ impl RoleBoundaries {
             sparse: view.sparse_infill_area().to_vec(),
             top: view.top_solid_fill().to_vec(),
             bottom: view.bottom_solid_fill().to_vec(),
+            internal: view.internal_solid_fill().to_vec(),
             bridge: view.bridge_areas().to_vec(),
             union: view.infill_areas().to_vec(),
         }
@@ -75,6 +79,7 @@ impl RoleBoundaries {
         !(self.sparse.is_empty()
             && self.top.is_empty()
             && self.bottom.is_empty()
+            && self.internal.is_empty()
             && self.bridge.is_empty())
     }
 
@@ -99,12 +104,15 @@ impl RoleBoundaries {
             }
             // `solid_role` in rectilinear-infill / gyroid-infill relabels a
             // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
-            // legal area is the union of the two solid-shell polygons.
+            // legal area is the union of the two solid-shell polygons plus
+            // the partitioned internal-solid bucket (converted sparse
+            // islands), which is now emitted under the same label.
             ExtrusionRole::InternalSolidInfill => Some(union_ex(
                 &self
                     .top
                     .iter()
                     .chain(self.bottom.iter())
+                    .chain(self.internal.iter())
                     .cloned()
                     .collect::<Vec<_>>(),
             )),
@@ -203,17 +211,20 @@ pub fn orchestrate_infill(
         let line_width = config_float(view.config(), "line_width")
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(default_line_width);
-        // Packet 06 (AC-3): `infill_density` and `layer_height` are declared
-        // `float` with registry defaults in infill-linker.toml, so a bound
-        // view always holds them; a missing or mistyped value is a fatal
-        // config defect, not a fallback case. The sanitizing filter stays
-        // for degenerate-but-legal values (a 0.0 density must not reach the
-        // `sparse_spacing_mm` division).
+        // Packet 06 (AC-3): `sparse_infill_density` and `layer_height` are
+        // declared in infill-linker.toml, so a bound view always holds them;
+        // a missing or mistyped value is a fatal config defect, not a
+        // fallback case. `sparse_infill_density` is the canonical percent
+        // key (20 = 20%), resolved against base 100 and divided back to the
+        // density fraction. The sanitizing filter stays for degenerate-but-
+        // legal values (a 0.0 density must not reach the `sparse_spacing_mm`
+        // division).
         let density = view
             .config()
-            .map(|config| config.require_float("infill_density"))
+            .map(|config| config.require_abs_value("sparse_infill_density", 100.0))
             .transpose()
             .map_err(|error| error.to_string())?
+            .map(|percent| percent / 100.0)
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(0.2) as f32;
         let layer_height = view

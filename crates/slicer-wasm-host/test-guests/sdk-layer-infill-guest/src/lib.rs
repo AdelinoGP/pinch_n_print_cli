@@ -45,7 +45,7 @@ impl LayerModule for SdkLayerInfillModule {
                 "sdk-layer-infill-guest: typed error from config at layer {layer_index} \
                  (regions={region_count}, total_polygons={total_polys})"
             );
-            return Err(ModuleError::non_fatal(code as u32, msg));
+            return Err(ModuleError::fatal(code as u32, msg));
         }
 
         // Deep-copy input witness: encode real per-region content via

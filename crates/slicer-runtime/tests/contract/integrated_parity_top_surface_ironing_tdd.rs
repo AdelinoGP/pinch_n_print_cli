@@ -55,7 +55,7 @@ fn integrated_parity_top_surface_ironing() {
             slicer_ir::ConfigValue::Bool(true),
         ),
         (
-            "ironing_spacing_mm".to_string(),
+            "ironing_spacing".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),
         (

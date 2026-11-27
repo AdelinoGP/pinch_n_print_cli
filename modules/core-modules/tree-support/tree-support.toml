@@ -27,7 +27,7 @@ max-ir-schema     = "5.0.0"
 [config.schema]
 [config.schema.enable_support]
 type    = "bool"
-default = true
+default = false
 display = "Support Enabled"
 group   = "Support"
 
@@ -63,7 +63,6 @@ description = "Wall loops for tree support; `0` is canonical OrcaSlicer's \"auto
 type    = "float"
 default = 50.0
 min     = 1.0
-max     = 300.0
 display = "Support Speed"
 group   = "Support"
 # ADR-0069: the feedrate table is built once per whole print, so no sub-print

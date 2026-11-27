@@ -7,7 +7,7 @@
 //! see `docs/DEVIATION_LOG.md` DEV-026), against the real WASM pipeline via a
 //! real `pnp_cli slice` subprocess against `resources/regression_wedge.stl`
 //! together with `resources/test_config/gate_evidence_50l.json` (a
-//! `layer_height` / `first_layer_height` override that coerces the
+//! `layer_height` / `initial_layer_print_height` override that coerces the
 //! 40mm-tall fixture to exactly 50 layers, verified empirically this
 //! session — `;LAYER_CHANGE` count in the emitted gcode — rather than
 //! building a new purpose-made fixture).

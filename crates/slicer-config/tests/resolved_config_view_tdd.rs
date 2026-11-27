@@ -512,11 +512,12 @@ fn config_block_map_is_registry_driven() {
             "mmu_segmented_region_interlocking_beam",
             "mmu_segmented_region_interlocking_depth",
             "mmu_segmented_region_max_width",
+            "silent_mode",
             "thumbnail_path",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>(),
-        "exactly the four declared keys carry config_block = false"
+        "exactly the five declared keys carry config_block = false"
     );
 
     assert!(

@@ -70,7 +70,7 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
             "Layer::Perimeters",
             "arachne-perimeters/arachne-perimeters.wasm",
             [
-                ("wall_count", ConfigValue::Int(3)),
+                ("wall_loops", ConfigValue::Int(3)),
                 (
                     "wall_sequence",
                     ConfigValue::String(wall_sequence.to_string()),
@@ -144,7 +144,7 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
 
         let mut map = RegionMapIR::default();
         let config = map.intern_config(ResolvedConfig {
-            wall_count: 3,
+            wall_loops: 3,
             layer_height: 0.2,
             line_width: 0.45,
             extensions: [

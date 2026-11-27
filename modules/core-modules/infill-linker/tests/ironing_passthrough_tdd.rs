@@ -77,7 +77,7 @@ fn ironing_passthrough_identical() {
     let config = ConfigViewBuilder::new()
         .float("infill_overlap", 0.45)
         .float("line_width", 0.4)
-        .float("infill_density", 0.2)
+        .float("sparse_infill_density", 0.2)
         .float("layer_height", 0.2)
         .float_or_percent("infill_anchor_max", 20.0, false)
         .build();

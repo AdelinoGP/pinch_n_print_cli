@@ -703,16 +703,16 @@ fn wedge_per_region_config_delivery_structural_canary() {
 
     // ── Wall structure ──────────────────────────────────────────────────────
     // One outer loop per contour with `wall_count - 1` inner loops. The count
-    // is DERIVED from the emitted `wall_count` (the canary's earlier literal
+    // is DERIVED from the emitted `wall_loops` (the canary's earlier literal
     // `2` encoded wall_count = 3, which stopped being the default); an outer
     // loop is a travel followed by a run of consecutive extruding G1s, so
     // maximal extruding runs count loops.
     let wall_count: usize = gcode[config_start..config_end]
         .lines()
-        .filter_map(|line| line.strip_prefix("; wall_count = "))
+        .filter_map(|line| line.strip_prefix("; wall_loops = "))
         .filter_map(|value| value.parse::<usize>().ok())
         .next()
-        .expect("CONFIG_BLOCK must carry `wall_count`");
+        .expect("CONFIG_BLOCK must carry `wall_loops`");
     let (mut outer, mut inner) = (0usize, 0usize);
     let mut role: Option<&str> = None;
     let mut prev_extruding = false;
@@ -846,7 +846,7 @@ fn slice_mvp_content_is_deterministic() {
 ///
 /// Previously, the planner could reach the live path without any per-object
 /// height in its bound config and fall back to a single
-/// `z = first_layer_height` proposal. The canonical live path now seeds
+/// `z = initial_layer_print_height` proposal. The canonical live path now seeds
 /// `object_height:<id>` from cached `ObjectMesh.world_z_extent` before the
 /// ConfigView is bound, so the wedge is planned to its real 40 mm
 /// world-space height. At a 0.2 mm layer height, the emitter must produce

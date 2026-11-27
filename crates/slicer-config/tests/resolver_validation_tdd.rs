@@ -256,9 +256,9 @@ fn typed_layer_height_obeys_registry_maximum_before_application() {
 }
 
 #[test]
-fn negative_wall_count_is_rejected_before_unsigned_cast() {
+fn negative_wall_loops_is_rejected_before_unsigned_cast() {
     let registry = registry(BTreeMap::from([(
-        "wall_count".to_owned(),
+        "wall_loops".to_owned(),
         ConfigFieldEntry {
             field_type: "int".to_owned(),
             min: Some(0.0),
@@ -269,7 +269,7 @@ fn negative_wall_count_is_rejected_before_unsigned_cast() {
     ingestor
         .ingest_delta(
             ConfigScope::Global,
-            &HashMap::from([("wall_count".to_owned(), ConfigValue::Int(-1))]),
+            &HashMap::from([("wall_loops".to_owned(), ConfigValue::Int(-1))]),
         )
         .unwrap();
     let error = resolve_scope_stack(
@@ -278,11 +278,11 @@ fn negative_wall_count_is_rejected_before_unsigned_cast() {
         &ResolutionTarget::default(),
         &expansion(),
     )
-    .expect_err("negative wall_count must not wrap to u32::MAX");
+    .expect_err("negative wall_loops must not wrap to u32::MAX");
     assert_eq!(
         error,
         ResolutionError::Application(ConfigResolutionError::OutOfRange {
-            key: "wall_count".to_owned(),
+            key: "wall_loops".to_owned(),
             value: -1.0,
             min: Some(0.0),
             max: None,
@@ -294,7 +294,7 @@ fn negative_wall_count_is_rejected_before_unsigned_cast() {
 #[test]
 fn unsigned_typed_counts_reject_negative_and_overflow_without_registry_bounds() {
     let registry = registry(BTreeMap::from([(
-        "wall_count".to_owned(),
+        "wall_loops".to_owned(),
         ConfigFieldEntry {
             field_type: "int".to_owned(),
             ..Default::default()
@@ -305,7 +305,7 @@ fn unsigned_typed_counts_reject_negative_and_overflow_without_registry_bounds() 
         ingestor
             .ingest_delta(
                 ConfigScope::Global,
-                &HashMap::from([("wall_count".into(), ConfigValue::Int(value))]),
+                &HashMap::from([("wall_loops".into(), ConfigValue::Int(value))]),
             )
             .unwrap();
         let error = resolve_scope_stack(
@@ -318,7 +318,7 @@ fn unsigned_typed_counts_reject_negative_and_overflow_without_registry_bounds() 
         assert_eq!(
             error,
             ResolutionError::Application(ConfigResolutionError::OutOfRange {
-                key: "wall_count".into(),
+                key: "wall_loops".into(),
                 value: value as f64,
                 min: Some(0.0),
                 max: Some(f64::from(u32::MAX)),
@@ -331,7 +331,7 @@ fn unsigned_typed_counts_reject_negative_and_overflow_without_registry_bounds() 
         ingestor
             .ingest_delta(
                 ConfigScope::Global,
-                &HashMap::from([("wall_count".into(), ConfigValue::Int(i64::from(value)))]),
+                &HashMap::from([("wall_loops".into(), ConfigValue::Int(i64::from(value)))]),
             )
             .unwrap();
         let resolved = resolve_scope_stack(
@@ -341,6 +341,6 @@ fn unsigned_typed_counts_reject_negative_and_overflow_without_registry_bounds() 
             &expansion(),
         )
         .expect("representable unsigned counts must remain accepted");
-        assert_eq!(resolved.wall_count, value);
+        assert_eq!(resolved.wall_loops, value);
     }
 }

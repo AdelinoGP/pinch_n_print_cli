@@ -27,7 +27,7 @@ max-ir-schema     = "5.0.0"
 [config.schema]
 [config.schema.enable_support]
 type    = "bool"
-default = true
+default = false
 display = "Support Enabled"
 group   = "Support"
 
@@ -215,7 +215,7 @@ max     = 10.0
 display = "Support/Object XY Distance"
 group   = "Support"
 
-[config.schema.support_top_z_distance_mm]
+[config.schema.support_top_z_distance]
 type    = "float"
 default = 0.2
 min     = 0.0

@@ -46,6 +46,11 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "support_bottom_z_distance" => c.support_bottom_z_distance as f64,
         "support_object_first_layer_gap" => c.support_object_first_layer_gap as f64,
         "enforce_support_layers" => c.enforce_support_layers as f64,
+        "printable_height" => c.printable_height as f64,
+        "mmu_segmented_region_max_width" => c.mmu_segmented_region_max_width as f64,
+        "mmu_segmented_region_interlocking_depth" => {
+            c.mmu_segmented_region_interlocking_depth as f64
+        }
         "filament_max_volumetric_speed" => c
             .filament_max_volumetric_speed()
             .expect("the declared volumetric setting must have a valid numeric value"),
@@ -62,7 +67,7 @@ fn resolved_bool(c: &ResolvedConfig, key: &str) -> Option<bool> {
         "bridge_no_support" => c.bridge_no_support,
         "support_critical_regions_only" => c.support_critical_regions_only,
         "support_remove_small_overhang" => c.support_remove_small_overhang,
-        "support_sharp_tails" => c.support_sharp_tails,
+        "silent_mode" => c.silent_mode,
         _ => return None,
     })
 }
@@ -113,7 +118,7 @@ fn speeds_match_feedrate_default() {
         gap_infill_speed,
         ironing_speed,
         skirt_speed,
-        wipe_tower_speed,
+        wipe_tower_max_purge_speed,
         prime_tower_speed,
         travel_speed,
         travel_speed_z,
@@ -141,7 +146,10 @@ fn speeds_match_feedrate_default() {
         ("gap_infill_speed", gap_infill_speed as f64),
         ("ironing_speed", ironing_speed as f64),
         ("skirt_speed", skirt_speed as f64),
-        ("wipe_tower_speed", wipe_tower_speed as f64),
+        (
+            "wipe_tower_max_purge_speed",
+            wipe_tower_max_purge_speed as f64,
+        ),
         ("prime_tower_speed", prime_tower_speed as f64),
         ("travel_speed", travel_speed as f64),
         ("travel_speed_z", travel_speed_z as f64),
@@ -200,6 +208,26 @@ fn host_runtime_keys_match_constants() {
         t["thumbnail_path"]["default"].as_str().unwrap(),
         slicer_runtime::pipeline::DEFAULT_THUMBNAIL_PATH,
         "host-keys.toml thumbnail_path != pipeline::DEFAULT_THUMBNAIL_PATH"
+    );
+    assert_eq!(
+        t["gcode_add_line_number"]["default"].as_bool().unwrap(),
+        slicer_runtime::run::DEFAULT_GCODE_ADD_LINE_NUMBER,
+        "host-keys.toml gcode_add_line_number != run::DEFAULT_GCODE_ADD_LINE_NUMBER"
+    );
+    let post_process: Vec<&str> = t["post_process"]["default"]
+        .as_array()
+        .expect("[host_runtime.post_process] default must be a list")
+        .iter()
+        .map(|entry| {
+            entry
+                .as_str()
+                .expect("post_process entries must be strings")
+        })
+        .collect();
+    assert_eq!(
+        post_process,
+        slicer_runtime::run::DEFAULT_POST_PROCESS,
+        "host-keys.toml post_process != run::DEFAULT_POST_PROCESS"
     );
 }
 

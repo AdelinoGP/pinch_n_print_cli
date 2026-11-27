@@ -44,11 +44,19 @@ fn support_plan(output: &PrepassStageOutput) -> &slicer_ir::SupportPlanIR {
 
 #[test]
 fn integrated_parity_support_planner_native_matches_wasm() {
+    // `enable_support` must be set explicitly: ticket 100 aligned its default
+    // to OrcaSlicer's (supports off unless asked for), so an empty ConfigView
+    // now yields an empty plan on both sides and the parity comparison would
+    // be vacuous — the same trap the `support_type` comment below describes.
     // Bound-view shape (packet 06 5c-prime): `nozzle_diameter` and
     // `independent_support_layer_height` are contract-required reads in
     // `SupportPlanner::from_config`; a bound view holds them at manifest
     // defaults (tree-support-planner.toml `[config.schema]`).
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+        (
+            "enable_support".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        ),
         (
             "nozzle_diameter".to_string(),
             slicer_ir::ConfigValue::Float(0.4),

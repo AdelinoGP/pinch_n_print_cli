@@ -291,9 +291,12 @@ mod tests {
     fn planner_config(diagnostic: Option<&str>) -> ConfigView {
         let mut values = HashMap::new();
         values.insert("line_width".to_string(), ConfigValue::Float(0.45));
-        values.insert("infill_density".to_string(), ConfigValue::Float(0.2));
+        values.insert(
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        );
         values.insert("layer_height".to_string(), ConfigValue::Float(0.2));
-        values.insert("infill_angle".to_string(), ConfigValue::Float(45.0));
+        values.insert("infill_direction".to_string(), ConfigValue::Float(45.0));
         if let Some(value) = diagnostic {
             values.insert(
                 DIAGNOSTIC_KEY.to_string(),

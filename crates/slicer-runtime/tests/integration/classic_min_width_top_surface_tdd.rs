@@ -12,7 +12,7 @@
 //! collapsed to one wall. This test pins the gated behaviour:
 //!
 //! - a NARROW **non-topmost** top sub-area (bbox min extent <
-//!   `min_width_top_surface`) keeps all `wall_count` loops,
+//!   `min_width_top_surface`) keeps all `wall_loops` loops,
 //! - a WIDE **non-topmost** top sub-area (bbox min extent >= threshold)
 //!   collapses to 1 loop,
 //! - a TOPMOST sub-area (`top_shell_index == Some(0)`) collapses to 1 loop
@@ -74,7 +74,7 @@ fn topmost_collapse_is_unconditional() {
     // baseline defaults.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
-        .int("wall_count", WALL_COUNT)
+        .int("wall_loops", WALL_COUNT)
         .float("outer_wall_line_width", 0.5)
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_top", true)
@@ -113,7 +113,7 @@ fn min_width_top_surface_gates_only_one_wall_top() {
     // Bound-view baseline (packet 06 5c-prime): see topmost_collapse_is_unconditional.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
-        .int("wall_count", WALL_COUNT)
+        .int("wall_loops", WALL_COUNT)
         .float("outer_wall_line_width", 0.5)
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_top", true)

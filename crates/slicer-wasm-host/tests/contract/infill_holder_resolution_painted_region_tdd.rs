@@ -123,7 +123,7 @@ fn build_module_config() -> Arc<ConfigView> {
     // winning (same set as `integrated_parity_rectilinear_infill_tdd`, a
     // superset of gyroid's reads).
     let mut map = HashMap::new();
-    map.insert("infill_density".into(), ConfigValue::Float(0.2));
+    map.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
     map.insert("bridge_line_width".into(), ConfigValue::Float(0.0));
     map.insert("initial_layer_line_width".into(), ConfigValue::Float(0.0));
@@ -156,8 +156,7 @@ fn build_module_config() -> Arc<ConfigView> {
     map.insert("infill_shift_step".into(), ConfigValue::Float(0.0));
     // Fail-closed migration keys (gyroid-infill.toml / rectilinear-infill.toml
     // manifest defaults): required reads since the fallback removal.
-    map.insert("infill_angle".into(), ConfigValue::Float(45.0));
-    map.insert("infill_speed".into(), ConfigValue::Float(60.0));
+    map.insert("infill_direction".into(), ConfigValue::Float(45.0));
     Arc::new(ConfigView::from_map(map))
 }
 

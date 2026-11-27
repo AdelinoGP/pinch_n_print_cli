@@ -129,7 +129,7 @@ fn assert_typed_modifier_resolution(context: &slicer_runtime::run::PrepassContex
         .iter()
         .find(|region| region.region_id == 0)
         .expect("the base region must remain active");
-    let base_wall_count = base.resolved_config.wall_count;
+    let base_wall_count = base.resolved_config.wall_loops;
     let modifier = layer
         .active_regions
         .iter()
@@ -137,7 +137,7 @@ fn assert_typed_modifier_resolution(context: &slicer_runtime::run::PrepassContex
         .expect("the modifier region must be active");
 
     assert_eq!(
-        modifier.resolved_config.wall_count, 4,
+        modifier.resolved_config.wall_loops, 4,
         "the modifier host field wall_loops must resolve to integer 4"
     );
     // Stamp contract: this modifier region is prepass stamp-composed, and the stamp loop copies
@@ -157,7 +157,7 @@ fn assert_typed_modifier_resolution(context: &slicer_runtime::run::PrepassContex
         ),
     }
     assert_eq!(
-        base.resolved_config.wall_count, base_wall_count,
+        base.resolved_config.wall_loops, base_wall_count,
         "modifier resolution must not mutate the base region"
     );
 }
@@ -188,7 +188,7 @@ fn both_entry_points_registry_type_modifier_deltas() {
     let slice = run_slice_with_collector(runtime_options(mesh), None)
         .expect("slice entry point must registry-type the same modifier delta");
     assert!(
-        slice.gcode_text.contains("; wall_count = 2"),
+        slice.gcode_text.contains("; wall_loops = 2"),
         "the slice entry point must preserve the base region's wall count"
     );
 }
@@ -198,9 +198,9 @@ fn invalid_modifier_delta_is_rejected_atomically() {
     let denied = mesh_with_modifier(
         ModifierKind::ParameterModifier,
         HashMap::from([
-            ("infill_angle".to_owned(), ConfigValue::Float(45.0)),
+            ("infill_direction".to_owned(), ConfigValue::Float(45.0)),
             (
-                "bed_shape".to_owned(),
+                "printable_area".to_owned(),
                 ConfigValue::List(vec![ConfigValue::Float(0.0)]),
             ),
         ]),
@@ -218,12 +218,12 @@ fn invalid_modifier_delta_is_rejected_atomically() {
         true,
         false,
     ) {
-        Ok(_) => panic!("bed_shape must be denied at modifier scope"),
+        Ok(_) => panic!("printable_area must be denied at modifier scope"),
         Err(error) => error,
     };
     assert_eq!(
         error.to_string(),
-        "modifier config ingestion failed: ScopeDenied { key: \"bed_shape\", scope: Modifier }"
+        "modifier config ingestion failed: ScopeDenied { key: \"printable_area\", scope: Modifier }"
     );
     assert_eq!(
         modifier_delta_snapshot_bytes(&denied),
@@ -231,10 +231,10 @@ fn invalid_modifier_delta_is_rejected_atomically() {
         "rejected modifier ingest must leave the input delta byte-identical"
     );
     let slice_error = run_slice_with_collector(runtime_options(Arc::clone(&denied)), None)
-        .expect_err("slice entry point must reject bed_shape at modifier scope");
+        .expect_err("slice entry point must reject printable_area at modifier scope");
     assert_eq!(
         slice_error.to_string(),
-        "modifier config ingestion failed: ScopeDenied { key: \"bed_shape\", scope: Modifier }"
+        "modifier config ingestion failed: ScopeDenied { key: \"printable_area\", scope: Modifier }"
     );
     assert_eq!(
         modifier_delta_snapshot_bytes(&denied),
@@ -255,8 +255,11 @@ fn invalid_modifier_delta_is_rejected_atomically() {
     let out_of_bounds = mesh_with_modifier(
         ModifierKind::ParameterModifier,
         HashMap::from([
-            ("infill_angle".to_owned(), ConfigValue::Float(45.0)),
-            ("infill_density".to_owned(), ConfigValue::Float(200.0)),
+            ("infill_direction".to_owned(), ConfigValue::Float(45.0)),
+            (
+                "sparse_infill_density".to_owned(),
+                ConfigValue::Float(200.0),
+            ),
         ]),
     );
     let out_of_bounds_delta = out_of_bounds.objects[0].modifier_volumes[0]
@@ -277,7 +280,7 @@ fn invalid_modifier_delta_is_rejected_atomically() {
     };
     assert_eq!(
         error.to_string(),
-        "modifier config ingestion failed: BoundsViolation { key: \"infill_density\", value: 200, min: Some(0.0), max: Some(1.0), scope: Modifier }"
+        "modifier config ingestion failed: BoundsViolation { key: \"sparse_infill_density\", value: 200, min: Some(0.0), max: Some(100.0), scope: Modifier }"
     );
     assert_eq!(
         modifier_delta_snapshot_bytes(&out_of_bounds),
@@ -288,7 +291,7 @@ fn invalid_modifier_delta_is_rejected_atomically() {
         .expect_err("slice entry point must reject an out-of-bounds modifier value");
     assert_eq!(
         slice_error.to_string(),
-        "modifier config ingestion failed: BoundsViolation { key: \"infill_density\", value: 200, min: Some(0.0), max: Some(1.0), scope: Modifier }"
+        "modifier config ingestion failed: BoundsViolation { key: \"sparse_infill_density\", value: 200, min: Some(0.0), max: Some(100.0), scope: Modifier }"
     );
     assert_eq!(
         modifier_delta_snapshot_bytes(&out_of_bounds),
@@ -343,7 +346,7 @@ fn all_modifier_kinds_keep_their_geometry_routes() {
         .find(|region| region.region_id != 0)
         .expect("parameter modifier sub-region must be active");
     assert_eq!(
-        sub_region.resolved_config.wall_count, 0,
+        sub_region.resolved_config.wall_loops, 0,
         "wall_loops=0 must stamp a wall-less parameter sub-region"
     );
     assert_eq!(

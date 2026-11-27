@@ -87,8 +87,8 @@ fn lightning_region_map() -> RegionMapIR {
     let config = region_map.intern_config(ResolvedConfig {
         sparse_fill_holder: "lightning-infill".to_string(),
         line_width: 0.4,
-        infill_density: 0.5,
-        infill_angle: 45.0,
+        sparse_infill_density: 50.0,
+        infill_direction: 45.0,
         layer_height: 0.2,
         // This fixture builds the resolved pool directly, bypassing the live
         // resolver's registry-default seeding for extension-backed linker keys.
@@ -189,6 +189,10 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
         .expect("instance pool must build"),
     );
     let config = slicer_ir::ConfigView::from_map(HashMap::from([
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
         // Required linker reads at infill-linker.toml manifest defaults. The
         // region pool must carry these too; an explicit resolved entry is not
         // a missing-region fallback.
@@ -200,10 +204,9 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
                 is_percent: false,
             },
         ),
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
-        ("infill_angle".to_string(), ConfigValue::Float(45.0)),
+        ("infill_direction".to_string(), ConfigValue::Float(45.0)),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
-        ("infill_speed".to_string(), ConfigValue::Float(50.0)),
+        ("sparse_infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         (
             "prepared_plan_diagnostic".into(),

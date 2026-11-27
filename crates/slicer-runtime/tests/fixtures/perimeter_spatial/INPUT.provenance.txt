@@ -10,4 +10,4 @@ coordinates_unit=millimetres
 coordinate_integer_scale=1
 coordinate_provenance=source fixture vertices remain integer-scaled input
 layer_height_f32_bits=0x3f800000
-first_layer_height_f32_bits=0x3f800000
+initial_layer_print_height_f32_bits=0x3f800000

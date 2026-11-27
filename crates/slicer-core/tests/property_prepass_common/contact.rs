@@ -59,8 +59,14 @@ fn cell_midpoint(index: usize) -> Point2 {
     }
 }
 
-/// The plain-difference parameters: layer 0 of an object with one enforced
-/// support layer, no expansion and no optional branches.
+/// The plain-difference parameters: layer 1 of an object inside a two-layer
+/// enforced-support window, no expansion and no optional branches.
+///
+/// Layer 1, not the object's bottom layer: the object-bottom sharp-tail
+/// exception is frozen ON (canonical `g_config_support_sharp_tails`,
+/// `SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION`), and at the bottom layer it suppresses
+/// the tiny-spot filter this model reproduces. Layer 1 stays inside the
+/// enforce window, so the plain-difference branch is unchanged.
 pub fn params_for_test(width_mm: f32) -> SupportContactParams {
     params(width_mm)
 }
@@ -75,9 +81,8 @@ fn params(width_mm: f32) -> SupportContactParams {
         xy_expansion_mm: 0.0,
         bridge_no_support: false,
         bridge_polygons: Vec::new(),
-        support_sharp_tails: false,
-        enforce_support_layers: 1,
-        layer_id: 0,
+        enforce_support_layers: 2,
+        layer_id: 1,
         raft_layers: 0,
     }
 }

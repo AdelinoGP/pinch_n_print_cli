@@ -38,6 +38,27 @@ pub struct ResolvedFloatOrPercent {
     pub is_percent: bool,
 }
 
+/// Resolve `support_line_width` to millimetres. A percentage is of the nozzle
+/// diameter; the default `0` is auto and resolves to `line_width` (canonical
+/// `Flow::support_material_flow`, `Flow.cpp`, which falls back to the object
+/// line width when the value is not positive), and a non-positive
+/// `line_width` (Orca's auto `0`) resolves on to the nozzle diameter.
+pub fn resolve_support_line_width_mm(
+    value: ResolvedFloatOrPercent,
+    line_width_mm: f32,
+    nozzle_diameter_mm: f32,
+) -> f32 {
+    if value.is_percent {
+        value.value as f32 / 100.0 * nozzle_diameter_mm
+    } else if value.value != 0.0 {
+        value.value as f32
+    } else if line_width_mm > 0.0 {
+        line_width_mm
+    } else {
+        nozzle_diameter_mm
+    }
+}
+
 /// Resolve `initial_layer_line_width` to millimetres. Percentages use the
 /// nozzle diameter as their base; an absolute value, including the zero auto
 /// sentinel, passes through unchanged for the role-width resolver to handle.
@@ -99,8 +120,8 @@ impl ResolvedConfig {
         m.insert("layer_height".into(), ConfigValue::Float(self.layer_height));
         m.insert("line_width".into(), ConfigValue::Float(self.line_width));
         m.insert(
-            "first_layer_height".into(),
-            ConfigValue::Float(self.first_layer_height),
+            "initial_layer_print_height".into(),
+            ConfigValue::Float(self.initial_layer_print_height),
         );
         m.insert(
             "initial_layer_line_width".into(),
@@ -110,8 +131,8 @@ impl ResolvedConfig {
             },
         );
         m.insert(
-            "wall_count".into(),
-            ConfigValue::Int(i64::from(self.wall_count)),
+            "wall_loops".into(),
+            ConfigValue::Int(i64::from(self.wall_loops)),
         );
         m.insert(
             "outer_wall_speed".into(),
@@ -136,20 +157,20 @@ impl ResolvedConfig {
             ConfigValue::String(format!("{:?}", self.infill_type)),
         );
         m.insert(
-            "infill_density".into(),
-            ConfigValue::Float(f64::from(self.infill_density)),
+            "sparse_infill_density".into(),
+            ConfigValue::Float(f64::from(self.sparse_infill_density)),
         );
         m.insert(
             "infill_overlap".into(),
             ConfigValue::Float(f64::from(self.infill_overlap)),
         );
         m.insert(
-            "infill_angle".into(),
-            ConfigValue::Float(f64::from(self.infill_angle)),
+            "infill_direction".into(),
+            ConfigValue::Float(f64::from(self.infill_direction)),
         );
         m.insert(
-            "infill_speed".into(),
-            ConfigValue::Float(f64::from(self.infill_speed)),
+            "sparse_infill_speed".into(),
+            ConfigValue::Float(f64::from(self.sparse_infill_speed)),
         );
         m.insert(
             "solid_infill_speed".into(),
@@ -241,9 +262,13 @@ impl ResolvedConfig {
             "support_object_first_layer_gap".into(),
             ConfigValue::Float(f64::from(self.support_object_first_layer_gap)),
         );
+        // Wayfinder ticket 50 (P43): `machine-gcode-emit` reads this through
+        // its manifest-declared schema to skip the first `change_filament_gcode`
+        // injection; the host serializer reads the field directly. Canonical
+        // `coBool` default false.
         m.insert(
-            "support_sharp_tails".into(),
-            ConfigValue::Bool(self.support_sharp_tails),
+            "manual_filament_change".into(),
+            ConfigValue::Bool(self.manual_filament_change),
         );
         if let Some(v) = self.nonplanar_max_angle_deg {
             m.insert(
@@ -273,7 +298,13 @@ impl ResolvedConfig {
             m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
         }
         // Machine kinematic limits + filament density (Option fields: absent → key omitted,
-        // so unset configs leave CONFIG_BLOCK bytes unchanged).
+        // so unset configs leave CONFIG_BLOCK bytes unchanged). A pair whose
+        // variants are equal (the scalar spelling, the common case) emits as
+        // the bare normal value, keeping the historical single-value spelling
+        // byte-stable; a pair with a distinct stealth variant emits as the
+        // canonical comma-separated `coFloats` pair so the stealth value
+        // round-trips. `silent_mode` is intentionally omitted — host-only
+        // estimator control like `disable_m73` (P18 precedent).
         for (key, v) in [
             (
                 "machine_max_acceleration_extruding",
@@ -292,10 +323,24 @@ impl ResolvedConfig {
             ("machine_max_jerk_z", self.machine_max_jerk_z),
             ("machine_max_jerk_e", self.machine_max_jerk_e),
         ] {
-            if let Some(v) = v {
-                m.insert(key.into(), ConfigValue::Float(f64::from(v)));
+            if let Some(pair) = v {
+                if pair.normal.to_bits() == pair.stealth.to_bits() {
+                    m.insert(key.into(), ConfigValue::Float(f64::from(pair.normal)));
+                } else {
+                    m.insert(
+                        key.into(),
+                        ConfigValue::List(vec![
+                            ConfigValue::Float(f64::from(pair.normal)),
+                            ConfigValue::Float(f64::from(pair.stealth)),
+                        ]),
+                    );
+                }
             }
         }
+        // `silent_mode` is host-only estimator control; the generated map
+        // carries it so generated-vs-legacy rendering stays byte-identical,
+        // while `omit_from_config_block` keeps it out of the G-code block.
+        m.insert("silent_mode".into(), ConfigValue::Bool(self.silent_mode));
         // `filament_density` is Orca `coFloats` — one entry per filament — so
         // the whole vector is emitted, matching what canonical's
         // `append_full_config` writes. The gcode serializer renders a numeric
@@ -312,9 +357,35 @@ impl ResolvedConfig {
                 ),
             );
         }
+        // `printable_height` is emitted so the CONFIG_BLOCK reports the value
+        // the slice actually validated against, rather than the frozen
+        // `ORCA_CONFIG_PADDING` literal of the same name. The dedup in
+        // `emit_config_kv` (`crates/slicer-gcode/src/serialize.rs`) makes this
+        // real key shadow that literal; the padding table itself is untouched.
+        m.insert(
+            "printable_height".into(),
+            ConfigValue::Float(f64::from(self.printable_height)),
+        );
+        // P40 (ticket 47): flush temp/speed ride the module placeholder seam
+        // (`machine-gcode-emit` declares both keys; its generic sweep publishes
+        // every declared int/float into `[key]` substitution), so unlike the
+        // host-only P35 pair they must be present in this map.
+        m.insert(
+            "filament_flush_temp".into(),
+            ConfigValue::Int(i64::from(self.filament_flush_temp)),
+        );
+        m.insert(
+            "filament_flush_volumetric_speed".into(),
+            ConfigValue::Float(f64::from(self.filament_flush_volumetric_speed)),
+        );
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
         // prints, breaking byte-identicality vs baseline.
+        // `enable_pressure_advance` / `pressure_advance` intentionally omitted —
+        // host-only emission control like `disable_m73` (P18 precedent): the
+        // emitter reads the typed fields directly, and emitting them would
+        // change CONFIG_BLOCK bytes for every print while the adaptive
+        // processor (ticket 42's returned keys) is still unimplemented.
         // Merge extension keys (module-contributed, already in ConfigValue form).
         for (k, v) in &self.extensions {
             m.insert(k.clone(), v.clone());
@@ -647,10 +718,49 @@ pub fn extract_float_or_percent(
     }
 }
 
+/// Extract a canonical-percent float from a `Float`, `Int`, or percent-form
+/// `String` (`"15%"`).
+///
+/// Used by `sparse_infill_density` (wayfinder ticket 107): the key is
+/// canonical-percent everywhere, and Orca-authored 3MF metadata preserves the
+/// percent form as a raw string (`"15%"`), which the loader stores as
+/// `ConfigValue::String`. The typed field must accept that form (ticket-100
+/// input-adapter precedent) and store the literal percent (15.0); the infill
+/// modules divide by 100 at the read site. A non-percent string is rejected.
+#[doc(hidden)]
+pub fn extract_percent_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+    match value {
+        ConfigValue::Float(f) => Ok(*f as f32),
+        ConfigValue::Int(i) => Ok(*i as f32),
+        ConfigValue::String(s) => {
+            if let Some(num) = s.strip_suffix('%') {
+                num.trim()
+                    .parse::<f32>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float (percent string)",
+                        actual: variant_name(value),
+                    })
+            } else {
+                Err(ConfigResolutionError::TypeMismatch {
+                    key: key.to_string(),
+                    expected: "Float (percent string)",
+                    actual: variant_name(value),
+                })
+            }
+        }
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Float (percent string)",
+            actual: variant_name(other),
+        }),
+    }
+}
+
 /// Extract an `f64` from a `Float` or `Int` `ConfigValue`.
 ///
 /// Used by config fields whose value feeds the layer-Z formula
-/// (`layer_height`, `first_layer_height`). These must round-trip through
+/// (`layer_height`, `initial_layer_print_height`). These must round-trip through
 /// the WIT boundary as `ConfigValue::Float(f64)` *without* an intermediate
 /// `f32` narrowing: the f32 bit pattern of `0.2` is `0.20000000298...`,
 /// which — when multiplied by `n` in f64 — drifts onto an adjacent f32 at
@@ -759,11 +869,31 @@ pub fn extract_string_list(
     }
 }
 
+/// Parse an OrcaSlicer polygon point string (`"250x210"`) into `(x, y)`.
+///
+/// OrcaSlicer serialises `printable_area` (and its sibling polygon keys) as a
+/// list of `"<x>x<y>"` strings rather than interleaved numbers — a 3MF plate
+/// carries `["0x0", "250x0", "250x210", "0x210"]`. This port models the bed as
+/// an interleaved `[x0, y0, x1, y1, ...]` float list, so the two coordinates a
+/// point string carries expand into two list entries.
+///
+/// Returns `None` for anything that is not exactly two `x`-separated finite
+/// floats, so a plain numeric string (`"1.24"`) still falls through to the
+/// ordinary scalar path.
+pub fn parse_orca_point_string(s: &str) -> Option<(f64, f64)> {
+    let (x, y) = s.trim().split_once('x')?;
+    let x = x.trim().parse::<f64>().ok()?;
+    let y = y.trim().parse::<f64>().ok()?;
+    (x.is_finite() && y.is_finite()).then_some((x, y))
+}
+
 /// Extract a `Vec<f64>` from a `List(Vec<ConfigValue::Float>)` `ConfigValue`.
 ///
-/// Each element must be a `Float` (or `Int`, coerced to `f64`). Returns
-/// `TypeMismatch` if the outer value is not a `List`, or if any element
-/// is neither `Float` nor `Int`.
+/// Each element must be a `Float` (or `Int`, coerced to `f64`), a numeric
+/// `String` (Orca's `coFloats` serialisation), or an Orca polygon point string
+/// (`"250x210"`, which contributes *two* entries — see
+/// [`parse_orca_point_string`]). Returns `TypeMismatch` if any element is none
+/// of those.
 #[doc(hidden)]
 pub fn extract_float_list(
     key: &str,
@@ -797,15 +927,40 @@ pub fn extract_float_list(
         }
     }
 
+    // An Orca polygon point string (`"250x210"`) carries *two* coordinates, so
+    // it expands into two entries rather than one. See
+    // [`parse_orca_point_string`].
+    fn push_element(
+        key: &str,
+        v: &ConfigValue,
+        out: &mut Vec<f64>,
+    ) -> Result<(), ConfigResolutionError> {
+        if let ConfigValue::String(s) = v {
+            if let Some((x, y)) = parse_orca_point_string(s) {
+                out.push(x);
+                out.push(y);
+                return Ok(());
+            }
+        }
+        out.push(element(key, v)?);
+        Ok(())
+    }
+
     match value {
-        ConfigValue::List(items) => items
-            .iter()
-            .enumerate()
-            .map(|(i, v)| element(&format!("{key}[{i}]"), v))
-            .collect(),
+        ConfigValue::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for (i, v) in items.iter().enumerate() {
+                push_element(&format!("{key}[{i}]"), v, &mut out)?;
+            }
+            Ok(out)
+        }
         // A bare scalar is accepted as a one-element list so hand-written
         // CLI/JSON configs (and single-filament setups) keep working.
-        other => element(key, other).map(|v| vec![v]),
+        other => {
+            let mut out = Vec::with_capacity(1);
+            push_element(key, other, &mut out)?;
+            Ok(out)
+        }
     }
 }
 
@@ -813,16 +968,23 @@ pub fn extract_float_list(
 /// `coFloats` list.
 ///
 /// Used by keys OrcaSlicer declares as `coFloats` but this port models as one
-/// scalar: the `machine_max_*` kinematic limits and `filament_diameter`.
+/// scalar, in one shape:
 ///
-/// OrcaSlicer types these options `coFloats`, and the entries are machine *time
-/// modes* — `[normal, stealth]` — not per-extruder values (see the `AxisDefault`
-/// table in canonical `PrintConfig::PrintConfig`, whose second entry is the
-/// silent variant). Every canonical consumer that wants one scalar reads index
-/// 0: `GCode::print_machine_envelope` and `Print`'s motion-ability check both
-/// take the front element, and `GCodeProcessor`'s limit getters index by
-/// `ETimeMode`, whose `Normal` discriminant is 0. We therefore take index 0 and
-/// ignore any trailing modes.
+/// - per-filament / per-extruder vectors modelled as a scalar-global subset
+///   (`filament_diameter`, `pressure_advance`,
+///   `filament_flush_volumetric_speed`): canonical reads per filament via
+///   `get_at`, but this port holds one scalar (per-tool values ride the
+///   existing `tool_config:<idx>:` axis; full Orca vector ingest rides ticket
+///   125). Index 0 — the first filament — is taken and trailing entries
+///   discarded, matching the `filament_diameter` precedent. This is a
+///   documented scalar-subset divergence (DEV-169 (c) / DEV-170 (a) /
+///   DEV-171 (a) precedent), not a canonical-equivalent read.
+///
+/// (The machine *time modes* — the `machine_max_*` kinematic limits, a
+/// `[normal, stealth]` pair per printer variant per canonical
+/// `printer_options_with_variant_2` — used to be a second shape here.
+/// Wayfinder ticket 117 moved them to [`extract_machine_limit_pair`], which
+/// keeps both entries; this extractor no longer serves them.)
 ///
 /// Values reach us as `List` because a real project's `project_settings.config`
 /// stores them as JSON arrays of *strings* (e.g. `["9","9"]`), so list elements
@@ -860,8 +1022,199 @@ pub fn extract_float_or_first(
     }
 
     match value {
-        // Index 0 is canonical "normal" mode; trailing entries are stealth-mode
-        // variants this port does not model.
+        // Index 0 is the first filament for the per-filament scalar-subset
+        // keys (see the doc comment above); trailing entries are variants
+        // this port does not model. (Machine-limit keys keep both modes via
+        // `extract_machine_limit_pair` and never reach this arm.)
+        ConfigValue::List(items) => match items.first() {
+            Some(first) => scalar(&format!("{key}[0]"), first),
+            None => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+        },
+        other => scalar(key, other),
+    }
+}
+
+/// Extract a stride-2 `(normal, stealth)` [`MachineLimitPair`] from an Orca
+/// `coFloats` machine-limit value.
+///
+/// Used by the ten `machine_max_*` keys canonical declares in
+/// `printer_options_with_variant_2` (`PrintConfig.cpp`). Element coercion
+/// mirrors [`extract_float_or_first`]'s scalar (`Float`, `Int`, or a numeric
+/// `String`, as a real project's `project_settings.config` stores them — e.g.
+/// `resources/cube_4color.3mf` carries `"machine_max_jerk_x": ["9","9"]`):
+///
+/// - scalar → both entries (hand-written configs keep working);
+/// - one-element list → both entries;
+/// - two-or-more-element list → the first pair; trailing entries are further
+///   printer variants this port does not model (single-extruder scalar-subset,
+///   DEV-169 (c) precedent).
+///
+/// An unparseable element or an empty list is a hard error, as with
+/// [`extract_float_or_first`]. A `Bool` is rejected — see [`extract_float`].
+#[doc(hidden)]
+pub fn extract_machine_limit_pair(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<MachineLimitPair, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+        match value {
+            ConfigValue::Float(f) => Ok(*f as f32),
+            ConfigValue::Int(i) => Ok(*i as f32),
+            ConfigValue::String(s) => {
+                s.trim()
+                    .parse::<f32>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float",
+                        actual: "String".to_string(),
+                    })
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        ConfigValue::List(items) => match items.as_slice() {
+            [] => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+            [single] => {
+                let v = scalar(&format!("{key}[0]"), single)?;
+                Ok(MachineLimitPair {
+                    normal: v,
+                    stealth: v,
+                })
+            }
+            [first, second, ..] => Ok(MachineLimitPair {
+                normal: scalar(&format!("{key}[0]"), first)?,
+                stealth: scalar(&format!("{key}[1]"), second)?,
+            }),
+        },
+        other => {
+            let v = scalar(key, other)?;
+            Ok(MachineLimitPair {
+                normal: v,
+                stealth: v,
+            })
+        }
+    }
+}
+
+/// Extract a single `u32` from a scalar, or from the first entry of an Orca
+/// `coInts` list.
+///
+/// Per-filament scalar-subset companion to [`extract_float_or_first`]: used by
+/// keys OrcaSlicer declares as `coInts` per-filament vectors but this port
+/// models as one scalar (`filament_flush_temp`). Canonical reads per filament
+/// via `get_at`; this port holds one scalar (per-tool values ride the existing
+/// `tool_config:<idx>:` axis; full Orca vector ingest rides ticket 125).
+/// Index 0 — the first filament — is taken and trailing entries discarded
+/// (DEV-171 (a) precedent). A bare scalar is accepted unchanged so
+/// hand-written CLI/JSON configs keep working.
+///
+/// An unparseable or empty value is a hard error, as with
+/// [`extract_float_or_first`]. A `Bool` is rejected — see [`extract_float`].
+#[doc(hidden)]
+pub fn extract_u32_or_first(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
+        match value {
+            ConfigValue::Int(i) => Ok(*i as u32),
+            ConfigValue::Float(f) => Ok(*f as u32),
+            ConfigValue::String(s) => {
+                let t = s.trim();
+                if let Ok(i) = t.parse::<i64>() {
+                    Ok(i as u32)
+                } else {
+                    t.parse::<f64>().map(|f| f as u32).map_err(|_| {
+                        ConfigResolutionError::TypeMismatch {
+                            key: key.to_string(),
+                            expected: "Int",
+                            actual: "String".to_string(),
+                        }
+                    })
+                }
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Int",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        ConfigValue::List(items) => match items.first() {
+            Some(first) => scalar(&format!("{key}[0]"), first),
+            None => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+        },
+        other => scalar(key, other),
+    }
+}
+
+/// Extract a single `bool` from a scalar, or from the first entry of an Orca
+/// `coBools` list.
+///
+/// Per-extruder scalar-subset companion to [`extract_float_or_first`]: used by
+/// keys OrcaSlicer declares as `coBools` per-extruder vectors but this port
+/// models as one scalar (`enable_pressure_advance`). Canonical reads per tool
+/// via `get_at`; this port holds one scalar (per-tool values ride the existing
+/// `tool_config:<idx>:` axis; full Orca vector ingest rides ticket 125).
+/// Index 0 — the first extruder — is taken and trailing entries discarded.
+/// A bare scalar is accepted unchanged so hand-written CLI/JSON configs keep
+/// working.
+///
+/// Scalar tolerance mirrors [`extract_bool`]: `Bool` plus `Int` 0/1. A
+/// `String` `"true"` / `"false"` / `"0"` / `"1"` is additionally accepted so
+/// hand-written CLI JSON (which, unlike the 3MF loader, does not coerce
+/// strings) can spell a flag textually. Anything else — including a `Float`,
+/// an unparseable string, or an empty list — is a hard error.
+#[doc(hidden)]
+pub fn extract_bool_or_first(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<bool, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
+        match value {
+            ConfigValue::Bool(b) => Ok(*b),
+            ConfigValue::Int(0) => Ok(false),
+            ConfigValue::Int(1) => Ok(true),
+            ConfigValue::String(s) => {
+                let t = s.trim();
+                if t.eq_ignore_ascii_case("true") || t == "1" {
+                    Ok(true)
+                } else if t.eq_ignore_ascii_case("false") || t == "0" {
+                    Ok(false)
+                } else {
+                    Err(ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Bool",
+                        actual: "String".to_string(),
+                    })
+                }
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Bool",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
         ConfigValue::List(items) => match items.first() {
             Some(first) => scalar(&format!("{key}[0]"), first),
             None => Err(ConfigResolutionError::TypeMismatch {
@@ -1247,6 +1600,137 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         selector: false,
         denied_scopes: &[],
     },
+    // Six canonical feature-filament selectors (`*_filament_id`, coInt by
+    // `PrintConfig.cpp::PrintConfigDef::init_fff_params`, default 0 =
+    // Default/inherit). They route by extrusion role at the layer executor;
+    // without these declarations the ingestor warn-drops every authored value
+    // and the feature cannot fire in production (ticket 152, A-2d8d71c1).
+    HostRuntimeKey {
+        key: "sparse_infill_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "internal_solid_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "top_surface_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "bottom_surface_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "inner_wall_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "outer_wall_filament_id",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    // Canonical `nozzle_temperature_range_high` (coInts, default 240): the
+    // fallback for a zero `filament_flush_temp` (`PrintConfig.cpp` tooltip:
+    // "0 indicates the upper bound of the recommended nozzle temperature
+    // range"). Scalar-subset: the first entry, like the flush keys (ticket 125
+    // owns the vector ingest).
+    HostRuntimeKey {
+        key: "nozzle_temperature_range_high",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: Some("240"),
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            max: Some(1500.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    // Export-seam keys with no `ResolvedConfig` field (wayfinder tickets
+    // 91/92). Both act on the finished G-code, so a narrower-than-print
+    // statement has no consumer to honour it.
+    HostRuntimeKey {
+        key: "gcode_add_line_number",
+        field_type: "bool",
+        scope: SCOPE_PRINT,
+        default: Some("false"),
+        meta: HostKeyMeta {
+            display: Some("Add line number"),
+            description: Some(
+                "Prefix every exported G-code line with its 1-based line number (`N<line> `), matching OrcaSlicer's G-code output post-processor.",
+            ),
+            group: Some("Others"),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
+    },
+    HostRuntimeKey {
+        key: "post_process",
+        field_type: "string-list",
+        scope: SCOPE_PRINT,
+        // `Vec<String>::wire_default` joins with `,`; the empty list is `""`.
+        default: Some(""),
+        meta: HostKeyMeta {
+            display: Some("Post-processing scripts"),
+            description: Some(
+                "Commands run against the exported G-code in order, after slicing; each is passed the working-copy file path as its final argument and may rewrite it in place.",
+            ),
+            group: Some("Others"),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
+    },
 ];
 
 /// Maps a declared Rust field type onto the config-schema wire vocabulary and
@@ -1315,6 +1799,62 @@ impl<T: HostWireField> HostWireField for Option<T> {
     const WIRE_TYPE: &'static str = T::WIRE_TYPE;
     fn wire_default(&self) -> Option<String> {
         self.as_ref().and_then(HostWireField::wire_default)
+    }
+}
+
+/// A stride-2 `(normal, stealth)` machine-limit pair (wayfinder ticket 117).
+///
+/// Canonical declares every `machine_max_*` key as `coFloats` in
+/// `printer_options_with_variant_2` (`PrintConfig.cpp`): one
+/// `(normal, silent)` pair per printer variant, indexed by
+/// `PrintEstimatedStatistics::ETimeMode` (`GCodeProcessor.cpp`
+/// `get_option_value`). This port is single-extruder scalar-subset (the
+/// `flush_multiplier` DEV-169 (c) precedent), so it keeps the first pair only
+/// and drops trailing extruders' pairs. A scalar spelling (`500`, `"500"`)
+/// means "both modes" and duplicates into both entries, so hand-written
+/// CLI/JSON configs keep working unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MachineLimitPair {
+    /// Normal-mode value (canonical index 0): the emitted envelope and the
+    /// default estimate.
+    pub normal: f32,
+    /// Stealth-mode value (canonical index 1): selected by `silent_mode`.
+    pub stealth: f32,
+}
+
+impl MachineLimitPair {
+    /// Select the active variant: `stealth` when `silent_mode` is set, else
+    /// `normal`.
+    #[must_use]
+    pub fn select(&self, silent_mode: bool) -> f32 {
+        if silent_mode {
+            self.stealth
+        } else {
+            self.normal
+        }
+    }
+}
+
+impl HostWireField for MachineLimitPair {
+    const WIRE_TYPE: &'static str = "float-list";
+    fn wire_default(&self) -> Option<String> {
+        Some(format!("{},{}", self.normal, self.stealth))
+    }
+}
+
+impl HostMapField for MachineLimitPair {
+    /// Byte-stable with the pre-generation map: an equal `(normal, stealth)`
+    /// pair (the scalar spelling) renders as the bare normal value, and only a
+    /// distinct stealth variant renders as the canonical `coFloats` pair.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        if self.normal.to_bits() == self.stealth.to_bits() {
+            Some(ConfigValue::Float(f64::from(self.normal)))
+        } else {
+            Some(ConfigValue::List(vec![
+                ConfigValue::Float(f64::from(self.normal)),
+                ConfigValue::Float(f64::from(self.stealth)),
+            ]))
+        }
     }
 }
 
@@ -1473,6 +2013,29 @@ macro_rules! declare_resolved_config {
     };
 }
 
+/// Emit the per-field copy arms of [`ResolvedConfig::overlay_onto`].
+///
+/// Re-parses the struct-field tokens accumulated by `__drc!`'s parse arms
+/// (`$(#[$m])* pub $field: $ty,` per declared field), so the overlay covers
+/// **every** declared field by construction: adding a `declare_resolved_config!`
+/// row adds its overlay arm here too, with no hand-maintained list to forget
+/// (wayfinder ticket 126 — the old `overlay_resolved` hand-enumerated a
+/// 28-field allowlist against 83 declared fields).
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drc_overlay_arms {
+    (
+        $base:ident, $overlay:ident, $origin:ident,
+        $( $(#[$m:meta])* pub $field:ident : $ty:ty, )*
+    ) => {
+        $(
+            if $overlay.$field != $origin.$field {
+                $base.$field = ::core::clone::Clone::clone(&$overlay.$field);
+            }
+        )*
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __drc {
@@ -1541,10 +2104,6 @@ macro_rules! __drc {
                 let $value: &$crate::ConfigValue = value;
                 match $key {
                     $($arm)*
-                    "wall_loops" => {
-                        $cfg.wall_count = $crate::resolved_config::extract_int_as_u32($key, $value)?;
-                        ::core::result::Result::Ok(true)
-                    }
                     _ => ::core::result::Result::Ok(false),
                 }
             }
@@ -1608,6 +2167,59 @@ macro_rules! __drc {
             #[must_use]
             pub fn typed_field_keys() -> &'static [&'static str] {
                 &[ $($tk)* "wall_loops", ]
+            }
+
+            /// Compose `overlay` onto `base`, copying only the fields this
+            /// overlay **explicitly set** relative to `origin` (the config
+            /// the overlay was resolved from), then merging `extensions`
+            /// by the same rule. Returns the composed config.
+            ///
+            /// `origin` is the fixed point of the comparison, and the choice
+            /// is the whole point (wayfinder ticket 126):
+            ///
+            /// - Per-tool and per-paint-semantic overlays are built as
+            ///   `global.clone()` + overrides (`apply_overlay`), so *every*
+            ///   field the global config sets away from its default is
+            ///   non-default in the overlay too — an inherited value, not an
+            ///   explicit one. Comparing against `ResolvedConfig::default()`
+            ///   therefore writes the **global** value back over `base`,
+            ///   clobbering a lower-precedence override (e.g. a paint
+            ///   semantic's) that the overlay never touched, and it cannot
+            ///   express "override this field back to its default".
+            ///   Comparing against `origin` — the actual global base —
+            ///   identifies exactly the keys the overlay itself set, because
+            ///   an inherited field equals its origin by construction.
+            /// - `ResolvedConfig::default()` remains the correct `origin`
+            ///   for overlays built **from** defaults, such as modifier
+            ///   config deltas: their explicit entries are the non-default
+            ///   ones relative to that same default.
+            ///
+            /// Both parameters are configs the overlay is already derived
+            /// from, and the per-field arms are emitted from the same
+            /// declaration that defines the fields — there is no
+            /// hand-maintained field list to drift (the ticket-118
+            /// 28-of-83-allowlist defect this replaces).
+            ///
+            /// `extensions` follows the same explicit-vs-inherited rule:
+            /// only keys absent from `origin.extensions` or differing from
+            /// it are copied. A module-owned key set globally is inherited
+            /// by every overlay, so it no longer clobbers a per-object
+            /// override for the same key.
+            pub fn overlay_onto(
+                mut base: ResolvedConfig,
+                overlay: &ResolvedConfig,
+                origin: &ResolvedConfig,
+            ) -> ResolvedConfig {
+                $crate::__drc_overlay_arms!(base, overlay, origin, $($sf)*);
+                for (k, v) in &overlay.extensions {
+                    match origin.extensions.get(k) {
+                        Some(origin_v) if origin_v == v => {}
+                        _ => {
+                            base.extensions.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+                base
             }
         }
     };
@@ -2227,7 +2839,7 @@ declare_resolved_config! {
     // Geometry
     /// Layer height in millimeters.
     ///
-    /// Stored as `f64` (not `f32`) so the layer-Z formula `first_layer_height
+    /// Stored as `f64` (not `f32`) so the layer-Z formula `initial_layer_print_height
     /// + n * layer_height` computes in untainted `f64` — matching OrcaSlicer's
     /// `coordf_t` (`double`) `print_z += height` loop in
     /// `Slicing.cpp:859`. The f32 bit pattern of `0.2` is
@@ -2241,7 +2853,7 @@ declare_resolved_config! {
     /// First layer height in millimeters. `f64` for the same reason as
     /// `layer_height` — feeds the layer-Z formula and must not be re-tainted
     /// by an `f32` round-trip. See `layer_height` and `extract_f64`.
-    cli "first_layer_height"     first_layer_height: f64 = 0.2 => extract_f64;
+    cli "initial_layer_print_height"     initial_layer_print_height: f64 = 0.2 => extract_f64;
     /// First layer line width in millimeters.
     cli "initial_layer_line_width" initial_layer_line_width: ResolvedFloatOrPercent = ResolvedFloatOrPercent::default() => extract_float_or_percent;
     /// Filament diameter in millimeters. Used by the G-code emitter to convert
@@ -2253,8 +2865,8 @@ declare_resolved_config! {
     cli @filament "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float_or_first;
 
     // Walls
-    /// Number of walls (perimeters).
-    cli "wall_count"             wall_count: u32 = 2 => extract_int_as_u32;
+    /// Number of walls (perimeters). Orca key `wall_loops`.
+    cli "wall_loops"             wall_loops: u32 = 2 => extract_int_as_u32;
     /// Outer wall speed in mm/s.
     cli "outer_wall_speed"       outer_wall_speed: f32 = 50.0 => extract_float;
     /// Inner wall speed in mm/s.
@@ -2273,12 +2885,26 @@ declare_resolved_config! {
     // Infill
     /// Infill type. Not CLI-bound today.
     plain                        infill_type: InfillType = InfillType::Grid;
-    /// Infill density (0.0 to 1.0).
-    cli "infill_density"         infill_density: f32 = 0.2 => extract_float;
-    /// Infill angle in degrees.
-    cli "infill_angle"           infill_angle: f32 = 45.0 => extract_float;
-    /// Infill speed in mm/s.
-    cli "infill_speed"           infill_speed: f32 = 50.0 => extract_float;
+    /// Sparse infill density in percent (0–100; OrcaSlicer: sparse_infill_density,
+    /// coPercent default 20). The infill modules divide by 100 to recover the
+    /// density fraction.
+    cli "sparse_infill_density"  sparse_infill_density: f32 = 20.0 => extract_percent_float;
+    /// Infill direction in degrees.
+    cli "infill_direction"     infill_direction: f32 = 45.0 => extract_float;
+    /// Minimum sparse-infill island area in mm^2 (OrcaSlicer:
+    /// minimum_sparse_infill_area, coFloat default 15). A sparse island whose
+    /// area is at or below this threshold is reclassified as internal solid
+    /// fill by the host shell-classification prepass. `0` disables the
+    /// conversion.
+    cli "minimum_sparse_infill_area" minimum_sparse_infill_area: f32 = 15.0 => extract_float;
+    /// Sparse infill speed in mm/s. The *emitted* sparse feedrate is the host
+    /// FeedrateConfig::sparse_infill_speed decision (OrcaSlicer:
+    /// sparse_infill_speed); this field is the resolved-config twin of that
+    /// host key (same raw source), emitted into the module config map and the
+    /// CONFIG_BLOCK. The infill modules derive no per-path speed factor from
+    /// it — sparse paths carry factor 1.0 and the host owns the role speed
+    /// (wayfinder ticket 114). Default aligned to canonical 100.0.
+    cli "sparse_infill_speed"    sparse_infill_speed: f32 = 100.0 => extract_float;
     /// Solid infill speed in mm/s.
     cli "solid_infill_speed"     solid_infill_speed: f32 = 50.0 => extract_float;
     /// Number of top shell layers.
@@ -2413,10 +3039,11 @@ declare_resolved_config! {
      /// Overlap threshold as an absolute value or percentage.
      cli "support_threshold_overlap" support_threshold_overlap: ResolvedFloatOrPercent = ResolvedFloatOrPercent { value: 50.0, is_percent: true } => extract_float_or_percent;
      /// Support extrusion width as an absolute value or percentage of nozzle diameter.
-     /// Default 0 is auto: PnP has no flow model, so it resolves to nozzle_diameter.
-     /// Canonical `auto_extrusion_width` (`Flow.cpp`) returns nozzle for
-     /// `frSupportMaterial`; explicit percentages resolve against nozzle and
-     /// explicit millimeter values pass through.
+     /// Default 0 is auto: canonical `Flow::support_material_flow` (`Flow.cpp`)
+     /// falls back to `line_width` when the value is not positive (and Orca's
+     /// auto `line_width` of 0 resolves on to the nozzle diameter); explicit
+     /// percentages resolve against the nozzle and explicit millimeter values
+     /// pass through.
      cli "support_line_width" support_line_width: ResolvedFloatOrPercent = ResolvedFloatOrPercent::default() => extract_float_or_percent;
      /// Whether bridging regions suppress support generation.
      cli "bridge_no_support" bridge_no_support: bool = false => extract_bool;
@@ -2428,12 +3055,6 @@ declare_resolved_config! {
      cli "support_remove_small_overhang" support_remove_small_overhang: bool = true => extract_bool;
      /// Gap between the object and support on its first layer in millimeters.
      cli "support_object_first_layer_gap" support_object_first_layer_gap: f32 = 0.2 => extract_float;
-     /// Whether sharp support tails are enabled.
-     cli "support_sharp_tails" support_sharp_tails: bool = true => extract_bool @ {
-        display: Some("Support sharp tails"),
-        description: Some("Keep pointed support tails instead of trimming them."),
-        group: Some("Support"),
-    };
 
     // Non-planar (module-contributed)
     /// Maximum non-planar angle in degrees (optional).
@@ -2479,12 +3100,80 @@ declare_resolved_config! {
     // Printer bed / tool-change (module-contributed)
     /// Printer bed polygon as [x0, y0, x1, y1, ...] in mm.
     /// Default: 250 × 250 mm square.
-    cli "bed_shape" bed_shape: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
+    cli "printable_area" printable_area: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
+    /// Maximum build-volume height in mm. An object whose world-space Z extent
+    /// exceeds this is rejected before slicing (see `validate_printable_height`
+    /// in `crates/slicer-model-io/src/loader.rs`).
+    ///
+    /// Default 250.0 is an intended deviation from canonical's 100.0
+    /// (`PrintConfigDef::init_fff_params`, `PrintConfig.cpp`): it matches this
+    /// tree's own 250 x 250 mm `printable_area` default and the value the
+    /// emitter has always advertised for this key. See DEVIATION_LOG.
+    cli "printable_height" printable_height: f32 = 250.0 => extract_float @ {
+        display: Some("Printable height"),
+        description: Some("Maximum build-volume height (mm). Objects taller than this are rejected before slicing."),
+        group: Some("Printer"),
+        unit: Some("mm"),
+        min: Some(0.0),
+    };
     /// Retract length in mm before tool change.
     cli "retract_length" retract_length: f32 = 2.0 => extract_float;
+    /// Whether pressure advance is enabled (OrcaSlicer: `enable_pressure_advance`,
+    /// `coBools` default false, per-extruder vector).
+    ///
+    /// Scalar-global subset: canonical reads per tool
+    /// (`GCode.cpp` toolchange/start sites via `get_at`); this port resolves
+    /// per-tool values through the existing `tool_config:<idx>:` axis
+    /// (`tool_configs` map, `retract_length_for_tool` precedent), so a
+    /// single-tool print and manual per-tool overrides work without the
+    /// Orca vector ingest that ticket 125 owns. An Orca `coBools` vector
+    /// spelling takes its first entry (first extruder); full vector ingest
+    /// rides 125.
+    cli "enable_pressure_advance" enable_pressure_advance: bool = false => extract_bool_or_first;
+    /// Pressure advance value (OrcaSlicer: `pressure_advance`, `coFloats`
+    /// default 0.02, max 2, per-extruder vector). See `enable_pressure_advance`
+    /// for the scalar-subset note (an Orca vector spelling takes its first
+    /// entry). Negative values emit nothing, matching
+    /// canonical `GCodeWriter::set_pressure_advance`'s `pa < 0` early return.
+    cli "pressure_advance" pressure_advance: f32 = 0.02 => extract_float_or_first;
+    /// Manual filament change (OrcaSlicer: `manual_filament_change`, `coBool`
+    /// default false, scalar). When true, every toolchange emits canonical's
+    /// `GCodeWriter::toolchange_prefix` tag line (`; MANUAL_TOOL_CHANGE T<n>`
+    /// instead of `T<n>`) and `machine-gcode-emit` skips the first
+    /// `change_filament_gcode` injection (`GCode.cpp` toolchange path,
+    /// `m_toolchange_count == 1`); later toolchanges still inject. Default
+    /// false is byte-identical to today on both seams.
+    cli "manual_filament_change" manual_filament_change: bool = false => extract_bool;
+    /// Flush temperature in °C when flushing filament on toolchange
+    /// (OrcaSlicer: `filament_flush_temp`, `coInts` nullable default 0,
+    /// per-filament vector).
+    ///
+    /// Scalar-global subset: canonical reads per filament
+    /// (`GCode::update_placeholder_parser_with_variant_params`,
+    /// `GCode::set_extruder`, and the toolchange placeholder builder in
+    /// `GCode.cpp` via `get_at`) and falls back to
+    /// `nozzle_temperature_range_high` when the entry is 0; both the vector
+    /// shape and the fallback key are Tier D (ticket 125 owns the vector
+    /// ingest, `nozzle_temperature_range_high` is deferred). This port holds
+    /// the scalar here; per-tool values ride the existing
+    /// `tool_config:<idx>:` axis (`apply_cli_key` covers every
+    /// `cli`-declared field). An Orca `coInts` vector spelling takes its
+    /// first entry (first filament). `0` is inert — published as-is, no
+    /// fallback — and recorded in the ticket-47 DEV row.
+    cli "filament_flush_temp" filament_flush_temp: u32 = 0 => extract_u32_or_first;
+    /// Flush volumetric speed in mm³/s when flushing filament on toolchange
+    /// (OrcaSlicer: `filament_flush_volumetric_speed`, `coFloats` nullable
+    /// default 0, per-filament vector, max 200).
+    ///
+    /// Same scalar-subset note as `filament_flush_temp`: canonical falls back
+    /// to `filament_max_volumetric_speed` (Tier D deferred) when the entry is
+    /// 0. An Orca `coFloats` vector spelling takes its first entry (first
+    /// filament). `0.0` is inert here — published as-is — per the ticket-47
+    /// DEV row.
+    cli "filament_flush_volumetric_speed" filament_flush_volumetric_speed: f32 = 0.0 => extract_float_or_first;
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
-    cli "wipe_tower_enabled" wipe_tower_enabled: bool = false => extract_bool;
+    cli "enable_prime_tower" enable_prime_tower: bool = false => extract_bool;
 
     // MMU segmented region (Phase 5 — width limiting / interlocking)
     /// Maximum width of MMU segmented regions in mm. `0.0` means no limit.
@@ -2513,26 +3202,44 @@ declare_resolved_config! {
     };
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
+    //
+    // Each limit is a stride-2 `(normal, stealth)` pair (wayfinder ticket 117):
+    // canonical declares these keys as `coFloats` in
+    // `printer_options_with_variant_2` (`PrintConfig.cpp`), one pair per
+    // printer variant. `silent_mode` selects the stealth entry for the time
+    // estimator; the emitted envelope keeps the normal entry (canonical
+    // `GCode::print_machine_envelope` reads `values[extruder * stride]`).
+    /// Silent mode (OrcaSlicer: `silent_mode`, `coBool` default false,
+    /// `comDevelop`-gated). When true, the time estimator consumes the
+    /// stealth variant of every configured `machine_max_*` pair instead of
+    /// the normal variant (canonical `GCodeProcessor::apply_config` enables
+    /// the stealth time estimator). Default false is byte-identical to today
+    /// on every seam. Host-only estimator control like `disable_m73` (P18
+    /// precedent): read from the typed field directly, never emitted into the
+    /// CONFIG_BLOCK.
+    cli "silent_mode" silent_mode: bool = false => extract_bool @ {
+        omit_from_config_block: true,
+    };
     /// Maximum acceleration while extruding, in mm/s² (optional).
-    cli_opt @printer "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum acceleration for travel moves, in mm/s² (optional).
-    cli_opt @printer "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum X-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_x" machine_max_speed_x: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Y-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_y" machine_max_speed_y: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Z-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_z" machine_max_speed_z: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum extruder (E-axis) speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_e" machine_max_speed_e: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum X-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_x" machine_max_jerk_x: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Y-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_y" machine_max_jerk_y: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Z-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_z" machine_max_jerk_z: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum extruder (E-axis) jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_e" machine_max_jerk_e: Option<MachineLimitPair> = None => extract_machine_limit_pair;
 
     /// Filament density in g/cm³ (optional).
     /// Filament density in g/cm³, one entry per filament (Orca `coFloats`).
@@ -2563,7 +3270,7 @@ pub fn host_key_denied_scopes(key: &str) -> &'static [&'static str] {
     match key {
         // Machine / emitter keys: one value per print by construction, so a
         // narrower statement has no consumer to honour it.
-        "bed_shape"
+        "printable_area"
         | "disable_m73"
         | "gcode_xy_decimals"
         | "machine_max_acceleration_extruding"
@@ -2596,20 +3303,21 @@ impl PartialEq for ResolvedConfig {
         // f32/f64 fields compared via to_bits() so that Eq and Hash are consistent.
         self.layer_height.to_bits() == other.layer_height.to_bits()
             && self.line_width.to_bits() == other.line_width.to_bits()
-            && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
+            && self.initial_layer_print_height.to_bits()
+                == other.initial_layer_print_height.to_bits()
             && self.initial_layer_line_width == other.initial_layer_line_width
             && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
-            && self.wall_count == other.wall_count
+            && self.wall_loops == other.wall_loops
             && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
             && self.inner_wall_speed.to_bits() == other.inner_wall_speed.to_bits()
             && self.wall_generator == other.wall_generator
             && self.arachne_min_feature_size.map(|f| f.to_bits())
                 == other.arachne_min_feature_size.map(|f| f.to_bits())
             && self.infill_type == other.infill_type
-            && self.infill_density.to_bits() == other.infill_density.to_bits()
+            && self.sparse_infill_density.to_bits() == other.sparse_infill_density.to_bits()
             && self.infill_overlap.to_bits() == other.infill_overlap.to_bits()
-            && self.infill_angle.to_bits() == other.infill_angle.to_bits()
-            && self.infill_speed.to_bits() == other.infill_speed.to_bits()
+            && self.infill_direction.to_bits() == other.infill_direction.to_bits()
+            && self.sparse_infill_speed.to_bits() == other.sparse_infill_speed.to_bits()
             && self.solid_infill_speed.to_bits() == other.solid_infill_speed.to_bits()
             && self.top_shell_layers == other.top_shell_layers
             && self.bottom_shell_layers == other.bottom_shell_layers
@@ -2641,7 +3349,6 @@ impl PartialEq for ResolvedConfig {
             && self.support_remove_small_overhang == other.support_remove_small_overhang
             && self.support_object_first_layer_gap.to_bits()
                 == other.support_object_first_layer_gap.to_bits()
-            && self.support_sharp_tails == other.support_sharp_tails
             && self.nonplanar_max_angle_deg.map(|f| f.to_bits())
                 == other.nonplanar_max_angle_deg.map(|f| f.to_bits())
             && self.nonplanar_shell_count == other.nonplanar_shell_count
@@ -2650,40 +3357,87 @@ impl PartialEq for ResolvedConfig {
             && self.smoothificator_target_height.map(|f| f.to_bits())
                 == other.smoothificator_target_height.map(|f| f.to_bits())
             && self.smoothificator_adaptive == other.smoothificator_adaptive
-            && self.bed_shape.len() == other.bed_shape.len()
+            && self.printable_area.len() == other.printable_area.len()
             && self
-                .bed_shape
+                .printable_area
                 .iter()
-                .zip(other.bed_shape.iter())
+                .zip(other.printable_area.iter())
                 .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.retract_length.to_bits() == other.retract_length.to_bits()
-            && self.wipe_tower_enabled == other.wipe_tower_enabled
+            && self.enable_pressure_advance == other.enable_pressure_advance
+            && self.pressure_advance.to_bits() == other.pressure_advance.to_bits()
+            && self.manual_filament_change == other.manual_filament_change
+            && self.filament_flush_temp == other.filament_flush_temp
+            && self.filament_flush_volumetric_speed.to_bits()
+                == other.filament_flush_volumetric_speed.to_bits()
+            && self.enable_prime_tower == other.enable_prime_tower
             && self.mmu_segmented_region_max_width.to_bits()
                 == other.mmu_segmented_region_max_width.to_bits()
             && self.mmu_segmented_region_interlocking_depth.to_bits()
                 == other.mmu_segmented_region_interlocking_depth.to_bits()
             && self.mmu_segmented_region_interlocking_beam
                 == other.mmu_segmented_region_interlocking_beam
-            && self.machine_max_acceleration_extruding.map(f32::to_bits)
-                == other.machine_max_acceleration_extruding.map(f32::to_bits)
-            && self.machine_max_acceleration_travel.map(f32::to_bits)
-                == other.machine_max_acceleration_travel.map(f32::to_bits)
-            && self.machine_max_speed_x.map(f32::to_bits)
-                == other.machine_max_speed_x.map(f32::to_bits)
-            && self.machine_max_speed_y.map(f32::to_bits)
-                == other.machine_max_speed_y.map(f32::to_bits)
-            && self.machine_max_speed_z.map(f32::to_bits)
-                == other.machine_max_speed_z.map(f32::to_bits)
-            && self.machine_max_speed_e.map(f32::to_bits)
-                == other.machine_max_speed_e.map(f32::to_bits)
-            && self.machine_max_jerk_x.map(f32::to_bits)
-                == other.machine_max_jerk_x.map(f32::to_bits)
-            && self.machine_max_jerk_y.map(f32::to_bits)
-                == other.machine_max_jerk_y.map(f32::to_bits)
-            && self.machine_max_jerk_z.map(f32::to_bits)
-                == other.machine_max_jerk_z.map(f32::to_bits)
-            && self.machine_max_jerk_e.map(f32::to_bits)
-                == other.machine_max_jerk_e.map(f32::to_bits)
+            && self.silent_mode == other.silent_mode
+            && self
+                .machine_max_acceleration_extruding
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_acceleration_extruding
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_acceleration_travel
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_acceleration_travel
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_x
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_x
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_y
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_y
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_z
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_z
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_e
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_e
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_x
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_x
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_y
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_y
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_z
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_z
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_e
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_e
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             && self
                 .filament_density
                 .iter()
@@ -2704,10 +3458,10 @@ impl std::hash::Hash for ResolvedConfig {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.layer_height.to_bits().hash(state);
         self.line_width.to_bits().hash(state);
-        self.first_layer_height.to_bits().hash(state);
+        self.initial_layer_print_height.to_bits().hash(state);
         self.initial_layer_line_width.hash(state);
         self.filament_diameter.to_bits().hash(state);
-        self.wall_count.hash(state);
+        self.wall_loops.hash(state);
         self.outer_wall_speed.to_bits().hash(state);
         self.inner_wall_speed.to_bits().hash(state);
         self.wall_generator.hash(state);
@@ -2715,10 +3469,10 @@ impl std::hash::Hash for ResolvedConfig {
             .map(|f| f.to_bits())
             .hash(state);
         self.infill_type.hash(state);
-        self.infill_density.to_bits().hash(state);
+        self.sparse_infill_density.to_bits().hash(state);
         self.infill_overlap.to_bits().hash(state);
-        self.infill_angle.to_bits().hash(state);
-        self.infill_speed.to_bits().hash(state);
+        self.infill_direction.to_bits().hash(state);
+        self.sparse_infill_speed.to_bits().hash(state);
         self.solid_infill_speed.to_bits().hash(state);
         self.top_shell_layers.hash(state);
         self.bottom_shell_layers.hash(state);
@@ -2749,7 +3503,6 @@ impl std::hash::Hash for ResolvedConfig {
         self.support_critical_regions_only.hash(state);
         self.support_remove_small_overhang.hash(state);
         self.support_object_first_layer_gap.to_bits().hash(state);
-        self.support_sharp_tails.hash(state);
         self.nonplanar_max_angle_deg
             .map(|f| f.to_bits())
             .hash(state);
@@ -2759,31 +3512,53 @@ impl std::hash::Hash for ResolvedConfig {
             .map(|f| f.to_bits())
             .hash(state);
         self.smoothificator_adaptive.hash(state);
-        self.bed_shape.len().hash(state);
-        for f in &self.bed_shape {
+        self.printable_area.len().hash(state);
+        for f in &self.printable_area {
             f.to_bits().hash(state);
         }
         self.retract_length.to_bits().hash(state);
-        self.wipe_tower_enabled.hash(state);
+        self.enable_pressure_advance.hash(state);
+        self.pressure_advance.to_bits().hash(state);
+        self.manual_filament_change.hash(state);
+        self.filament_flush_temp.hash(state);
+        self.filament_flush_volumetric_speed.to_bits().hash(state);
+        self.enable_prime_tower.hash(state);
         self.mmu_segmented_region_max_width.to_bits().hash(state);
         self.mmu_segmented_region_interlocking_depth
             .to_bits()
             .hash(state);
         self.mmu_segmented_region_interlocking_beam.hash(state);
+        self.silent_mode.hash(state);
         self.machine_max_acceleration_extruding
-            .map(f32::to_bits)
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             .hash(state);
         self.machine_max_acceleration_travel
-            .map(f32::to_bits)
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             .hash(state);
-        self.machine_max_speed_x.map(f32::to_bits).hash(state);
-        self.machine_max_speed_y.map(f32::to_bits).hash(state);
-        self.machine_max_speed_z.map(f32::to_bits).hash(state);
-        self.machine_max_speed_e.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_x.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_y.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_z.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_e.map(f32::to_bits).hash(state);
+        self.machine_max_speed_x
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_y
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_z
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_e
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_x
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_y
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_z
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_e
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
         for density in &self.filament_density {
             density.to_bits().hash(state);
         }
@@ -2808,7 +3583,7 @@ mod machine_limit_config_tests {
         "machine_max_jerk_e",
     ];
 
-    fn field(cfg: &ResolvedConfig, key: &str) -> Option<f32> {
+    fn field(cfg: &ResolvedConfig, key: &str) -> Option<MachineLimitPair> {
         match key {
             "machine_max_acceleration_extruding" => cfg.machine_max_acceleration_extruding,
             "machine_max_acceleration_travel" => cfg.machine_max_acceleration_travel,
@@ -2824,6 +3599,10 @@ mod machine_limit_config_tests {
         }
     }
 
+    fn pair(normal: f32, stealth: f32) -> Option<MachineLimitPair> {
+        Some(MachineLimitPair { normal, stealth })
+    }
+
     #[test]
     fn absent_machine_limit_keys_are_none_and_omitted_from_config_map() {
         let cfg = ResolvedConfig::default();
@@ -2832,6 +3611,23 @@ mod machine_limit_config_tests {
             assert_eq!(field(&cfg, key), None, "{key} default must be None");
             assert!(!map.contains_key(key), "{key} must be omitted when None");
         }
+        assert!(
+            !cfg.silent_mode,
+            "silent_mode default must be false (byte-identical estimator)"
+        );
+        assert_eq!(
+            map.get("silent_mode"),
+            Some(&ConfigValue::Bool(false)),
+            "silent_mode reaches the map for generated/legacy parity;              `omit_from_config_block` keeps it out of the emitted G-code block"
+        );
+        let silent_mode_row = ResolvedConfig::host_config_keys()
+            .into_iter()
+            .find(|row| row.key == "silent_mode")
+            .expect("silent_mode must be a host key row");
+        assert!(
+            silent_mode_row.meta.omit_from_config_block,
+            "silent_mode is host-only and must never reach CONFIG_BLOCK"
+        );
     }
 
     #[test]
@@ -2843,10 +3639,16 @@ mod machine_limit_config_tests {
                 .apply_cli_key(key, &ConfigValue::Float(v))
                 .expect("type check");
             assert!(applied, "{key} must be a recognized CLI-bound field");
-            assert_eq!(field(&cfg, key), Some(v as f32), "{key} value must apply");
+            let f = v as f32;
+            assert_eq!(
+                field(&cfg, key),
+                pair(f, f),
+                "{key} scalar must duplicate into both modes"
+            );
         }
         let map = cfg.to_config_map();
         for (i, key) in KEYS.iter().enumerate() {
+            // Equal variants keep the historical single-value spelling.
             let expected = f64::from(10.0_f32 + i as f32);
             assert_eq!(
                 map.get(*key),
@@ -2859,12 +3661,15 @@ mod machine_limit_config_tests {
     /// Orca writes `machine_max_*` as `coFloats`, and a real project's
     /// `project_settings.config` stores them as JSON arrays of strings — e.g.
     /// `resources/cube_4color.3mf` carries `"machine_max_jerk_x": ["9","9"]`.
-    /// Before this was handled, every such slice aborted with `TypeMismatch`
-    /// (`expected Float value, got List`), which crashed all four painted /
-    /// modifier e2e fixtures. The two entries are machine *time modes*
-    /// (normal, stealth), so index 0 is the value canonical consumers use.
+    /// Before list ingestion existed, every such slice aborted with
+    /// `TypeMismatch` (`expected Float value, got List`), which crashed all
+    /// four painted / modifier e2e fixtures. The two entries are machine
+    /// *time modes* (normal, stealth): both are kept, and `silent_mode`
+    /// selects the stealth entry for the time estimator (wayfinder ticket 117;
+    /// the envelope keeps the normal entry, canonical
+    /// `GCode::print_machine_envelope`).
     #[test]
-    fn machine_limit_accepts_orca_string_list_and_takes_normal_mode() {
+    fn machine_limit_accepts_orca_string_list_and_keeps_both_modes() {
         let mut cfg = ResolvedConfig::default();
         let applied = cfg
             .apply_cli_key(
@@ -2878,8 +3683,8 @@ mod machine_limit_config_tests {
         assert!(applied, "machine_max_jerk_x must be a recognized field");
         assert_eq!(
             field(&cfg, "machine_max_jerk_x"),
-            Some(9.0),
-            "index 0 is normal mode; the stealth entry must be ignored"
+            pair(9.0, 5.0),
+            "index 0 is normal mode, index 1 is stealth mode"
         );
     }
 
@@ -2891,11 +3696,78 @@ mod machine_limit_config_tests {
             &ConfigValue::List(vec![ConfigValue::Int(120), ConfigValue::Int(60)]),
         )
         .expect("numeric list must be accepted");
-        assert_eq!(field(&cfg, "machine_max_speed_e"), Some(120.0));
+        assert_eq!(field(&cfg, "machine_max_speed_e"), pair(120.0, 60.0));
 
         cfg.apply_cli_key("machine_max_speed_x", &ConfigValue::Float(500.0))
             .expect("bare scalar must still be accepted");
-        assert_eq!(field(&cfg, "machine_max_speed_x"), Some(500.0));
+        assert_eq!(field(&cfg, "machine_max_speed_x"), pair(500.0, 500.0));
+    }
+
+    #[test]
+    fn machine_limit_single_element_list_duplicates_into_both_modes() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_speed_z",
+            &ConfigValue::List(vec![ConfigValue::String("12".to_string())]),
+        )
+        .expect("single-element list must be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_z"), pair(12.0, 12.0));
+    }
+
+    /// Multi-extruder presets carry one pair per printer variant; this port is
+    /// single-extruder scalar-subset (DEV-169 (c) precedent), so trailing
+    /// pairs are dropped and the first pair wins.
+    #[test]
+    fn machine_limit_longer_list_keeps_first_pair_only() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_speed_x",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(500),
+                ConfigValue::Int(250),
+                ConfigValue::Int(400),
+                ConfigValue::Int(200),
+            ]),
+        )
+        .expect("longer list must be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_x"), pair(500.0, 250.0));
+    }
+
+    /// A pair with distinct variants emits as the canonical comma-separated
+    /// `coFloats` pair, so the stealth value round-trips through the config
+    /// map instead of being silently dropped.
+    #[test]
+    fn machine_limit_distinct_variants_emit_pair_in_config_map() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_jerk_x",
+            &ConfigValue::List(vec![ConfigValue::Float(9.0), ConfigValue::Float(5.0)]),
+        )
+        .expect("pair list must be accepted");
+        assert_eq!(
+            cfg.to_config_map().get("machine_max_jerk_x"),
+            Some(&ConfigValue::List(vec![
+                ConfigValue::Float(9.0),
+                ConfigValue::Float(5.0)
+            ])),
+            "distinct variants must emit as a pair"
+        );
+    }
+
+    #[test]
+    fn silent_mode_parses_bool_and_selects_variant() {
+        let mut cfg = ResolvedConfig::default();
+        let applied = cfg
+            .apply_cli_key("silent_mode", &ConfigValue::Bool(true))
+            .expect("type check");
+        assert!(applied, "silent_mode must be a recognized CLI-bound field");
+        assert!(cfg.silent_mode, "silent_mode must apply");
+        let pair = MachineLimitPair {
+            normal: 12.0,
+            stealth: 6.0,
+        };
+        assert_eq!(pair.select(false), 12.0);
+        assert_eq!(pair.select(true), 6.0);
     }
 
     /// Accepting Orca's list shape must not turn into accepting rubbish:
@@ -2913,6 +3785,17 @@ mod machine_limit_config_tests {
             "a non-numeric string must not be silently accepted"
         );
         assert!(
+            cfg.apply_cli_key(
+                "machine_max_jerk_y",
+                &ConfigValue::List(vec![
+                    ConfigValue::Float(9.0),
+                    ConfigValue::String("fast".to_string())
+                ]),
+            )
+            .is_err(),
+            "a non-numeric stealth entry must not be silently accepted"
+        );
+        assert!(
             cfg.apply_cli_key("machine_max_jerk_z", &ConfigValue::List(vec![]))
                 .is_err(),
             "an empty list has no normal-mode entry to read"
@@ -2921,6 +3804,437 @@ mod machine_limit_config_tests {
             cfg.apply_cli_key("machine_max_jerk_e", &ConfigValue::Bool(true))
                 .is_err(),
             "a bool is not a machine limit"
+        );
+    }
+}
+
+/// Regression (tickets 140 + 47): the four per-filament / per-extruder
+/// scalar-subset keys rejected real Orca 3MF vectors at global resolution,
+/// failing all five painted / modifier e2e fixtures before any slicing
+/// (`config key 'pressure_advance': expected Float value, got List`, and the
+/// `enable_pressure_advance` Bool / `filament_flush_temp` Int /
+/// `filament_flush_volumetric_speed` Float variants — the reported key varies
+/// run to run because `resolve_global_config` iterates a `HashMap`).
+///
+/// Orca spells each as a per-filament vector (`coFloats` / `coBools` /
+/// `coInts`): `resources/cube_4color.3mf` carries 4-element string lists for
+/// all four, and the single-filament modifier fixtures carry 1-element lists
+/// (e.g. `pressure_advance: ["0.02"]`). The loader coerces elements
+/// schema-directedly, so by resolution time the shapes are `List[Float]` for
+/// `pressure_advance`, `List[Bool]` for `enable_pressure_advance`, and
+/// `List[Int]` for both flush keys. The scalar-global subset takes index 0
+/// (first filament / extruder); full vector ingest rides ticket 125.
+#[cfg(test)]
+mod per_filament_scalar_subset_tests {
+    use super::*;
+
+    #[test]
+    fn pressure_advance_accepts_orca_vector_and_takes_first_filament() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shape from cube_4color.3mf: 4-element Float list.
+        cfg.apply_cli_key(
+            "pressure_advance",
+            &ConfigValue::List(vec![
+                ConfigValue::Float(0.02),
+                ConfigValue::Float(0.05),
+                ConfigValue::Float(0.05),
+                ConfigValue::Float(0.05),
+            ]),
+        )
+        .expect("Orca 4-element coFloats must be accepted");
+        assert_eq!(
+            cfg.pressure_advance, 0.02,
+            "index 0 is the first filament; trailing entries are discarded"
+        );
+
+        // Single-filament modifier shape: 1-element list.
+        cfg.apply_cli_key(
+            "pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Float(0.03)]),
+        )
+        .expect("single-element list must be accepted");
+        assert_eq!(cfg.pressure_advance, 0.03);
+
+        // Bare scalar (hand-written CLI JSON) keeps working.
+        cfg.apply_cli_key("pressure_advance", &ConfigValue::Float(0.04))
+            .expect("bare scalar must still be accepted");
+        assert_eq!(cfg.pressure_advance, 0.04);
+    }
+
+    #[test]
+    fn enable_pressure_advance_accepts_orca_bool_vector_and_takes_first() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shape from cube_4color.3mf: 4-element Bool list
+        // (`"0"` coerces to Bool for a declared-boolean key).
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![
+                ConfigValue::Bool(false),
+                ConfigValue::Bool(true),
+                ConfigValue::Bool(true),
+                ConfigValue::Bool(true),
+            ]),
+        )
+        .expect("Orca 4-element coBools must be accepted");
+        assert!(
+            !cfg.enable_pressure_advance,
+            "index 0 is the first extruder; trailing entries are discarded"
+        );
+
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Bool(true)]),
+        )
+        .expect("single-element list must be accepted");
+        assert!(cfg.enable_pressure_advance);
+
+        // Numeric 0/1 backstop (mirrors extract_bool) in both shapes.
+        cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::Int(1))
+            .expect("bare Int 1 must be accepted as true");
+        assert!(cfg.enable_pressure_advance);
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Int(0), ConfigValue::Int(1)]),
+        )
+        .expect("Int list must be accepted");
+        assert!(!cfg.enable_pressure_advance);
+    }
+
+    #[test]
+    fn filament_flush_keys_accept_orca_vectors_and_take_first_filament() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shapes from cube_4color.3mf: `"0"` coerces to Int
+        // for both non-boolean keys.
+        cfg.apply_cli_key(
+            "filament_flush_temp",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+            ]),
+        )
+        .expect("Orca 4-element coInts must be accepted");
+        assert_eq!(cfg.filament_flush_temp, 0);
+
+        cfg.apply_cli_key(
+            "filament_flush_volumetric_speed",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+            ]),
+        )
+        .expect("Orca 4-element coFloats-as-Int must be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 0.0);
+
+        // Distinct trailing entries prove first-wins rather than last-wins.
+        cfg.apply_cli_key(
+            "filament_flush_temp",
+            &ConfigValue::List(vec![ConfigValue::Int(270), ConfigValue::Int(240)]),
+        )
+        .expect("multi-element Int list must be accepted");
+        assert_eq!(cfg.filament_flush_temp, 270);
+
+        cfg.apply_cli_key(
+            "filament_flush_volumetric_speed",
+            &ConfigValue::List(vec![ConfigValue::Float(12.5), ConfigValue::Float(8.0)]),
+        )
+        .expect("multi-element Float list must be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 12.5);
+
+        // Bare scalars keep working.
+        cfg.apply_cli_key("filament_flush_temp", &ConfigValue::Int(240))
+            .expect("bare Int must still be accepted");
+        assert_eq!(cfg.filament_flush_temp, 240);
+        cfg.apply_cli_key("filament_flush_volumetric_speed", &ConfigValue::Float(10.0))
+            .expect("bare Float must still be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 10.0);
+    }
+
+    #[test]
+    fn per_filament_subset_rejects_malformed_values() {
+        let mut cfg = ResolvedConfig::default();
+        assert!(
+            cfg.apply_cli_key("pressure_advance", &ConfigValue::List(vec![]))
+                .is_err(),
+            "an empty list has no first filament to read"
+        );
+        assert!(
+            cfg.apply_cli_key(
+                "pressure_advance",
+                &ConfigValue::List(vec![ConfigValue::String("fast".to_string())]),
+            )
+            .is_err(),
+            "a non-numeric string must not be silently accepted"
+        );
+        assert!(
+            cfg.apply_cli_key("pressure_advance", &ConfigValue::Bool(true))
+                .is_err(),
+            "a bool is not a pressure-advance value"
+        );
+        assert!(
+            cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::List(vec![]),)
+                .is_err(),
+            "an empty list has no first extruder to read"
+        );
+        assert!(
+            cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::Float(1.0))
+                .is_err(),
+            "a float is not a pressure-advance flag"
+        );
+        assert!(
+            cfg.apply_cli_key("filament_flush_temp", &ConfigValue::List(vec![]))
+                .is_err(),
+            "an empty list has no first filament to read"
+        );
+        assert!(
+            cfg.apply_cli_key("filament_flush_temp", &ConfigValue::Bool(true))
+                .is_err(),
+            "a bool is not a flush temperature"
+        );
+        assert!(
+            cfg.apply_cli_key(
+                "filament_flush_volumetric_speed",
+                &ConfigValue::List(vec![]),
+            )
+            .is_err(),
+            "an empty list has no first filament to read"
+        );
+    }
+}
+
+#[cfg(test)]
+mod orca_point_string_tests {
+    use super::*;
+
+    /// Regression (wayfinder ticket 107): `sparse_infill_density` is
+    /// canonical-percent everywhere, and Orca-authored 3MF metadata preserves
+    /// the percent form as a raw string (`"15%"`). Before the
+    /// `extract_percent_float` adapter, resolving an object config carrying
+    /// the percent string failed with
+    /// `config key 'sparse_infill_density': expected Float value, got String`
+    /// (the M3 modifier fixture's base object).
+    #[test]
+    fn sparse_infill_density_accepts_percent_string() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "sparse_infill_density",
+            &ConfigValue::String("15%".to_string()),
+        )
+        .expect("Orca's percent-string form must be accepted");
+        assert_eq!(
+            cfg.sparse_infill_density, 15.0,
+            "the literal percent must be stored (modules divide by 100 at the read site)"
+        );
+    }
+
+    /// The numeric percent form this port writes itself must keep resolving
+    /// unchanged — the adapter widens the input, it does not replace it.
+    #[test]
+    fn sparse_infill_density_accepts_numeric_percent() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key("sparse_infill_density", &ConfigValue::Float(20.0))
+            .expect("numeric percent must be accepted");
+        assert_eq!(cfg.sparse_infill_density, 20.0);
+    }
+
+    /// A non-percent string is not a density and must stay a hard error.
+    #[test]
+    fn sparse_infill_density_rejects_plain_string() {
+        let mut cfg = ResolvedConfig::default();
+        assert!(
+            cfg.apply_cli_key(
+                "sparse_infill_density",
+                &ConfigValue::String("fast".to_string())
+            )
+            .is_err(),
+            "a non-percent string must not be silently accepted"
+        );
+    }
+
+    /// Regression (ticket 100): renaming `bed_shape` to Orca's
+    /// `printable_area` adopted a key whose upstream serialisation is a list of
+    /// `"<x>x<y>"` point strings, not interleaved numbers. Before the adapter,
+    /// resolving an Orca 3MF plate failed with
+    /// `config key 'printable_area[0]': expected Float value, got String`.
+    #[test]
+    fn orca_plate_polygon_expands_to_interleaved_floats() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::String("0x0".into()),
+            ConfigValue::String("250x0".into()),
+            ConfigValue::String("250x210".into()),
+            ConfigValue::String("0x210".into()),
+        ]);
+        assert_eq!(
+            extract_float_list("printable_area", &value).expect("Orca plate polygon must resolve"),
+            vec![0.0, 0.0, 250.0, 0.0, 250.0, 210.0, 0.0, 210.0]
+        );
+    }
+
+    /// The interleaved float form this port writes itself must keep resolving
+    /// unchanged — the adapter widens the input, it does not replace it.
+    #[test]
+    fn interleaved_float_polygon_is_unchanged() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(0.0),
+            ConfigValue::Int(250),
+            ConfigValue::Float(0.0),
+        ]);
+        assert_eq!(
+            extract_float_list("printable_area", &value).expect("interleaved floats must resolve"),
+            vec![0.0, 0.0, 250.0, 0.0]
+        );
+    }
+
+    /// A plain numeric string is *not* a point string and must still resolve to
+    /// exactly one entry — Orca serialises `coFloats` lists that way
+    /// (`filament_density = ["1.24", "1.24"]`).
+    #[test]
+    fn plain_numeric_strings_still_resolve_one_per_entry() {
+        let value = ConfigValue::List(vec![
+            ConfigValue::String("1.24".into()),
+            ConfigValue::String("1.24".into()),
+        ]);
+        assert_eq!(
+            extract_float_list("filament_density", &value).expect("coFloats list must resolve"),
+            vec![1.24, 1.24]
+        );
+    }
+
+    /// Anything that is not two `x`-separated finite floats is not a point
+    /// string, so it falls through to the scalar path and its error.
+    #[test]
+    fn non_point_strings_are_rejected_not_silently_dropped() {
+        assert_eq!(parse_orca_point_string("250x210"), Some((250.0, 210.0)));
+        assert_eq!(parse_orca_point_string(" 250 x 210 "), Some((250.0, 210.0)));
+        assert_eq!(parse_orca_point_string("250"), None);
+        assert_eq!(parse_orca_point_string("250x210x5"), None);
+        assert_eq!(parse_orca_point_string("axb"), None);
+        assert_eq!(parse_orca_point_string("NaNx0"), None);
+
+        let value = ConfigValue::List(vec![ConfigValue::String("not-a-point".into())]);
+        assert!(
+            extract_float_list("printable_area", &value).is_err(),
+            "an unparseable entry must surface as a type mismatch"
+        );
+    }
+}
+
+/// Wayfinder ticket 126 — the overlay-composition drift guard.
+///
+/// `overlay_onto` must copy **every** macro-declared field that an overlay
+/// explicitly set (i.e. that differs from its resolution `origin`). The old
+/// hand-written `overlay_resolved` diff in `region_mapping.rs` enumerated a
+/// 28-field allowlist by hand, so an override naming any other declared field
+/// resolved correctly and was then **silently dropped** at composition. The
+/// arms are now emitted by the `declare_resolved_config!` macro itself, so
+/// this test cannot enumerate fields by hand either — it drives the field
+/// set through `ResolvedConfig::host_config_keys()` (also macro-derived), which
+/// means a new `cli` row is automatically covered: if its overlay arm were
+/// ever missed, the key's explicit value fails to reach the composed config
+/// here.
+#[cfg(test)]
+mod overlay_onto_drift_guard {
+    use super::*;
+
+    #[test]
+    fn explicit_overrides_reach_the_composed_config_for_every_declared_field() {
+        // Drive the composition through real resolution: the overlay is
+        // built from `origin` (as `resolve_per_*_configs` builds every
+        // per-axis overlay from the global config), then one explicit
+        // override is applied per key and must survive onto the base.
+        let origin = ResolvedConfig::default();
+        let mut overlay = origin.clone();
+
+        // A sentinel value per field, typed by the declared wire type and
+        // distinct from the default for every field. `apply_cli_key` both
+        // types the value and finds the field, so an undeclared key cannot
+        // sneak into the loop.
+        let sentinel = |field_type: &str| -> ConfigValue {
+            match field_type {
+                "float" => ConfigValue::Float(12345.6789),
+                "int" => ConfigValue::Int(7777),
+                "bool" => ConfigValue::Bool(true),
+                "string" => ConfigValue::String("overlay_sentinel".to_string()),
+                "float-list" => ConfigValue::List(vec![ConfigValue::Float(99.5)]),
+                "string-list" => {
+                    ConfigValue::List(vec![ConfigValue::String("overlay_sentinel".to_string())])
+                }
+                "float_or_percent" => ConfigValue::FloatOrPercent {
+                    value: 77.7,
+                    is_percent: true,
+                },
+                other => panic!("unmapped wire type {other} needs a sentinel"),
+            }
+        };
+        let mut applied = 0usize;
+        for HostConfigKey {
+            key, field_type, ..
+        } in ResolvedConfig::host_config_keys()
+        {
+            let value = sentinel(field_type);
+            assert!(
+                overlay.apply_cli_key(key, &value).is_ok_and(|hit| hit),
+                "{key} must be a declared CLI field"
+            );
+            applied += 1;
+        }
+        // The guard is only meaningful if the declaration is non-empty.
+        assert!(applied > 50, "expected the full declared field set");
+
+        // Base equals origin (both default): every explicit overlay value
+        // must copy through, so the composed config must equal the overlay
+        // whole — one `PartialEq` over every declared field at once, no
+        // per-key enumeration that could itself drift. `ResolvedConfig`'s
+        // `PartialEq` compares every field (bit-exact on floats) plus
+        // `extensions`.
+        let base = ResolvedConfig::default();
+        let composed = ResolvedConfig::overlay_onto(base, &overlay, &origin);
+        assert_eq!(
+            composed, overlay,
+            "every explicitly-set override must reach the composed config; a mismatch names \
+             the dropped field via the debug diff"
+        );
+    }
+
+    /// The inherited half of the same contract: a field the overlay did NOT
+    /// set (identical to its origin) must never be copied, and an explicit
+    /// override back to the default value must be honoured (the old
+    /// compare-against-default diff could not express it).
+    #[test]
+    fn inherited_fields_are_not_copied_and_reset_to_default_is_expressible() {
+        // Origin (global) sets a field away from its default; the overlay
+        // inherits it; the base carries a different, lower-precedence value.
+        let origin = ResolvedConfig {
+            line_width: 0.6,
+            ..Default::default()
+        };
+        let overlay = origin.clone();
+        let base = ResolvedConfig {
+            line_width: 0.5,
+            ..Default::default()
+        };
+
+        // Inherited: the overlay is identical to origin, so nothing copies
+        // and the base's own value survives.
+        let composed = ResolvedConfig::overlay_onto(base.clone(), &overlay, &origin);
+        assert_eq!(
+            composed.line_width, 0.5,
+            "an inherited field must not clobber the base's lower-precedence override"
+        );
+
+        // Explicit reset to the default: the overlay sets the field back to
+        // the default 0.0; against origin's 0.6 that is an explicit change
+        // and must copy.
+        let mut reset_overlay = origin.clone();
+        reset_overlay.line_width = 0.0;
+        let composed = ResolvedConfig::overlay_onto(base.clone(), &reset_overlay, &origin);
+        assert_eq!(
+            composed.line_width, 0.0,
+            "an explicit override back to the default value must be expressible"
         );
     }
 }
@@ -3214,13 +4528,13 @@ mod config_map_parity_tests {
         // form and per field type the generated map must now cover.
         for key in [
             "filament_diameter",                      // cli @filament, f32
-            "bed_shape",                              // cli, float-list
+            "printable_area",                         // cli, float-list
             "fill_authored_coloring",                 // cli, string-list
             "disable_m73",                            // cli, bool
             "mmu_segmented_region_interlocking_beam", // cli, annotated bool
             "gcode_resolution",                       // cli, annotated f32
             "retract_length",                         // cli, f32
-            "wipe_tower_enabled",                     // cli, bool
+            "enable_prime_tower",                     // cli, bool
         ] {
             assert!(
                 default_map.contains_key(key),
@@ -3232,7 +4546,7 @@ mod config_map_parity_tests {
     /// The `config_block = false` marking is carried by the declaration
     /// channels, so the registry can filter emission without a second roster.
     #[test]
-    fn omit_from_config_block_is_marked_on_exactly_the_four_keys() {
+    fn omit_from_config_block_is_marked_on_exactly_the_five_keys() {
         let mut omitted: Vec<&str> = ResolvedConfig::host_config_keys()
             .iter()
             .filter(|row| row.meta.omit_from_config_block)
@@ -3251,9 +4565,10 @@ mod config_map_parity_tests {
                 "mmu_segmented_region_interlocking_beam",
                 "mmu_segmented_region_interlocking_depth",
                 "mmu_segmented_region_max_width",
+                "silent_mode",
                 "thumbnail_path",
             ],
-            "exactly the four declared keys carry config_block = false"
+            "exactly the five declared keys carry config_block = false"
         );
         assert!(
             !HostKeyMeta::NONE.omit_from_config_block,
@@ -3278,7 +4593,7 @@ mod scope_eligibility_tests {
     /// AC-1 whole-print-only keys authored on host channels, excluding the 26
     /// `SPEED_KEYS` (which carry the same policy, pinned by the speed table).
     const WHOLE_PRINT_ONLY_HOST_KEYS: &[&str] = &[
-        "bed_shape",
+        "printable_area",
         "disable_m73",
         "gcode_xy_decimals",
         "machine_max_acceleration_extruding",
@@ -3294,6 +4609,8 @@ mod scope_eligibility_tests {
         "use_relative_e_distances",
         "thumbnail_path",
         "wall_generator",
+        "gcode_add_line_number",
+        "post_process",
     ];
 
     /// AC-1 tool-capable host keys (the module-only `nozzle_diameter` is

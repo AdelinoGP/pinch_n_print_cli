@@ -48,7 +48,7 @@ fn concave_region_emits_outer_wall_without_panic() {
         .float("sparse_infill_density", 20.0)
         .float("bridge_flow", 1.0)
         .float("smaller_perimeter_line_width", 0.25)
-        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("small_perimeter_threshold", 0.8)
         .float("narrow_loop_length_threshold_mm", 10.0)
         .float("min_width_top_surface", 0.0)
         .float_or_percent("infill_wall_overlap", 15.0, true)
@@ -65,7 +65,7 @@ fn concave_region_emits_outer_wall_without_panic() {
         .bool("thick_bridges", false)
         .int("extra_perimeters", 0)
         .int("support_raft_layers", 0)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         // Fail-closed migration keys (classic-perimeters.toml manifest defaults).
         .float("outer_wall_speed", 30.0)

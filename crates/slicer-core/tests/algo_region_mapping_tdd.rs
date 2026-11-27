@@ -1493,3 +1493,97 @@ fn region_mapping_config_interning() {
         "equivalent ResolvedConfigs must share a ConfigId"
     );
 }
+
+/// AC-4: explicit cross-product entry-count formula check.
+/// `entries.len() == layers × active_regions × ∏(1 + K_i)`
+/// — concretely 1 × 1 × (1+2) × (1+1) = 6.
+#[test]
+fn region_mapping_cross_product_entry_count() {
+    let plan = single_region_plan("obj_a");
+    let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &stage_invocations,
+    };
+    let configs = no_paint_configs();
+    let agg = aggregated(&["material", "fuzzy_skin"]);
+
+    let paints = vec![
+        (
+            "material",
+            vec![PaintValue::ToolIndex(1), PaintValue::ToolIndex(2)],
+        ),
+        ("fuzzy_skin", vec![PaintValue::Flag(true)]),
+    ];
+    let objects = vec![painted_object("obj_a", &paints)];
+
+    let region_map = execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &configs,
+        &agg,
+        &objects,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+
+    // 1 layer × 1 active_region × (1 + 2) × (1 + 1) = 6.
+    assert_eq!(region_map.entries.len(), 6);
+}
+
+/// AC-3: redirect alias — drives the same 6-chain enumeration as
+/// `region_mapping_two_semantics_produces_cross_product_cardinality`, but
+/// asserts the chain SET to satisfy AC-3's "enumeration" wording.
+#[test]
+fn region_mapping_enumerate_chains() {
+    let plan = single_region_plan("obj_a");
+    let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &stage_invocations,
+    };
+    let configs = no_paint_configs();
+    let agg = aggregated(&["material", "fuzzy_skin"]);
+
+    let paints = vec![
+        (
+            "material",
+            vec![PaintValue::ToolIndex(1), PaintValue::ToolIndex(2)],
+        ),
+        ("fuzzy_skin", vec![PaintValue::Flag(true)]),
+    ];
+    let objects = vec![painted_object("obj_a", &paints)];
+
+    let region_map = execute_region_mapping_with_cap(
+        &plan,
+        &projection,
+        &configs,
+        &agg,
+        &objects,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+
+    let fs = "fuzzy_skin".to_string();
+    let mat = "material".to_string();
+    let expected: HashSet<Vec<(String, PaintValue)>> = [
+        vec![],
+        vec![(fs.clone(), PaintValue::Flag(true))],
+        vec![(mat.clone(), PaintValue::ToolIndex(1))],
+        vec![(mat.clone(), PaintValue::ToolIndex(2))],
+        vec![
+            (fs.clone(), PaintValue::Flag(true)),
+            (mat.clone(), PaintValue::ToolIndex(1)),
+        ],
+        vec![
+            (fs.clone(), PaintValue::Flag(true)),
+            (mat.clone(), PaintValue::ToolIndex(2)),
+        ],
+    ]
+    .into_iter()
+    .collect();
+    let actual: HashSet<Vec<(String, PaintValue)>> = region_map
+        .entries
+        .keys()
+        .map(|k| k.variant_chain.clone())
+        .collect();
+    assert_eq!(actual, expected);
+}

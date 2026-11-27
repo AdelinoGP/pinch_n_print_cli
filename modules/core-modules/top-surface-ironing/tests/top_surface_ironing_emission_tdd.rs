@@ -39,7 +39,7 @@ fn default_config() -> ConfigView {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
@@ -197,7 +197,7 @@ fn absent_ironing_enabled_is_a_config_defect_not_a_default() {
         // deliberately NO ironing_enabled key
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
@@ -217,7 +217,7 @@ fn disabled_config_emits_no_ironing() {
         ("ironing_enabled", ConfigValue::Bool(false)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
@@ -287,7 +287,7 @@ fn zero_flow_config_rejected_at_from_config() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
@@ -318,7 +318,7 @@ fn ironing_flow_percent_magnitude_resolves_at_consumption() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
@@ -352,7 +352,7 @@ fn unsupported_pattern_rejected_at_from_config() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_spacing", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("concentric".to_string()),
@@ -556,7 +556,7 @@ fn hole_crossing_regression_no_ironing_segment_enters_the_hole() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(10.0)),
-        ("ironing_spacing_mm", ConfigValue::Float(1.0)),
+        ("ironing_spacing", ConfigValue::Float(1.0)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),

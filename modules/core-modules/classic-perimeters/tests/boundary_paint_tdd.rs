@@ -38,7 +38,7 @@ fn config_1_wall() -> ConfigView {
         .float("sparse_infill_density", 20.0)
         .float("bridge_flow", 1.0)
         .float("smaller_perimeter_line_width", 0.25)
-        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("small_perimeter_threshold", 0.8)
         .float("narrow_loop_length_threshold_mm", 10.0)
         .float("min_width_top_surface", 0.0)
         .float_or_percent("infill_wall_overlap", 15.0, true)
@@ -63,12 +63,12 @@ fn config_1_wall() -> ConfigView {
         .float("outer_wall_speed", 30.0)
         .float("inner_wall_speed", 45.0)
         .float("perimeter_arc_tolerance", 0.0125)
-        .int("wall_count", 1)
+        .int("wall_loops", 1)
         .float("line_width", 0.4)
         .build()
 }
 
-/// Helper: default config with wall_count=2 for inner wall tests.
+/// Helper: default config with wall_loops=2 for inner wall tests.
 fn config_2_walls() -> ConfigView {
     ConfigViewBuilder::new()
         .float("resolution", 0.01)
@@ -84,7 +84,7 @@ fn config_2_walls() -> ConfigView {
         .float("sparse_infill_density", 20.0)
         .float("bridge_flow", 1.0)
         .float("smaller_perimeter_line_width", 0.25)
-        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("small_perimeter_threshold", 0.8)
         .float("narrow_loop_length_threshold_mm", 10.0)
         .float("min_width_top_surface", 0.0)
         .float_or_percent("infill_wall_overlap", 15.0, true)
@@ -109,7 +109,7 @@ fn config_2_walls() -> ConfigView {
         .float("outer_wall_speed", 30.0)
         .float("inner_wall_speed", 45.0)
         .float("perimeter_arc_tolerance", 0.0125)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("line_width", 0.4)
         .build()
 }

@@ -93,7 +93,7 @@ fn support_geometry_slot_roundtrip() {
     let ir = Arc::new(SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries: HashMap::new(),
     });
 

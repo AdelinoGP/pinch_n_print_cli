@@ -139,7 +139,7 @@ fn config() -> Arc<ConfigView> {
             "wave_overhang_anchor_depth_mm".to_string(),
             slicer_ir::ConfigValue::Float(3.0),
         ),
-        ("wall_count".to_string(), slicer_ir::ConfigValue::Int(3)),
+        ("wall_loops".to_string(), slicer_ir::ConfigValue::Int(3)),
         // Declared keys (wave-overhangs.toml) seeded at their manifest
         // defaults, mirroring the production `seed_registry_defaults` step;
         // the guest reads are fail-closed (`require_*`) since the config
@@ -186,6 +186,19 @@ fn config() -> Arc<ConfigView> {
         (
             "thick_bridges".to_string(),
             slicer_ir::ConfigValue::Bool(false),
+        ),
+        // Internal-bridge required reads (wave-overhangs.toml).
+        (
+            "internal_bridge_density".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "internal_bridge_flow".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "thick_internal_bridges".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
         ),
     ])))
 }

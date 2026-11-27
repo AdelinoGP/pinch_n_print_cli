@@ -498,6 +498,34 @@ fn wipe_speed_resolves_correctly() {
 }
 
 #[test]
+fn wipe_tower_speed_is_capped_by_sparse_infill_speed() {
+    let config = slicer_ir::FeedrateConfig {
+        wipe_tower_max_purge_speed: 120.0,
+        sparse_infill_speed: 80.0,
+        ..Default::default()
+    };
+
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
+    let resolved = emitter
+        .resolve_feedrate(&ExtrusionRole::WipeTower, 1.0)
+        .unwrap();
+
+    assert_eq!(resolved, 80.0 * 60.0);
+
+    let config = slicer_ir::FeedrateConfig {
+        wipe_tower_max_purge_speed: 80.0,
+        sparse_infill_speed: 120.0,
+        ..Default::default()
+    };
+    let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
+    let resolved = emitter
+        .resolve_feedrate(&ExtrusionRole::WipeTower, 1.0)
+        .unwrap();
+
+    assert_eq!(resolved, 80.0 * 60.0);
+}
+
+#[test]
 fn internal_bridge_role_uses_internal_speed_and_label() {
     let config = slicer_ir::FeedrateConfig {
         internal_bridge_speed: slicer_ir::resolved_config::ResolvedFloatOrPercent {
@@ -1002,14 +1030,14 @@ fn raw_config_source_wires_feedrate_table_into_emitted_f_values() {
 }
 
 #[test]
-fn first_layer_volumetric_e_uses_configured_first_layer_height() {
+fn first_layer_volumetric_e_uses_configured_initial_layer_print_height() {
     // The first layer's volumetric E is width x height x length / filament
     // area. The fallback used to be a hardcoded 0.2 mm, over-extruding ~2x
-    // whenever first_layer_height was 0.1 mm (measured: outer wall E/mm 0.0494
+    // whenever initial_layer_print_height was 0.1 mm (measured: outer wall E/mm 0.0494
     // at Z0.1 implied 0.2 mm height).
     let emitter =
         DefaultGCodeEmitter::new("1.0".to_string()).with_resolved_config(ResolvedConfig {
-            first_layer_height: 0.1,
+            initial_layer_print_height: 0.1,
             ..Default::default()
         });
 

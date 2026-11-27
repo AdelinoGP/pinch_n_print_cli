@@ -82,7 +82,7 @@ const TOLERANCE_MM: f32 = 1e-3;
 fn make_config(precise_outer_wall: Option<bool>, wall_sequence: Option<&str>) -> ConfigView {
     let mut builder = ConfigViewBuilder::new()
         .float("resolution", 0.01)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
         .float("outer_wall_line_width", OUTER_WIDTH_MM as f64)
         // Required-read baseline (packet 06 5c', item 11): the classified

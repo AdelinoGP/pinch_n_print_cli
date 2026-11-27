@@ -96,7 +96,7 @@ fn fixture_mesh() -> Arc<MeshIR> {
     modifier
         .config_delta
         .fields
-        .insert("wall_count".to_string(), ConfigValue::Int(5));
+        .insert("wall_loops".to_string(), ConfigValue::Int(5));
 
     Arc::new(MeshIR {
         // exhaustive: object geometry and all scope-bearing fields define the fixture.
@@ -132,9 +132,12 @@ fn fixture_mesh() -> Arc<MeshIR> {
 fn config_source() -> HashMap<String, ConfigValue> {
     let mut source = HashMap::from([
         ("layer_height".to_string(), ConfigValue::Float(0.45)),
-        ("first_layer_height".to_string(), ConfigValue::Float(0.45)),
+        (
+            "initial_layer_print_height".to_string(),
+            ConfigValue::Float(0.45),
+        ),
         ("support_raft_layers".to_string(), ConfigValue::Int(2)),
-        ("wall_count".to_string(), ConfigValue::Int(1)),
+        ("wall_loops".to_string(), ConfigValue::Int(1)),
         ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         (
@@ -145,9 +148,12 @@ fn config_source() -> HashMap<String, ConfigValue> {
     ]);
     let object_key = |key: &str| format!("object_config:{OBJECT_ID}:{key}");
     source.insert(object_key("layer_height"), ConfigValue::Float(0.2));
-    source.insert(object_key("first_layer_height"), ConfigValue::Float(0.3));
+    source.insert(
+        object_key("initial_layer_print_height"),
+        ConfigValue::Float(0.3),
+    );
     source.insert(object_key("support_raft_layers"), ConfigValue::Int(0));
-    source.insert(object_key("wall_count"), ConfigValue::Int(3));
+    source.insert(object_key("wall_loops"), ConfigValue::Int(3));
     source
 }
 
@@ -268,7 +274,7 @@ fn assert_region_values(context: &slicer_runtime::run::PrepassContext) {
             Some(&ConfigValue::Float(0.2)),
             "object regions must retain the literal object layer_height"
         );
-        match config.get("wall_count") {
+        match config.get("wall_loops") {
             Some(ConfigValue::Int(3)) => saw_base = true,
             Some(ConfigValue::Int(5)) => saw_modifier = true,
             other => panic!("unexpected resolved region wall_count: {other:?}"),
@@ -349,7 +355,7 @@ fn multi_object_planning_carries_divergent_first_layer_and_raft_fields() {
     let mut source = config_source();
     source.insert("support_raft_layers".to_string(), ConfigValue::Int(1));
     source.insert(
-        format!("object_config:{OBJECT_ID}:first_layer_height"),
+        format!("object_config:{OBJECT_ID}:initial_layer_print_height"),
         ConfigValue::Float(0.2),
     );
     source.insert(
@@ -361,7 +367,7 @@ fn multi_object_planning_carries_divergent_first_layer_and_raft_fields() {
         ConfigValue::Float(0.2),
     );
     source.insert(
-        format!("object_config:{SECOND_OBJECT_ID}:first_layer_height"),
+        format!("object_config:{SECOND_OBJECT_ID}:initial_layer_print_height"),
         ConfigValue::Float(0.3),
     );
     source.insert(

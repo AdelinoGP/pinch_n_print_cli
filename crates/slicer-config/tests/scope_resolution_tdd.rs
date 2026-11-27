@@ -65,37 +65,37 @@ fn scope_stack_matches_hand_authored_precedence_table() {
         deltas: BTreeMap::from([
             (
                 ConfigScope::Global,
-                delta([("infill_density", ConfigValue::Float(0.10))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.10))]),
             ),
             (
                 ConfigScope::Object("obj-a".to_owned()),
-                delta([("infill_density", ConfigValue::Float(0.20))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.20))]),
             ),
             (
                 ConfigScope::Modifier {
                     object_id: "obj-a".to_owned(),
                     modifier_id: "priority-10".to_owned(),
                 },
-                delta([("infill_density", ConfigValue::Float(0.30))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.30))]),
             ),
             (
                 ConfigScope::Modifier {
                     object_id: "obj-a".to_owned(),
                     modifier_id: "priority-20".to_owned(),
                 },
-                delta([("infill_density", ConfigValue::Float(0.40))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.40))]),
             ),
             (
                 ConfigScope::PaintSemantic("material".to_owned()),
-                delta([("infill_density", ConfigValue::Float(0.50))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.50))]),
             ),
             (
                 ConfigScope::PaintSemantic("support_enforcer".to_owned()),
-                delta([("infill_density", ConfigValue::Float(0.60))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.60))]),
             ),
             (
                 ConfigScope::Tool(1),
-                delta([("infill_density", ConfigValue::Float(0.70))]),
+                delta([("sparse_infill_density", ConfigValue::Float(0.70))]),
             ),
         ]),
         layer_ranges: Default::default(),
@@ -167,7 +167,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
     for (target, expected_density) in rows {
         let resolved = resolve_scope_stack(&registry, &scoped, &target, &expansion())
             .expect("literal precedence row must resolve");
-        assert_eq!(resolved.infill_density, expected_density);
+        assert_eq!(resolved.sparse_infill_density, expected_density);
         assert_eq!(
             resolved.line_width, 0.45_f64,
             "Phase-B expansion must run after the complete scope merge"
@@ -183,14 +183,14 @@ fn explicit_default_is_a_real_override() {
             (
                 ConfigScope::Global,
                 delta([
-                    ("wall_count", ConfigValue::Int(3)),
+                    ("wall_loops", ConfigValue::Int(3)),
                     ("custom_extension", ConfigValue::String("global".to_owned())),
                 ]),
             ),
             (
                 ConfigScope::Object("obj-a".to_owned()),
                 delta([
-                    ("wall_count", ConfigValue::Int(2)),
+                    ("wall_loops", ConfigValue::Int(2)),
                     ("custom_extension", ConfigValue::String("object".to_owned())),
                 ]),
             ),
@@ -209,7 +209,7 @@ fn explicit_default_is_a_real_override() {
     )
     .expect("an explicitly authored default is a valid override");
 
-    assert_eq!(resolved.wall_count, 2);
+    assert_eq!(resolved.wall_loops, 2);
     assert_eq!(
         resolved.extensions.get("custom_extension"),
         Some(&ConfigValue::String("object".to_owned()))
@@ -256,7 +256,7 @@ fn z_grid_query_returns_hand_computed_object_record() {
                 ConfigScope::Global,
                 delta([
                     ("layer_height", ConfigValue::Float(0.20)),
-                    ("first_layer_height", ConfigValue::Float(0.30)),
+                    ("initial_layer_print_height", ConfigValue::Float(0.30)),
                 ]),
             ),
             (

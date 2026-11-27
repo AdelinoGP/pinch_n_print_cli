@@ -9,7 +9,8 @@
 //!   intervals, checks **every** consecutive segment of every returned
 //!   `ExtrusionPath3D` for whole-segment containment (hole exclusion), and
 //!   inspects every point's supplied Z, the configured line width and the
-//!   configured `ironing_flow_rate`, plus the caller-supplied speed factor.
+//!   configured `support_ironing_flow` (canonical `coPercent`, divided by 100
+//!   at consumption), plus the caller-supplied speed factor.
 //!   This is a metadata propagation contract, not a claim that the manifest
 //!   default flow value is an independently verified physical percentage.
 //!   Nonpositive spacing and degenerate geometry are a separate mode whose
@@ -311,13 +312,13 @@ struct FillCase {
     cut: Option<(i64, i64, i64, i64)>,
     /// The intended canonical-unit pitch; `spacing_mm` must round-trip to it.
     spacing_units: i64,
-    /// Configured `ironing_spacing`, mm.
+    /// Configured `support_ironing_spacing`, mm.
     spacing_mm: f64,
     /// Configured `line_width`, mm.
     line_width_mm: f64,
-    /// Configured `ironing_flow_rate`.
+    /// Configured `support_ironing_flow` percent magnitude (`[0, 100]`).
     flow_rate: f64,
-    /// Configured `ironing_speed`, mm/s.
+    /// Configured `support_ironing_speed`, mm/s.
     ironing_speed: f64,
     /// Caller-supplied layer Z, mm.
     z: f32,
@@ -478,17 +479,17 @@ impl FillCase {
 /// Build the module through its real config path; fields stay private.
 fn module_for(case: &FillCase) -> SupportSurfaceIroning {
     let mut fields = HashMap::new();
-    fields.insert("ironing_enabled".to_owned(), ConfigValue::Bool(true));
+    fields.insert("support_ironing".to_owned(), ConfigValue::Bool(true));
     fields.insert(
-        "ironing_speed".to_owned(),
+        "support_ironing_speed".to_owned(),
         ConfigValue::Float(case.ironing_speed),
     );
     fields.insert(
-        "ironing_flow_rate".to_owned(),
-        ConfigValue::Float(case.flow_rate),
+        "support_ironing_flow".to_owned(),
+        ConfigValue::Percent(case.flow_rate),
     );
     fields.insert(
-        "ironing_spacing".to_owned(),
+        "support_ironing_spacing".to_owned(),
         ConfigValue::Float(case.spacing_mm),
     );
     fields.insert(
@@ -580,7 +581,7 @@ fn validate_fixture(case: &FillCase, limits: &SiLimits) -> Result<(), CheckFailu
         return fixture(format!("spacing {} units", case.spacing_units));
     }
     if !(case.line_width_mm > 0.0 && case.line_width_mm <= 2.0)
-        || !(1.0..=200.0).contains(&case.flow_rate)
+        || !(0.0..=100.0).contains(&case.flow_rate)
         || !(1.0..=300.0).contains(&case.ironing_speed)
         || !(case.z.is_finite() && case.z > 0.0)
     {
@@ -629,7 +630,8 @@ fn check_fill(
     }
 
     let width = case.line_width_mm as f32;
-    let flow = case.flow_rate as f32;
+    // The module divides the percent magnitude by 100 at consumption.
+    let flow = case.flow_rate as f32 / 100.0;
     let speed = case.speed_factor();
     for path in paths {
         if path.role != ExtrusionRole::Ironing {
@@ -661,7 +663,7 @@ fn check_fill(
             }
             if p.flow_factor.to_bits() != flow.to_bits() {
                 return Err(CheckFailure::Metadata(format!(
-                    "flow_factor {} differs from the configured ironing_flow_rate {flow}",
+                    "flow_factor {} differs from the configured support_ironing_flow {flow}",
                     p.flow_factor
                 )));
             }
@@ -862,8 +864,8 @@ fn build_case(mode: Mode, degenerate: Degenerate, raw: [u32; RAW_LEN], l: &SiLim
         spacing_mm,
         // (0, 2] mm in exact 1/64 mm steps.
         line_width_mm: pick(raw[13], 1, 128) as f64 / 64.0,
-        // [1, 200] in exact 0.5 steps.
-        flow_rate: pick(raw[14], 2, 400) as f64 / 2.0,
+        // (0, 100] percent in exact 0.5 steps.
+        flow_rate: pick(raw[14], 1, 200) as f64 / 2.0,
         ironing_speed: pick(raw[15], 1, 300) as f64,
         z: pick(raw[16], 1, 400) as f32 * 0.05,
     }
@@ -1284,11 +1286,12 @@ fn support_ironing_controls() {
         mutate(&mut mutant[0]);
         expect_failure(&charter, &limits, &mutant, what, is_metadata);
     }
-    // The configured values really are what the output carries.
+    // The configured values really are what the output carries
+    // (`support_ironing_flow` is a percent: 87.5% emits 0.875).
     assert!(charter_paths.iter().all(|p| p
         .points
         .iter()
-        .all(|q| q.flow_factor == 87.5 && q.width == 0.4375 && q.z == 0.2)
+        .all(|q| q.flow_factor == 87.5_f32 / 100.0 && q.width == 0.4375 && q.z == 0.2)
         && p.speed_factor == 45.0 / 50.0));
 
     // ── Degenerate modes: actual empty outcome; nonempty output rejected ───
@@ -1372,7 +1375,7 @@ fn check_shrink_state(case: &FillCase, mode: Mode, limits: &SiLimits) {
         );
     }
     assert!(case.line_width_mm > 0.0 && case.line_width_mm <= 2.0);
-    assert!((1.0..=200.0).contains(&case.flow_rate));
+    assert!((0.0..=100.0).contains(&case.flow_rate));
     assert!((1.0..=300.0).contains(&case.ironing_speed));
     assert!(case.z > 0.0 && case.z.is_finite());
     if mode != Mode::Degenerate {

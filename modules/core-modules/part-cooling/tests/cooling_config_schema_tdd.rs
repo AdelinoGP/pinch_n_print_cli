@@ -42,7 +42,6 @@ fn assert_group_cooling(entry: &Value, key: &str) {
 fn int_keys_declared_with_defaults() {
     let m = manifest();
     for (key, default) in [
-        ("fan_min_speed", 51),
         ("fan_max_speed", 255),
         ("close_fan_the_first_x_layers", 1),
         ("overhang_fan_speed", 100),

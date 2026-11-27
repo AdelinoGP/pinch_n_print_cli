@@ -1096,10 +1096,20 @@ impl ConfigView {
     /// `Percent` never coerces here — no base is available. `FloatOrPercent`
     /// only yields its literal when `is_percent` is `false`; when the value
     /// is a percent, callers MUST resolve it via [`ConfigView::get_abs_value`].
+    ///
+    /// `Int` IS accepted: a JSON integer is a valid float spelling, and the
+    /// module sees the raw source variant (ticket 131).
     #[must_use]
     pub fn get_float(&self, key: &str) -> Option<f64> {
         match envelope(self.fields.get(key)?) {
             ConfigValue::Float(f) => Some(if f.is_subnormal() { 0.0 } else { *f }),
+            // A JSON integer is a valid spelling of a float value. `serde_json`
+            // hands `1` to `json_to_config_value` as an integer and `1.0` as a
+            // float, and modules read the RAW source map
+            // (`bind_module_config_view` -> `ConfigView::from_declared`), so
+            // that spelling difference used to reach the accessor and drop the
+            // integer form on the floor. See ticket 131.
+            ConfigValue::Int(i) => Some(*i as f64),
             ConfigValue::FloatOrPercent {
                 value,
                 is_percent: false,
@@ -1139,29 +1149,49 @@ impl ConfigView {
     ///   `is_percent` is `true`; when `false`, `value` is already absolute
     ///   and is returned unchanged regardless of `base`.
     /// * `Float(f)` is already absolute and is returned unchanged.
+    /// * `Int(i)` is read exactly like `Float` — a JSON integer is a valid
+    ///   spelling of the same number (ticket 131).
+    /// * `String(s)` with a trailing `%` (the form 3MF metadata preserves for
+    ///   percent keys such as `sparse_infill_density`) is parsed and resolves
+    ///   like `Percent`; other strings yield `None`. Wayfinder ticket 107 made
+    ///   percent strings resolvable so canonical-percent keys (e.g.
+    ///   `sparse_infill_density`) reach the infill modules from Orca-authored
+    ///   3MF sidecars.
     /// * Any other variant, or a missing key, yields `None`.
     #[must_use]
     pub fn get_abs_value(&self, key: &str, base: f64) -> Option<f64> {
-        match envelope(self.fields.get(key)?) {
-            ConfigValue::Percent(p) => {
-                if base > 0.0 {
-                    Some(p / 100.0 * base)
-                } else {
-                    None
-                }
+        let percent = |p: f64| {
+            if base > 0.0 {
+                Some(p / 100.0 * base)
+            } else {
+                None
             }
+        };
+        match envelope(self.fields.get(key)?) {
+            ConfigValue::Percent(p) => percent(*p),
             ConfigValue::FloatOrPercent { value, is_percent } => {
                 if *is_percent {
-                    if base > 0.0 {
-                        Some(value / 100.0 * base)
-                    } else {
-                        None
-                    }
+                    percent(*value)
                 } else {
                     Some(*value)
                 }
             }
             ConfigValue::Float(f) => Some(*f),
+            // Same absolute reading as `Float`, for the same reason
+            // `get_float` accepts it: `90` and `90.0` are two JSON spellings of
+            // one number, and the module receives whichever the profile used.
+            // This does NOT decide ticket 128's separate question of whether a
+            // bare number against a `percent` key should mean percent-of-base
+            // or absolute — whatever that ruling is, it applies identically to
+            // `Float` and `Int`, which is exactly the point of this arm.
+            ConfigValue::Int(i) => Some(*i as f64),
+            ConfigValue::String(s) => {
+                if let Some(num) = s.strip_suffix('%') {
+                    num.trim().parse::<f64>().ok().and_then(percent)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -1868,7 +1898,7 @@ pub struct SupportGeometryIR {
     /// 0.0 = use model layer height (config schema enforces min > 0).
     pub support_layer_height_mm: f32,
     /// Distance in mm from column tops to add intermediate model layers.
-    pub support_top_z_distance_mm: f32,
+    pub support_top_z_distance: f32,
     /// Per-(layer, object, region) coarse outline polygons.
     pub entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
 }
@@ -1878,7 +1908,7 @@ impl Default for SupportGeometryIR {
         Self {
             schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
             support_layer_height_mm: 0.0,
-            support_top_z_distance_mm: 0.0,
+            support_top_z_distance: 0.0,
             entries: HashMap::new(),
         }
     }
@@ -2314,15 +2344,23 @@ pub struct SlicedRegion {
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
     /// Empty until `Layer::Perimeters` commits — the host then computes
-    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill, top_solid_fill)`
-    /// with precedence `bridge > bottom > top > sparse`. The four canonical
+    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill,
+    /// top_solid_fill, internal_solid_fill)` with precedence
+    /// `bridge > bottom > top > internal > sparse`. The five canonical
     /// fill polygons (`bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
-    /// `sparse_infill_area`) are pairwise disjoint subsets of
-    /// `perimeter.infill_areas` after that hook. See
+    /// `internal_solid_fill`, `sparse_infill_area`) are pairwise disjoint
+    /// subsets of `perimeter.infill_areas` after that hook. See
     /// `crates/slicer-runtime/src/region_partition.rs`.
     #[serde(default)]
     pub sparse_infill_area: Vec<ExPolygon>,
-    /// dense-interior band (shell band minus depth-0 exposed seed); WIT-mirrored in a later step.
+    /// Internal-solid fill polygons. Dual content by construction: the PrePass
+    /// shell-band marker (shell band minus depth-0 exposed seed — a subset of
+    /// `top_solid_fill`) plus converted sparse islands
+    /// (`minimum_sparse_infill_area`). The fill-stage partition
+    /// (`region_partition`) subtracts the top/bottom/bridge precedence zones,
+    /// which carves the marker to empty and leaves the islands as the
+    /// bucket's only survivors; the `claim:top-fill` holders emit that bucket
+    /// as `ExtrusionRole::InternalSolidInfill`.
     #[serde(default)]
     pub internal_solid_fill: Vec<ExPolygon>,
     /// Qualified internal-bridge-over-infill areas authored by the host's
@@ -3634,6 +3672,48 @@ mod config_value_percent_tests {
         let view = view_with("k", ConfigValue::Float(3.5));
         assert_eq!(view.get_abs_value("k", 0.0), Some(3.5));
         assert_eq!(view.get_abs_value("k", 100.0), Some(3.5));
+    }
+
+    /// Ticket 131: `serde_json` gives `90` as `Int` and `90.0` as `Float`
+    /// (`json_to_config_value`), and modules read the raw source map, so the
+    /// JSON spelling reaches this accessor. Both must resolve identically.
+    #[test]
+    fn get_abs_value_reads_int_exactly_like_float() {
+        let by_int = view_with("k", ConfigValue::Int(90)).get_abs_value("k", 100.0);
+        let by_float = view_with("k", ConfigValue::Float(90.0)).get_abs_value("k", 100.0);
+        assert_eq!(by_int, Some(90.0));
+        assert_eq!(by_int, by_float, "Int and Float spellings must agree");
+    }
+
+    /// The base is irrelevant for both, exactly as for `Float`: an integer is
+    /// read as an absolute value, not as a percent of `base`. Which of those a
+    /// bare number *should* mean for a `percent` key is ticket 128's open
+    /// question — this only pins that `Int` and `Float` answer it the same way.
+    #[test]
+    fn get_abs_value_int_is_absolute_and_ignores_base() {
+        let view = view_with("k", ConfigValue::Int(7));
+        assert_eq!(view.get_abs_value("k", 100.0), Some(7.0));
+        assert_eq!(view.get_abs_value("k", 0.4), Some(7.0));
+    }
+
+    /// Same gap, same fix, on the plain float accessor.
+    #[test]
+    fn get_float_reads_int_exactly_like_float() {
+        assert_eq!(
+            view_with("k", ConfigValue::Int(1)).get_float("k"),
+            Some(1.0)
+        );
+        assert_eq!(
+            view_with("k", ConfigValue::Int(-3)).get_float("k"),
+            Some(-3.0)
+        );
+    }
+
+    /// Widening the float accessors must not disturb the integer accessor.
+    #[test]
+    fn get_int_still_reads_int_and_rejects_float() {
+        assert_eq!(view_with("k", ConfigValue::Int(3)).get_int("k"), Some(3));
+        assert_eq!(view_with("k", ConfigValue::Float(3.0)).get_int("k"), None);
     }
 
     #[test]

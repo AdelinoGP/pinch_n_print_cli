@@ -86,22 +86,19 @@ pub struct RectilinearInfill {
 #[slicer_module]
 impl LayerModule for RectilinearInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Required reads: the registry seeds every declared key's default into
-        // a bound view, so an absent key is a contract violation, not a
-        // configurable fallback (packet 06 fail-closed semantics; mirrors
-        // arachne-perimeters).
-        let density = config.require_float("infill_density")? as f32;
+        // Canonical `sparse_infill_density` is coPercent (default 20 = 20%):
+        // resolve against base 100 and divide by 100 for the fraction. The
+        // registry seeds every declared key's default into a bound view, so an
+        // absent key is a contract violation, not a configurable fallback
+        // (packet 06 fail-closed semantics; mirrors arachne-perimeters).
+        let density = config.require_abs_value("sparse_infill_density", 100.0)? as f32 / 100.0;
 
-        let base_angle = config.require_float("infill_angle")? as f32;
+        // Canonical `infill_direction` (Orca `coFloat`, default 45).
+        let base_angle = config.require_float("infill_direction")? as f32;
 
-        let infill_speed = config.require_float("infill_speed")? as f32;
-
-        // `top_surface_speed`, `internal_solid_infill_speed`, and
-        // `internal_bridge_angle` are declared `float` with literal defaults
-        // in the manifest: required reads. `sparse_infill_speed` keeps its
-        // computed `infill_speed` fallback (the resolved sparse speed is the
-        // natural default for an unset sparse-speed override; the manifest
-        // default 60.0 equals `infill_speed`'s default).
+        // `top_surface_speed`, `internal_solid_infill_speed`,
+        // `sparse_infill_speed`, and `internal_bridge_angle` are declared
+        // `float` with literal defaults in the manifest: required reads.
         let required_speed =
             |key: &str| -> Result<f32, ModuleError> { Ok(config.require_float(key)? as f32) };
 
@@ -165,15 +162,10 @@ impl LayerModule for RectilinearInfill {
 
         let top_surface_speed = required_speed("top_surface_speed")?;
         let internal_solid_infill_speed = required_speed("internal_solid_infill_speed")?;
-        let sparse_infill_speed = match config.get("sparse_infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => infill_speed,
-        };
+        let sparse_infill_speed = required_speed("sparse_infill_speed")?;
         let dont_filter_internal_bridges = config.require_bool("dont_filter_internal_bridges")?;
         let enable_extra_bridge_layer = config.require_bool("enable_extra_bridge_layer")?;
         let internal_bridge_angle = required_speed("internal_bridge_angle")?;
-
         let infill_shift_step = config.require_float("infill_shift_step")? as f32;
 
         Ok(Self {
@@ -250,14 +242,15 @@ impl LayerModule for RectilinearInfill {
             * if layer_index.is_multiple_of(2) { 1 } else { -1 };
 
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
-        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // pre-partitions every region's wall-inset into five pairwise-disjoint
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
-        // `bottom_solid_fill`, `bridge_areas`) with precedence
-        // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick. Per-region
-        // `infill_density` / `line_width` overrides (packet 131 / TASK-256)
-        // are read through `slicer_sdk::config_resolution` and forwarded to
-        // each `scan_expolygon` call below.
+        // `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`) with
+        // precedence bridge > bottom > top > internal > sparse. Each role
+        // emits over its own polygon — zero polygon math, zero per-region
+        // role-pick. Per-region `sparse_infill_density` / `line_width`
+        // overrides (packet 131 / TASK-256) are read through
+        // `slicer_sdk::config_resolution` and forwarded to each
+        // `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(
@@ -271,10 +264,12 @@ impl LayerModule for RectilinearInfill {
 
             // Per-region config resolution (packet 131 / TASK-256):
             // fall back to module-global defaults when the per-region view
-            // is absent or the key is not declared.
-            let region_density = slicer_sdk::config_resolution::resolve_float(
+            // is absent or the key is not declared. The density key is the
+            // canonical percent `sparse_infill_density`; `resolve_percent_float`
+            // returns the fraction.
+            let region_density = slicer_sdk::config_resolution::resolve_percent_float(
                 region,
-                "infill_density",
+                "sparse_infill_density",
                 self.density,
             );
             let region_line_width =
@@ -394,7 +389,47 @@ impl LayerModule for RectilinearInfill {
                 }
             }
 
-            // BridgeInfill over bridge_areas.
+            // Internal solid fill (the dedicated domain). Content by
+            // construction: the PrePass shell-band marker carves to empty in
+            // the fill-stage partition (it is a subset of `top_solid_fill`),
+            // so what survives is the converted sparse islands
+            // (`minimum_sparse_infill_area`). Emitted as
+            // `ExtrusionRole::InternalSolidInfill` — canonical's per-surface
+            // role, at the internal-solid width/speed — and gated on the
+            // top-fill claim, which owns solid fill for this region
+            // (`should_emit` maps `InternalSolidInfill` to "always allowed",
+            // so the gate must name the owning claim explicitly).
+            let internal = region.internal_solid_fill();
+            if !internal.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
+                let role = ExtrusionRole::InternalSolidInfill;
+                let solid_line_width = resolve_role_width(
+                    role.clone(),
+                    layer_index == 0,
+                    false,
+                    &region_width_context,
+                );
+                let solid_spacing = slicer_ir::mm_to_units(solid_line_width / SOLID_DENSITY);
+                for expoly in internal {
+                    let paths = scan_expolygon(
+                        expoly,
+                        solid_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        1.0,
+                        &role,
+                        solid_line_width,
+                        true,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_solid_path(path);
+                    }
+                }
+            }
+
+            // BridgeInfill over bridge_areas at the region's bridge orientation.
             //
             // `bridge_areas` also carries the qualified internal-bridge sites
             // the host's `gate_internal_bridge_sites` appended (they are
@@ -417,11 +452,12 @@ impl LayerModule for RectilinearInfill {
                     slicer_sdk::host::ClipOperation::Difference,
                 )
             };
-            let mut bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> = vec![(
-                external_bridge,
-                region.is_internal_bridge(),
-                region.bridge_orientation_deg(),
-            )];
+            // `external_bridge` is `bridge_areas − internal_bridge_areas`, so it
+            // is never an internal bridge: the group is external by
+            // construction. Internal membership is carried per polygon by
+            // `internal_bridge_areas` below, not by a region-wide flag.
+            let mut bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> =
+                vec![(external_bridge, false, region.bridge_orientation_deg())];
             for (index, area) in internal_bridge_areas.iter().enumerate() {
                 bridge_groups.push((
                     slicer_sdk::host::clip_polygons(
@@ -852,9 +888,12 @@ mod tests {
     #[test]
     fn from_config_defaults() {
         let mut fields: HashMap<ConfigKey, ConfigValue> = HashMap::new();
-        fields.insert("infill_density".to_string(), ConfigValue::Float(0.2));
-        fields.insert("infill_angle".to_string(), ConfigValue::Float(45.0));
-        fields.insert("infill_speed".to_string(), ConfigValue::Float(60.0));
+        // Canonical percent key: 20 = 20%.
+        fields.insert(
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        );
+        fields.insert("infill_direction".to_string(), ConfigValue::Float(45.0));
         fields.insert("line_width".to_string(), ConfigValue::Float(0.45));
         fields.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
         fields.insert(

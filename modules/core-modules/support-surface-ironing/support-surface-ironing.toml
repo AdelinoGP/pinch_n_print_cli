@@ -25,13 +25,13 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.ironing_enabled]
+[config.schema.support_ironing]
 type    = "bool"
 default = false
-display = "Ironing Enabled"
+display = "Ironing Support Interface"
 group   = "Support"
 
-[config.schema.ironing_speed]
+[config.schema.support_ironing_speed]
 type    = "float"
 default = 30.0
 min     = 1.0
@@ -42,15 +42,17 @@ group   = "Support"
 # scope has a consumer that could honour a narrower statement.
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
-[config.schema.ironing_flow_rate]
-type    = "float"
-default = 100.0
-min     = 1.0
-max     = 200.0
+[config.schema.support_ironing_flow]
+# Canonical OrcaSlicer `support_ironing_flow` is `coPercent`, default 10%,
+# range 0..100. The reader divides the magnitude by 100 at consumption.
+type    = "percent"
+default = "10%"
+min     = 0.0
+max     = 100.0
 display = "Ironing Flow Rate"
 group   = "Support"
 
-[config.schema.ironing_spacing]
+[config.schema.support_ironing_spacing]
 type    = "float"
 default = 0.1
 min     = 0.01

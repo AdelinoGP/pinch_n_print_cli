@@ -20,7 +20,7 @@ fn integrated_parity_layer_planner() {
     let config = Arc::new(ConfigView::from_map(
         [
             ("layer_height".into(), ConfigValue::Float(0.2)),
-            ("first_layer_height".into(), ConfigValue::Float(0.2)),
+            ("initial_layer_print_height".into(), ConfigValue::Float(0.2)),
             ("object_height:obj-1".into(), ConfigValue::Float(2.0)),
         ]
         .into_iter()

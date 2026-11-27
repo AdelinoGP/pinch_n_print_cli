@@ -43,15 +43,11 @@ mod preparation;
 mod private_plan;
 mod projection;
 
-/// Default base speed used for normalizing speed factors (mm/s).
-const BASE_SPEED: f32 = 50.0;
-
 /// Lightning sparse infill sampler.
 pub struct LightningInfill {
-    /// Infill density (0.0 to 1.0).
+    /// Infill density (fraction 0.0 to 1.0; read from the canonical percent
+    /// key `sparse_infill_density` and divided by 100).
     density: f32,
-    /// Infill print speed in mm/s.
-    infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
 }
@@ -71,13 +67,14 @@ impl LightningInfill {
 #[slicer_module(preparation)]
 impl LayerModule for LightningInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Required reads: the registry seeds every declared key's default into
-        // a bound view, so an absent key is a contract violation, not a
-        // configurable fallback (packet 06 fail-closed semantics; mirrors
-        // arachne-perimeters).
-        let density = config.require_float("infill_density")? as f32;
-
-        let infill_speed = config.require_float("infill_speed")? as f32;
+        // Canonical `sparse_infill_density` is coPercent (default 20 = 20%);
+        // resolve the literal percent against base 100 and divide by 100 to
+        // recover the density fraction. (Wayfinder ticket 107 standardised
+        // the key to Orca's name and percent representation.) The registry
+        // seeds every declared key's default into a bound view, so an absent
+        // key is a contract violation, not a configurable fallback (packet 06
+        // fail-closed semantics; mirrors arachne-perimeters).
+        let density = config.require_abs_value("sparse_infill_density", 100.0)? as f32 / 100.0;
 
         // The `width` closure below keeps its literal `0.0` arms: they are the
         // documented canonical auto-0 sentinel (packet 185 AC-5), not
@@ -113,7 +110,6 @@ impl LayerModule for LightningInfill {
 
         Ok(Self {
             density,
-            infill_speed,
             line_width,
         })
     }
@@ -126,7 +122,13 @@ impl LayerModule for LightningInfill {
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let speed_factor = self.infill_speed / BASE_SPEED;
+        // Sparse paths carry the neutral speed factor: the emitted feedrate is
+        // the host FeedrateConfig::sparse_infill_speed decision (the same raw
+        // `sparse_infill_speed` key this module used to divide against a
+        // private BASE_SPEED, which double-counted user-set values through the
+        // shared source). Wayfinder ticket 114 retired the module-side factor
+        // base; the host owns the role speed, matching rectilinear-infill.
+        let speed_factor = 1.0;
         // The plan arrives as this layer's private piece (D3). No paint-view
         // segment read remains: the piece is the only plan source. The read is
         // lazy so a module that holds no sparse-fill region on this layer emits
@@ -289,9 +291,8 @@ mod tests {
         values.insert("line_width".into(), ConfigValue::Float(0.45));
         // Declared keys (lightning-infill.toml) seeded at their manifest
         // defaults, mirroring the production `seed_registry_defaults` step.
-        values.insert("infill_density".into(), ConfigValue::Float(0.2));
-        values.insert("infill_angle".into(), ConfigValue::Float(45.0));
-        values.insert("infill_speed".into(), ConfigValue::Float(60.0));
+        // Canonical percent key: 20 = 20%.
+        values.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
         let config = ConfigView::from_map(values);
         let module = LightningInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);

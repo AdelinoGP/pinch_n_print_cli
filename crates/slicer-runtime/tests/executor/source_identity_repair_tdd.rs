@@ -698,9 +698,12 @@ fn guest_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBund
                 is_percent: false,
             },
         ),
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
-        ("infill_speed".to_string(), ConfigValue::Float(50.0)),
+        ("sparse_infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         ("bridge_line_width".to_string(), ConfigValue::Float(0.0)),
         (
@@ -2395,6 +2398,9 @@ fn r8_planner_bundle(stem: &str) -> TestModuleBundle {
         "support_interface_bottom_layers".into(),
         values["support_interface_top_layers"].clone(),
     );
+    // The manifest default is canonical OFF (`enable_support = false`); this
+    // fixture exercises active planners, so support is enabled explicitly.
+    values.insert("enable_support".into(), ConfigValue::Bool(true));
     guest_bundle_r8(stem, values)
 }
 
@@ -2477,7 +2483,7 @@ fn r8_planner_board(plan: &ExecutionPlan, reverse: bool) -> Blackboard {
     let mut regions = RegionMapIR::default();
     let mut geometry = SupportGeometryIR {
         support_layer_height_mm: 0.0,
-        support_top_z_distance_mm: 0.2,
+        support_top_z_distance: 0.2,
         ..Default::default()
     };
     let mut analysis = SupportAnalysisIR::default();
@@ -2957,7 +2963,7 @@ fn leg_r9_lightning_generator_guest() -> Result<(), String> {
         let resolved = ResolvedConfig {
             sparse_fill_holder: "lightning-infill".into(),
             line_width: 0.4,
-            infill_density: 0.2,
+            sparse_infill_density: 20.0,
             layer_height: 0.3,
             extensions: BTreeMap::from([(
                 "prepared_plan_diagnostic".into(),
@@ -2976,7 +2982,7 @@ fn leg_r9_lightning_generator_guest() -> Result<(), String> {
             .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         config_values.insert("layer_height".into(), ConfigValue::Float(0.3));
-        config_values.insert("infill_angle".into(), ConfigValue::Float(45.0));
+        config_values.insert("infill_direction".into(), ConfigValue::Float(45.0));
         config_values.insert(
             "prepared_plan_diagnostic".into(),
             ConfigValue::String("none".into()),

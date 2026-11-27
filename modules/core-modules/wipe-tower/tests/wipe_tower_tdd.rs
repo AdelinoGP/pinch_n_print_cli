@@ -51,14 +51,11 @@ fn empty_config() -> ConfigView {
     // mirroring the production `seed_registry_defaults` step; the empty-map
     // probe now behaves like a bound view.
     ConfigView::from_map(HashMap::from([
-        ("wipe_tower_enabled".to_string(), ConfigValue::Bool(false)),
+        ("enable_prime_tower".to_string(), ConfigValue::Bool(false)),
         ("wipe_tower_x".to_string(), ConfigValue::Float(10.0)),
         ("wipe_tower_y".to_string(), ConfigValue::Float(10.0)),
-        ("wipe_tower_width".to_string(), ConfigValue::Float(60.0)),
-        (
-            "wipe_tower_purge_volume".to_string(),
-            ConfigValue::Float(10.0),
-        ),
+        ("prime_tower_width".to_string(), ConfigValue::Float(60.0)),
+        ("prime_volume".to_string(), ConfigValue::Float(10.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         ("retract_length".to_string(), ConfigValue::Float(2.0)),
     ]))
@@ -66,14 +63,11 @@ fn empty_config() -> ConfigView {
 
 fn enabled_config() -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    fields.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
     fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
-    fields.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
-    fields.insert(
-        "wipe_tower_purge_volume".to_string(),
-        ConfigValue::Float(10.0),
-    );
+    fields.insert("prime_tower_width".to_string(), ConfigValue::Float(60.0));
+    fields.insert("prime_volume".to_string(), ConfigValue::Float(10.0));
     fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
     fields.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     ConfigView::from_map(fields)
@@ -81,15 +75,15 @@ fn enabled_config() -> ConfigView {
 
 fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    fields.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(x as f64));
     fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(y as f64));
     fields.insert(
-        "wipe_tower_width".to_string(),
+        "prime_tower_width".to_string(),
         ConfigValue::Float(width as f64),
     );
     fields.insert(
-        "wipe_tower_purge_volume".to_string(),
+        "prime_volume".to_string(),
         ConfigValue::Float(purge_vol as f64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_w as f64));
@@ -108,11 +102,10 @@ fn from_config_defaults() {
     assert!((wt.tower_x() - 10.0).abs() < 0.001);
     assert!((wt.tower_y() - 10.0).abs() < 0.001);
     assert!((wt.tower_width() - 60.0).abs() < 0.001);
-    // Default purge volume is the manifest default (10.0); the previous 70.0
-    // fallback exceeded the schema max and was lowered in commit 6973f5c1
-    // (`fix(parity): close 4 OrcaSlicer parity gaps`). This assertion was left
-    // stale by that change and is corrected here to match the documented source
-    // default (`wipe-tower/src/lib.rs` `from_config` → `_ => 10.0`).
+    // A bound view carries the manifest default; this fixture seeds the
+    // `prime_volume` default at its (older) 10.0 probe value, and the module
+    // reads the seeded value verbatim. The unseeded manifest default is 45.0
+    // (ticket 100 aligned it to OrcaSlicer's `prime_volume` default).
     assert!((wt.purge_volume() - 10.0).abs() < 0.001);
 }
 

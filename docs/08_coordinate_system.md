@@ -149,7 +149,7 @@ Conventions:
   slice` calls `place_bare_mesh_on_bed`
   (`crates/slicer-model-io/src/loader.rs`) for **STL, OBJ and explicitly loaded
   SCAD**, which drops the model so its world `z_min` is `0.0 mm` and centres its
-  XY bounding box on the `bed_shape` centre. **3MF is excluded** — it carries
+  XY bounding box on the `printable_area` centre. **3MF is excluded** — it carries
   authored plate placement that must survive. `pnp_cli mesh import` never
   places, including for SCAD. See the Bed Placement section below.
 
@@ -197,13 +197,13 @@ Rules:
   SUT defect pinned by
   `bed_placement_tdd::identity_matrix_placement_updates_build_volume_to_the_world_union`;
   `H-IO-PLACEMENT` asserts the world union for every generated scene.
-- **Bed geometry comes from `bed_shape`** (`ResolvedConfig`), an interleaved
+- **Bed geometry comes from `printable_area`** (`ResolvedConfig`), an interleaved
   `[x0, y0, x1, y1, ...]` mm polygon defaulting to a 250 x 250 square. When it
   cannot describe a plate, placement is skipped with a warning rather than
   guessed at.
 - **Fit is warned, not enforced.** `bed_overflow_mm` reports how far the placed
   footprint spills past the plate; `pnp_cli` prints a warning and slices
-  anyway, because `bed_shape` may simply be unconfigured.
+  anyway, because `printable_area` may simply be unconfigured.
 
 **Why this is normative rather than cosmetic:** without placement, a model
 authored below the plate is silently truncated at `z = 0`. A real case measured

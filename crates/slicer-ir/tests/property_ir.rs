@@ -1153,7 +1153,10 @@ fn config_from_seed(
             let (depth, breadth) = bounded_extension_shape(depth, *breadth, max_list_len);
             let mut config = ResolvedConfig {
                 layer_height: bounded_magnitude(max_abs_value, *layer_height),
-                first_layer_height: bounded_magnitude(max_abs_value, line_height.wrapping_add(7)),
+                initial_layer_print_height: bounded_magnitude(
+                    max_abs_value,
+                    line_height.wrapping_add(7),
+                ),
                 line_width: bounded_magnitude(max_abs_value, line_height.wrapping_add(3)),
                 outer_wall_speed: bounded_magnitude(max_abs_value, *speed) as f32,
                 ..Default::default()
@@ -1211,9 +1214,9 @@ fn config_from_seed(
             config = property_oracles::with_sequence(&config, 0);
             config = property_oracles::with_text_sequence(&config, 0);
             let applied = config
-                .apply_cli_key("wall_count", value)
-                .expect("the bounded scalar domain keeps wall_count inside u32");
-            assert!(applied, "wall_count must be a bound CLI key");
+                .apply_cli_key("wall_loops", value)
+                .expect("the bounded scalar domain keeps wall_loops inside u32");
+            assert!(applied, "wall_loops must be a bound CLI key");
             config
         }
         ConfigSeed::Holder(text) => {

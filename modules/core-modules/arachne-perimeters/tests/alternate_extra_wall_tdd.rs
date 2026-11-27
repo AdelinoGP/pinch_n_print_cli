@@ -9,7 +9,7 @@
 //! the gate is satisfied, and stays flat when `alternate_extra_wall` is off.
 //!
 //! The fixture pins the wall count via `max_bead_count` directly (not the
-//! module's vestigial, unread `wall_count` config key — see
+//! module's vestigial, unread `wall_loops` config key — see
 //! `precise_outer_wall_tdd.rs`'s own `make_config` for that key's no-op
 //! status in this module) on a square large enough that the geometry always
 //! has far more beading headroom than the cap, so the emitted wall-loop
@@ -50,7 +50,7 @@ fn make_config(alternate_extra_wall: bool) -> ConfigView {
         .float("resolution", 0.01)
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("wall_loops", BASE_WALL_COUNT as i64)
         .int("max_bead_count", BASE_MAX_BEAD_COUNT)
         .bool("alternate_extra_wall", alternate_extra_wall)
         .bool("spiral_vase", false)

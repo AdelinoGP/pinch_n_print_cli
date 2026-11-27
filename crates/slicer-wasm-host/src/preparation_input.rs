@@ -570,8 +570,8 @@ impl CommittedPreparationInputs {
                     "support_geometry.support_layer_height_mm",
                 )?;
                 finite(
-                    geometry.support_top_z_distance_mm,
-                    "support_geometry.support_top_z_distance_mm",
+                    geometry.support_top_z_distance,
+                    "support_geometry.support_top_z_distance",
                 )?;
                 geometry_rows(&geometry.entries, "support_geometry.entries")?
             }
@@ -1469,7 +1469,7 @@ impl OwnerPreparationInput {
             )?;
             Ok(Some(PreparationSupportGeometryBatch {
                 support_layer_height_mm: geometry.support_layer_height_mm,
-                support_top_z_distance_mm: geometry.support_top_z_distance_mm,
+                support_top_z_distance_mm: geometry.support_top_z_distance,
                 entries,
             }))
         })

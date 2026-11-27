@@ -51,12 +51,14 @@ fn config() -> Arc<ConfigView> {
     // with this test's density/line_width winning.
     Arc::new(ConfigView::from_map(
         [
-            ("infill_density".into(), ConfigValue::Float(0.5)),
+            ("sparse_infill_density".into(), ConfigValue::Float(50.0)),
             // Declared required reads since the guests' config-literal
             // fallbacks migrated to `require_*` (gyroid-infill.toml /
-            // rectilinear-infill.toml manifest defaults).
-            ("infill_angle".into(), ConfigValue::Float(45.0)),
-            ("infill_speed".into(), ConfigValue::Float(60.0)),
+            // rectilinear-infill.toml manifest defaults). Density stays the
+            // canonical percent key (50 = 50%); the angle/speed keys carry
+            // their canonical Orca names.
+            ("infill_direction".into(), ConfigValue::Float(45.0)),
+            ("sparse_infill_speed".into(), ConfigValue::Float(60.0)),
             ("bridge_speed".into(), ConfigValue::Float(25.0)),
             ("top_surface_speed".into(), ConfigValue::Float(60.0)),
             (

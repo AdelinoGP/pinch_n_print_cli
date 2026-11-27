@@ -148,7 +148,7 @@ impl Fixture {
         let path = dir.join(format!("config-{mode}.json"));
         let body = json!({
             "layer_height": 1.0,
-            "first_layer_height": 1.0,
+            "initial_layer_print_height": 1.0,
             "preparation_visual_mode": mode,
             "preparation_visual_token": "PRB1",
         });

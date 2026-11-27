@@ -17,7 +17,7 @@
 //!
 //! This module is the canonical decision surface for live travel retraction:
 //! - Inter-region travel (moving from one `PerimeterRegionView` to the next)
-//!   is classified as **external** → emit Retract + ZHop (if `travel_z_hop > 0`)
+//!   is classified as **external** → emit Retract + ZHop (if `z_hop > 0`)
 //!   + travel Move + Unretract (OrcaSlicer canonical order: lift before travel).
 //! - Intra-region travel (within the same `PerimeterRegionView`) is classified
 //!   as **internal** → suppress retraction.
@@ -37,9 +37,9 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::OrderedEntityView;
 use slicer_sdk::views::PerimeterRegionView;
 
-const DEFAULT_RETRACT_LENGTH: f32 = 0.8;
-const DEFAULT_RETRACT_SPEED: f32 = 25.0;
-const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
+const DEFAULT_RETRACTION_LENGTH: f32 = 0.8;
+const DEFAULT_RETRACTION_SPEED: f32 = 30.0;
+const DEFAULT_Z_HOP: f32 = 0.4;
 
 struct NearestNeighborCandidate {
     indices: Vec<u32>,
@@ -164,9 +164,9 @@ struct ToolChangeRecord {
 /// before emission. This module always emits clusters in ascending tool order.
 pub struct PathOptimizationDefault {
     emit_layer_markers: bool,
-    retract_length: f32,
-    retract_speed: f32,
-    travel_z_hop: f32,
+    retraction_length: f32,
+    retraction_speed: f32,
+    z_hop: f32,
     retract_mode: RetractMode,
 }
 
@@ -174,9 +174,9 @@ impl Default for PathOptimizationDefault {
     fn default() -> Self {
         Self {
             emit_layer_markers: true,
-            retract_length: DEFAULT_RETRACT_LENGTH,
-            retract_speed: DEFAULT_RETRACT_SPEED,
-            travel_z_hop: DEFAULT_TRAVEL_Z_HOP,
+            retraction_length: DEFAULT_RETRACTION_LENGTH,
+            retraction_speed: DEFAULT_RETRACTION_SPEED,
+            z_hop: DEFAULT_Z_HOP,
             retract_mode: RetractMode::default(),
         }
     }
@@ -321,17 +321,17 @@ impl LayerModule for PathOptimizationDefault {
         // The retraction keys keep their `DEFAULT_*` computed fallbacks: those
         // constants are pipeline defaults the manifest mirrors, and the
         // registry seeds the declared defaults into bound views.
-        let retract_length = match config.get("retract_length") {
+        let retraction_length = match config.get("retraction_length") {
             Some(ConfigValue::Float(f)) => *f as f32,
-            _ => DEFAULT_RETRACT_LENGTH,
+            _ => DEFAULT_RETRACTION_LENGTH,
         };
-        let retract_speed = match config.get("retract_speed") {
+        let retraction_speed = match config.get("retraction_speed") {
             Some(ConfigValue::Float(f)) => *f as f32,
-            _ => DEFAULT_RETRACT_SPEED,
+            _ => DEFAULT_RETRACTION_SPEED,
         };
-        let travel_z_hop = match config.get("travel_z_hop") {
+        let z_hop = match config.get("z_hop") {
             Some(ConfigValue::Float(f)) => *f as f32,
-            _ => DEFAULT_TRAVEL_Z_HOP,
+            _ => DEFAULT_Z_HOP,
         };
         let retract_mode = match config.get("retract_mode") {
             Some(ConfigValue::String(s)) => match s.as_str() {
@@ -348,9 +348,9 @@ impl LayerModule for PathOptimizationDefault {
         };
         Ok(Self {
             emit_layer_markers,
-            retract_length,
-            retract_speed,
-            travel_z_hop,
+            retraction_length,
+            retraction_speed,
+            z_hop,
             retract_mode,
         })
     }
@@ -400,10 +400,18 @@ impl LayerModule for PathOptimizationDefault {
                 .is_some()
         {
             output
-                .push_retract(self.retract_length, self.retract_speed, self.retract_mode)
+                .push_retract(
+                    self.retraction_length,
+                    self.retraction_speed,
+                    self.retract_mode,
+                )
                 .map_err(|e| ModuleError::fatal(8, e))?;
             output
-                .push_unretract(self.retract_length, self.retract_speed, self.retract_mode)
+                .push_unretract(
+                    self.retraction_length,
+                    self.retraction_speed,
+                    self.retract_mode,
+                )
                 .map_err(|e| ModuleError::fatal(9, e))?;
         }
 
@@ -428,14 +436,18 @@ impl LayerModule for PathOptimizationDefault {
 
             if let (Some(_from), Some(to)) = (from_pt, to_pt) {
                 output
-                    .push_retract(self.retract_length, self.retract_speed, self.retract_mode)
+                    .push_retract(
+                        self.retraction_length,
+                        self.retraction_speed,
+                        self.retract_mode,
+                    )
                     .map_err(|e| ModuleError::fatal(2, e))?;
                 // ZHop before the travel move (OrcaSlicer canonical: lift, then move).
                 // The entity index is normalized to the global anchor by the host dispatch
                 // so that ZHop, Retract, and TravelMove all land at the same entity position.
-                if self.travel_z_hop > 0.0 {
+                if self.z_hop > 0.0 {
                     output
-                        .push_z_hop(0, self.travel_z_hop)
+                        .push_z_hop(0, self.z_hop)
                         .map_err(|e| ModuleError::fatal(3, e))?;
                 }
                 output
@@ -449,7 +461,11 @@ impl LayerModule for PathOptimizationDefault {
                     ))
                     .map_err(|e| ModuleError::fatal(4, e))?;
                 output
-                    .push_unretract(self.retract_length, self.retract_speed, self.retract_mode)
+                    .push_unretract(
+                        self.retraction_length,
+                        self.retraction_speed,
+                        self.retract_mode,
+                    )
                     .map_err(|e| ModuleError::fatal(5, e))?;
             }
         }
@@ -542,9 +558,9 @@ mod tests {
     }
 
     #[test]
-    fn retract_length_read_from_config() {
+    fn retraction_length_read_from_config() {
         let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-        fields.insert("retract_length".into(), ConfigValue::Float(1.5));
+        fields.insert("retraction_length".into(), ConfigValue::Float(1.5));
         fields.insert(
             "path_optimization_emit_layer_markers".into(),
             ConfigValue::Bool(true),
@@ -552,8 +568,27 @@ mod tests {
         let config = ConfigView::from_map(fields);
         let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(
-            (module.retract_length - 1.5_f32).abs() < 1e-4,
-            "retract_length must be read from config"
+            (module.retraction_length - 1.5_f32).abs() < 1e-4,
+            "retraction_length must be read from config"
+        );
+    }
+
+    #[test]
+    fn retraction_speed_read_from_config() {
+        // Ticket 101 renamed `retract_speed` -> `retraction_speed`; this pin
+        // fails if the read site reverts, which the module suite otherwise
+        // could not see (the read has a silent in-code fallback).
+        let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+        fields.insert("retraction_speed".into(), ConfigValue::Float(40.0));
+        fields.insert(
+            "path_optimization_emit_layer_markers".into(),
+            ConfigValue::Bool(true),
+        );
+        let config = ConfigView::from_map(fields);
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
+        assert!(
+            (module.retraction_speed - 40.0_f32).abs() < 1e-4,
+            "retraction_speed must be read from config"
         );
     }
 

@@ -80,9 +80,10 @@ fn l_shape() -> ExPolygon {
 
 fn min_density_config() -> ConfigView {
     let mut map = std::collections::HashMap::new();
+    map.insert("sparse_infill_density".into(), ConfigValue::Float(50.0));
+    // infill-linker keeps its own fraction-typed `infill_density` key.
     map.insert("infill_density".into(), ConfigValue::Float(0.5));
-    map.insert("infill_angle".into(), ConfigValue::Float(45.0));
-    map.insert("infill_speed".into(), ConfigValue::Float(60.0));
+    map.insert("infill_direction".into(), ConfigValue::Float(45.0));
     map.insert("sparse_infill_speed".into(), ConfigValue::Float(60.0));
     map.insert(
         "internal_solid_infill_speed".into(),
@@ -269,8 +270,8 @@ impl FillModule {
                 let id = map.intern_config(ResolvedConfig {
                     sparse_fill_holder: "lightning-infill".into(),
                     line_width: 0.4,
-                    infill_density: 0.5,
-                    infill_angle: 45.0,
+                    sparse_infill_density: 50.0,
+                    infill_direction: 45.0,
                     layer_height: 0.2,
                     extensions: std::collections::BTreeMap::from([(
                         "prepared_plan_diagnostic".into(),

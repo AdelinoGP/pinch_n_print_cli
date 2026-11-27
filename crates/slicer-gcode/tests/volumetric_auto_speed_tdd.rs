@@ -60,7 +60,7 @@ const FLOW: f32 = 1.0;
 /// carrier, matching the public config-resolution path.
 fn config_with_volumetric_max(first_layer_height: f64, max: f32) -> ResolvedConfig {
     let mut config = ResolvedConfig {
-        first_layer_height,
+        initial_layer_print_height: first_layer_height,
         ..Default::default()
     };
     config.extensions.insert(
@@ -516,7 +516,7 @@ fn automatic_final_feedrate_overflow_and_zero_fail_closed() {
 #[test]
 fn automatic_malformed_volumetric_extension_fails_closed() {
     let mut global_config = ResolvedConfig {
-        first_layer_height: HEIGHT_MM,
+        initial_layer_print_height: HEIGHT_MM,
         ..Default::default()
     };
     global_config.extensions.insert(
@@ -536,7 +536,7 @@ fn automatic_malformed_volumetric_extension_fails_closed() {
 #[test]
 fn automatic_invalid_tool_override_does_not_fall_back_to_global() {
     let mut malformed_tool = ResolvedConfig {
-        first_layer_height: HEIGHT_MM,
+        initial_layer_print_height: HEIGHT_MM,
         ..Default::default()
     };
     malformed_tool.extensions.insert(

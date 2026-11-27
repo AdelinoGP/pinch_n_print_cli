@@ -210,8 +210,8 @@ fn registry() -> ConfigSchemaRegistry {
             module_id: "dev.pinch.test.prepass".to_owned(),
             schema: ConfigSchema {
                 entries: BTreeMap::from([
-                    ("wall_count".to_owned(), int_field()),
-                    ("infill_density".to_owned(), float_field()),
+                    ("wall_loops".to_owned(), int_field()),
+                    ("sparse_infill_density".to_owned(), float_field()),
                 ]),
             },
             ..ModuleDeclaration::default()
@@ -235,8 +235,8 @@ fn scoped_world(registry: &ConfigSchemaRegistry) -> ScopedConfig {
                 min_z: 0.0,
                 max_z: 1.0,
                 values: [
-                    ("wall_count".to_owned(), "2".to_owned()),
-                    ("infill_density".to_owned(), "0.25".to_owned()),
+                    ("wall_loops".to_owned(), "2".to_owned()),
+                    ("sparse_infill_density".to_owned(), "25".to_owned()),
                 ]
                 .into_iter()
                 .collect(),
@@ -248,15 +248,15 @@ fn scoped_world(registry: &ConfigSchemaRegistry) -> ScopedConfig {
         ConfigScope::PaintSemantic("fuzzy_skin".to_owned()),
         ScopeDelta {
             values: BTreeMap::from([
-                ("wall_count".to_owned(), ConfigValue::Int(3)),
-                ("infill_density".to_owned(), ConfigValue::Float(0.5)),
+                ("wall_loops".to_owned(), ConfigValue::Int(3)),
+                ("sparse_infill_density".to_owned(), ConfigValue::Float(50.0)),
             ]),
         },
     );
     scoped.deltas.insert(
         ConfigScope::PaintSemantic("material".to_owned()),
         ScopeDelta {
-            values: BTreeMap::from([("wall_count".to_owned(), ConfigValue::Int(7))]),
+            values: BTreeMap::from([("wall_loops".to_owned(), ConfigValue::Int(7))]),
         },
     );
     scoped
@@ -349,7 +349,7 @@ fn prepass_regionmap_runtime_wrapper() {
 
     // The compatibility paint overlay does not change the chain identity, and
     // the authority path resolved the layered scopes: fuzzy then material for
-    // `wall_count` (material wins), fuzzy-only for `infill_density`.
+    // `wall_loops` (material wins), fuzzy-only for `sparse_infill_density`.
     let combined_key = map
         .entries
         .keys()
@@ -357,10 +357,10 @@ fn prepass_regionmap_runtime_wrapper() {
         .expect("combined key")
         .clone();
     let config = map.config_for(&combined_key);
-    assert_eq!(config.wall_count, 7, "material's 7 walls must win");
+    assert_eq!(config.wall_loops, 7, "material's 7 walls must win");
     assert_eq!(
-        config.infill_density, 0.5,
-        "fuzzy_skin's 0.5 density applies"
+        config.sparse_infill_density, 50.0,
+        "fuzzy_skin's 50% density applies"
     );
 
     let base_key = RegionKey {
@@ -370,9 +370,9 @@ fn prepass_regionmap_runtime_wrapper() {
         variant_chain: Vec::new(),
     };
     let base = map.config_for(&base_key);
-    assert_eq!(base.wall_count, 2, "BASE keeps the layer-range value");
+    assert_eq!(base.wall_loops, 2, "BASE keeps the layer-range value");
     assert_eq!(
-        base.infill_density, 0.25,
+        base.sparse_infill_density, 25.0,
         "BASE keeps the layer-range value"
     );
 }
@@ -414,8 +414,11 @@ fn prepass_paint_map_identity_integration() {
 
     // --- Actual selection -------------------------------------------------
     let invocation_view = ConfigView::from_map(HashMap::from([
-        ("wall_count".to_string(), ConfigValue::Int(1)),
-        ("infill_density".to_string(), ConfigValue::Float(0.9)),
+        ("wall_loops".to_string(), ConfigValue::Int(1)),
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(90.0),
+        ),
     ]));
     // exhaustive: static binding fixture pins stage, module, claims and view.
     let module = LayerSelectionModuleInput {
@@ -471,14 +474,14 @@ fn prepass_paint_map_identity_integration() {
     );
     assert_eq!(members, &vec![key.clone()]);
     assert_eq!(
-        target.config.get_int("wall_count"),
+        target.config.get_int("wall_loops"),
         Some(7),
         "the selected view must carry material's 7 walls, not BASE's 2 or fuzzy's 3"
     );
     assert_eq!(
-        target.config.get_float("infill_density"),
-        Some(0.5),
-        "the selected view must carry fuzzy_skin's 0.5 density"
+        target.config.get_float("sparse_infill_density"),
+        Some(50.0),
+        "the selected view must carry fuzzy_skin's 50% density"
     );
 
     // --- Negative 1: reversed chain, real slice, real builder -------------

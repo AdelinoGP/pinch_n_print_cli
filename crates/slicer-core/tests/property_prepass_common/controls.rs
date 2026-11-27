@@ -111,7 +111,7 @@ pub fn model_controls() {
 
     // 6. A wrong per-key config.
     let mut wrong_config = observed.clone();
-    wrong_config.entries[0].1.wall_count += 1;
+    wrong_config.entries[0].1.wall_loops += 1;
     assert!(
         verify(&case, &wrong_config).is_err(),
         "a wrong config_for result must fail the checker"

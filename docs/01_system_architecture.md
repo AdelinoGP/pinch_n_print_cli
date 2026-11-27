@@ -271,7 +271,7 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
            via plane-triangle intersection at support layer boundaries. Support
            layer height is controlled by `support_layer_height_mm`
            (default 0 = model layer height). Near model contact zones
-           (`support_top_z_distance_mm`), adds intermediate layers at model
+           (`support_top_z_distance`), adds intermediate layers at model
            resolution so the top distance is honored precisely. Runs after
            `execute_prepass` so `LayerPlanIR` is always committed first.
            Phase 2 — when a `support-planner` guest is loaded, the host invokes
@@ -402,14 +402,19 @@ Layer::Perimeters
            where adjacent material semantic regions are detected via
            PaintRegionLayerView.
            Commit side-effect: the host partitions the effective wall inset
-           (`perimeter.infill_areas ∩ region.polygons`) into four canonical fill
-           polygons via `sync_perimeter_infill_areas_into_slice`. Nonempty inset
-           obeys `bridge > bottom > top > sparse`; empty inset with walls leaves
-           all four roles empty; empty inset without walls preserves the original
-           bridge and top-minus-bridge; a missing donor warns and keeps the
-           PrePass roles; a rejected modifier split restores the entry-state
-           slice. See `crates/slicer-runtime/src/region_partition.rs` and
-           `docs/testing/properties.md#h-runtime-partition`.
+           (`perimeter.infill_areas ∩ region.polygons`) into five canonical fill
+           polygons (`bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
+           `internal_solid_fill`, `sparse_infill_area`) via
+           `sync_perimeter_infill_areas_into_slice`. Nonempty inset obeys
+           `bridge > bottom > top > internal > sparse` (OrcaSlicer parity);
+           empty inset with walls leaves all five roles empty; empty inset
+           without walls preserves the original bridge and top-minus-bridge;
+           a missing donor warns and keeps the PrePass roles; a rejected
+           modifier split restores the entry-state slice. See
+           `crates/slicer-runtime/src/region_partition.rs`,
+           `docs/testing/properties.md#h-runtime-partition`, and
+           `specs/_OLD/infill-fill-partition-plan.md` (superseded spec,
+           retained for the partition write-up).
 
 Layer::PerimetersPostProcess
   Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)
@@ -424,8 +429,9 @@ Layer::PerimetersPostProcess
            Unflagged segments on the same loop retain their original XY path.
 
 Layer::Infill
-  Input:  SliceIR (each region's four canonical pairwise-disjoint fill polygons,
-                   populated by the host at Layer::Perimeters commit)
+  Input:  SliceIR (each region's five canonical pairwise-disjoint fill polygons —
+                   bridge, bottom, top, internal, sparse — populated by the host
+                   at Layer::Perimeters commit)
   Output: InfillIR
   Purpose: Infill pattern generation (rectilinear, gyroid, TPMS, lightning, etc.).
            Each fill claim holder reads exactly one of:
@@ -1325,7 +1331,7 @@ The host instantiates exactly one WASM instance for finalization modules regardl
 `seam-placer` (stage `Layer::PerimetersPostProcess`) consumes the host-injected
 `SeamPlanIR` produced by the `PrePass::SeamPlanning` stage (`seam-planner-default`)
 and projects each planner target onto the final wall geometry. The default
-`seam_mode` for both modules is **`aligned`**, matching OrcaSlicer's canonical
+`seam_position` for both modules is **`aligned`**, matching OrcaSlicer's canonical
 `spAligned` default (see `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
 amendment recorded in the ADR itself).
 

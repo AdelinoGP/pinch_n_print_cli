@@ -14,11 +14,11 @@ use wipe_tower::WipeTower;
 
 /// Standard 250×250 bed-shape ConfigValue used by every test below.
 ///
-/// Packet 58 made `bed_shape` a config key consulted by `run_finalization` for
+/// Packet 58 made `printable_area` a config key consulted by `run_finalization` for
 /// tower-corner containment. Tests that omit it fall back to the constructor's
 /// default polygon, but supplying it explicitly keeps the fixture honest and
 /// guards against future tightening of the fallback path.
-fn bed_shape_250() -> ConfigValue {
+fn printable_area_250() -> ConfigValue {
     ConfigValue::List(vec![
         ConfigValue::Float(0.0),
         ConfigValue::Float(0.0),
@@ -115,14 +115,11 @@ fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     // Declared keys (wipe-tower.toml) seeded at their manifest defaults,
     // mirroring the production `seed_registry_defaults` step; per-test pairs
     // remain the only overrides.
-    map.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    map.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     map.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
     map.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
-    map.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
-    map.insert(
-        "wipe_tower_purge_volume".to_string(),
-        ConfigValue::Float(10.0),
-    );
+    map.insert("prime_tower_width".to_string(), ConfigValue::Float(60.0));
+    map.insert("prime_volume".to_string(), ConfigValue::Float(10.0));
     map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     map.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     for (k, v) in pairs {
@@ -140,16 +137,16 @@ fn wipe_tower_from(pairs: &[(&str, ConfigValue)]) -> WipeTower {
 #[test]
 fn run_finalization_pushes_wipe_tower_entities_for_tool_change_layers() {
     let wt = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
-        ("wipe_tower_width", ConfigValue::Float(60.0)),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("prime_volume", ConfigValue::Float(70.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
         ("line_width", ConfigValue::Float(0.4)),
-        ("bed_shape", bed_shape_250()),
+        ("printable_area", printable_area_250()),
     ]);
 
     let layer = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
     let views = vec![LayerCollectionView::new(layer)];
-    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let config = config_with(&[("printable_area", printable_area_250())]);
     let mut output = FinalizationOutputBuilder::new();
     wt.run_finalization(&views, &mut output, &config)
         .expect("run_finalization must succeed");
@@ -180,16 +177,16 @@ fn run_finalization_pushes_wipe_tower_entities_for_tool_change_layers() {
 #[test]
 fn purge_entities_carry_destination_tool_index() {
     let wt = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
-        ("wipe_tower_width", ConfigValue::Float(60.0)),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("prime_volume", ConfigValue::Float(70.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
         ("line_width", ConfigValue::Float(0.4)),
-        ("bed_shape", bed_shape_250()),
+        ("printable_area", printable_area_250()),
     ]);
 
     let layer = make_layer(0, 0.2, vec![tool_change(0, 0, 3)]);
     let views = vec![LayerCollectionView::new(layer)];
-    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let config = config_with(&[("printable_area", printable_area_250())]);
     let mut output = FinalizationOutputBuilder::new();
     wt.run_finalization(&views, &mut output, &config)
         .expect("run_finalization must succeed");
@@ -219,18 +216,18 @@ fn purge_entities_carry_destination_tool_index() {
 #[test]
 fn purge_volume_controls_finalization_push_count() {
     let wt_small = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
-        ("wipe_tower_width", ConfigValue::Float(60.0)),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("prime_volume", ConfigValue::Float(70.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
         ("line_width", ConfigValue::Float(0.4)),
-        ("bed_shape", bed_shape_250()),
+        ("printable_area", printable_area_250()),
     ]);
     let wt_large = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("wipe_tower_purge_volume", ConfigValue::Float(140.0)),
-        ("wipe_tower_width", ConfigValue::Float(60.0)),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("prime_volume", ConfigValue::Float(140.0)),
+        ("prime_tower_width", ConfigValue::Float(60.0)),
         ("line_width", ConfigValue::Float(0.4)),
-        ("bed_shape", bed_shape_250()),
+        ("printable_area", printable_area_250()),
     ]);
 
     let layer_small = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
@@ -238,7 +235,7 @@ fn purge_volume_controls_finalization_push_count() {
 
     let views_small = vec![LayerCollectionView::new(layer_small)];
     let views_large = vec![LayerCollectionView::new(layer_large)];
-    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let config = config_with(&[("printable_area", printable_area_250())]);
 
     let mut out_small = FinalizationOutputBuilder::new();
     wt_small
@@ -265,8 +262,8 @@ fn purge_volume_controls_finalization_push_count() {
 #[test]
 fn run_finalization_targets_only_layers_with_tool_changes() {
     let wt = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("bed_shape", bed_shape_250()),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("printable_area", printable_area_250()),
     ]);
 
     // layer 0: no tool changes; layer 1: one tool change
@@ -276,7 +273,7 @@ fn run_finalization_targets_only_layers_with_tool_changes() {
         LayerCollectionView::new(layer0),
         LayerCollectionView::new(layer1),
     ];
-    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let config = config_with(&[("printable_area", printable_area_250())]);
     let mut output = FinalizationOutputBuilder::new();
     wt.run_finalization(&views, &mut output, &config)
         .expect("run_finalization must succeed");
@@ -297,12 +294,12 @@ fn run_finalization_targets_only_layers_with_tool_changes() {
 
 #[test]
 fn disabled_or_no_tool_changes_emit_no_finalization_pushes() {
-    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let config = config_with(&[("printable_area", printable_area_250())]);
 
-    // Case A: wipe_tower_enabled=false with a layer that has a ToolChange
+    // Case A: enable_prime_tower=false with a layer that has a ToolChange
     let wt_disabled = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(false)),
-        ("bed_shape", bed_shape_250()),
+        ("enable_prime_tower", ConfigValue::Bool(false)),
+        ("printable_area", printable_area_250()),
     ]);
     let layer_with_tc = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
     let views_a = vec![LayerCollectionView::new(layer_with_tc)];
@@ -315,10 +312,10 @@ fn disabled_or_no_tool_changes_emit_no_finalization_pushes() {
         "disabled wipe tower must emit no entity pushes or inserts"
     );
 
-    // Case B: wipe_tower_enabled=true but layer has NO tool_changes
+    // Case B: enable_prime_tower=true but layer has NO tool_changes
     let wt_enabled = wipe_tower_from(&[
-        ("wipe_tower_enabled", ConfigValue::Bool(true)),
-        ("bed_shape", bed_shape_250()),
+        ("enable_prime_tower", ConfigValue::Bool(true)),
+        ("printable_area", printable_area_250()),
     ]);
     let layer_no_tc = make_layer(0, 0.2, vec![]);
     let views_b = vec![LayerCollectionView::new(layer_no_tc)];

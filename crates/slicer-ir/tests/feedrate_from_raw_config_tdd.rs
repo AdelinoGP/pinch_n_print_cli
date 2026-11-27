@@ -23,6 +23,7 @@ fn from_raw_config_overrides_known_keys_and_keeps_defaults() {
         ("outer_wall_speed", ConfigValue::Float(200.0)),
         ("inner_wall_speed", ConfigValue::Float(150.0)),
         ("sparse_infill_speed", ConfigValue::Float(300.0)),
+        ("wipe_tower_max_purge_speed", ConfigValue::Float(120.0)),
         ("travel_speed", ConfigValue::Float(500.0)),
     ]);
 
@@ -30,6 +31,7 @@ fn from_raw_config_overrides_known_keys_and_keeps_defaults() {
     assert_eq!(fc.outer_wall_speed, 200.0);
     assert_eq!(fc.inner_wall_speed, 150.0);
     assert_eq!(fc.sparse_infill_speed, 300.0);
+    assert_eq!(fc.wipe_tower_max_purge_speed, 120.0);
     assert_eq!(fc.travel_speed, 500.0);
     // Absent keys keep the defaults.
     assert_eq!(fc.thin_wall_speed, 30.0);

@@ -724,7 +724,7 @@ fn scad_cli_slice_places_and_emits() {
     // Analytic placement: unplaced x[-30,-18] y[5,11] z[-4,4] and the default
     // bed centre (125, 125) give dx=149 dy=117 dz=4, i.e. x[119,131]
     // y[122,128] z[0,8].
-    let bed_shape = slicer_ir::ResolvedConfig::default().bed_shape;
+    let bed_shape = slicer_ir::ResolvedConfig::default().printable_area;
     let (placed_min, placed_max) = placed_aabb([-30.0, 5.0, -4.0], [-18.0, 11.0, 4.0], &bed_shape);
     let analytic = [
         placed_min[0],
@@ -861,7 +861,7 @@ fn scad_cli_holed_extrusion_slices() {
 
     // Analytic placement: the unplaced extrusion is x[0,12] y[0,10] z[0,2], so
     // the bed centre (125, 125) shifts it by dx=119 dy=120 dz=0.
-    let bed_shape = slicer_ir::ResolvedConfig::default().bed_shape;
+    let bed_shape = slicer_ir::ResolvedConfig::default().printable_area;
     let (placed_min, placed_max) = placed_aabb([0.0, 0.0, 0.0], [12.0, 10.0, 2.0], &bed_shape);
     for (index, (got, want)) in [
         (placed_min[0], 119.0),

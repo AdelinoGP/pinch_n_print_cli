@@ -48,7 +48,6 @@ group   = "TopSurface"
 type    = "float"
 default = 20.0
 min     = 1.0
-max     = 300.0
 display = "Ironing Speed"
 group   = "TopSurface"
 # ADR-0069: the feedrate table is built once per whole print, so no sub-print
@@ -68,7 +67,7 @@ max     = 100.0
 display = "Ironing Flow"
 group   = "TopSurface"
 
-[config.schema.ironing_spacing_mm]
+[config.schema.ironing_spacing]
 type    = "float"
 default = 0.1
 min     = 0.01

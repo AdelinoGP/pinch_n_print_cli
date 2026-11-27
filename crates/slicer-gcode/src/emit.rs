@@ -28,6 +28,7 @@ use slicer_ir::{
 
 use crate::error::GCodeEmitError;
 use crate::estimator::{EstimatorLimits, PrintEstimate};
+use crate::flavor::GcodeFlavor;
 use crate::serialize::{format_xyz, tolerance_for_role};
 
 /// Cached print estimate produced by `DefaultGCodeEmitter::emit_from_reconciled_layers`,
@@ -248,6 +249,13 @@ pub struct DefaultGCodeEmitter {
     /// settings (e.g. `retract_length`) since the entity's tool is only known
     /// here, not at region-mapping. Empty → global behaviour unchanged.
     tool_configs: std::collections::BTreeMap<u32, ResolvedConfig>,
+    /// G-code dialect used for flavor-specific setup commands (pressure
+    /// advance, and — once packet 267 lands — the machine envelope / M413
+    /// recovery). Defaults to Marlin; `run_slice`
+    /// (`crates/slicer-runtime/src/run.rs`) feeds the resolved `gcode_flavor`
+    /// via `with_flavor` (packet-267 design, built here for P35; 267 rebases
+    /// onto this field — queue-order merge churn, not a second field).
+    flavor: GcodeFlavor,
     /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
     /// Must match the `DefaultGCodeSerializer`'s extrusion-mode setting.
     relative: bool,
@@ -264,6 +272,7 @@ impl DefaultGCodeEmitter {
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
             tool_configs: std::collections::BTreeMap::new(),
+            flavor: GcodeFlavor::Marlin,
             relative: true,
         }
     }
@@ -276,6 +285,7 @@ impl DefaultGCodeEmitter {
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
             tool_configs: std::collections::BTreeMap::new(),
+            flavor: GcodeFlavor::Marlin,
             relative: true,
         }
     }
@@ -297,6 +307,58 @@ impl DefaultGCodeEmitter {
             .get(&tool)
             .map(|c| c.retract_length)
             .unwrap_or(self.resolved_config.retract_length)
+    }
+
+    /// Sets the G-code dialect used for flavor-specific setup commands.
+    /// Defaults to Marlin; `run_slice` feeds the resolved `gcode_flavor`.
+    pub fn with_flavor(mut self, flavor: GcodeFlavor) -> Self {
+        self.flavor = flavor;
+        self
+    }
+
+    /// Whether pressure advance is enabled for `tool` (per-tool override
+    /// wins, else the global `enable_pressure_advance`).
+    fn pressure_advance_enabled_for_tool(&self, tool: u32) -> bool {
+        self.tool_configs
+            .get(&tool)
+            .map(|c| c.enable_pressure_advance)
+            .unwrap_or(self.resolved_config.enable_pressure_advance)
+    }
+
+    /// Pressure-advance value for `tool` (per-tool override wins, else global).
+    fn pressure_advance_for_tool(&self, tool: u32) -> f32 {
+        self.tool_configs
+            .get(&tool)
+            .map(|c| c.pressure_advance)
+            .unwrap_or(self.resolved_config.pressure_advance)
+    }
+
+    /// Flavor-specific pressure-advance setup line for `tool`, or `None`
+    /// when disabled or negative (canonical `GCodeWriter::set_pressure_advance`
+    /// returns empty for `pa < 0`; `enable_pressure_advance == false` emits
+    /// nothing at any value — the default path).
+    ///
+    /// Ported from canonical `GCode.cpp`'s toolchange/start sites, which gate
+    /// on `enable_pressure_advance.get_at(id)` and emit
+    /// `writer().set_pressure_advance(pressure_advance.get_at(id))`, plus the
+    /// `m_pa_processor->resetPreviousPA` arm that rides the adaptive processor
+    /// (ticket 42's returned keys — no processor here, so no reset).
+    /// The text carries no trailing newline: `GCodeCommand::Raw` is rendered
+    /// with the serializer's own newline (packet-267 Raw rule).
+    fn pressure_advance_command_for_tool(&self, tool: u32) -> Option<GCodeCommand> {
+        if !self.pressure_advance_enabled_for_tool(tool) {
+            return None;
+        }
+        let pa = self.pressure_advance_for_tool(tool);
+        if pa < 0.0 {
+            return None;
+        }
+        let text = self.flavor.set_pressure_advance(pa);
+        let text = text.trim_end_matches(['\n', '\r']).to_string();
+        if text.is_empty() {
+            return None;
+        }
+        Some(GCodeCommand::Raw { text })
     }
 
     /// Sets the extrusion mode.
@@ -352,7 +414,12 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::SupportBaseInterface => self.feedrate_config.support_interface_speed,
             ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
             ExtrusionRole::Brim => self.feedrate_config.skirt_speed,
-            ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
+            // Canonical purge paths are capped by both the configured tower
+            // maximum and the sparse-infill speed used for the purge grid.
+            ExtrusionRole::WipeTower => self
+                .feedrate_config
+                .wipe_tower_max_purge_speed
+                .min(self.feedrate_config.sparse_infill_speed),
             ExtrusionRole::PrimeTower => self.feedrate_config.prime_tower_speed,
             ExtrusionRole::Ironing => {
                 if self.feedrate_config.filament_ironing_speed > 0.0 {
@@ -687,8 +754,26 @@ impl DefaultGCodeEmitter {
         let mut kept_indices_buf: Vec<usize> = Vec::new();
         // Track filament used per tool (tool index -> filament mm)
         let mut filament_per_tool: HashMap<u32, f32> = HashMap::new();
-        // Current tool (default 0)
+        // Current tool (default 0 — the physical starting tool; the
+        // layer-boundary reset below emits the initial T<n> when the first
+        // extrusion needs another tool, so this must stay 0 here).
         let mut current_tool: u32 = 0;
+        // P35 (ticket 42): static pressure-advance prefix for the initial tool.
+        // Canonical `GCode.cpp` writes one PA line at file start for the
+        // initial extruder plus one after every toolchange (gated on
+        // `enable_pressure_advance.get_at(id)`); the adaptive
+        // `resetPreviousPA` arm rides the unimplemented processor, so there
+        // is no reset here. `current_tool` stays 0 above (the physical start
+        // tool) so the layer-boundary reset still emits the initial T<n>;
+        // when the first extrusion needs another tool the head PA duplicates
+        // the post-change PA with no extrusion between — harmless.
+        let initial_tool: u32 = layer_irs
+            .iter()
+            .find_map(|l| l.ordered_entities.first().map(|e| e.tool_index))
+            .unwrap_or(0);
+        if let Some(pa_cmd) = self.pressure_advance_command_for_tool(initial_tool) {
+            commands.push(pa_cmd);
+        }
         // Cumulative E position
         let mut e_position: f32 = 0.0;
 
@@ -705,8 +790,8 @@ impl DefaultGCodeEmitter {
         // Track the last non-zero height delta (for first-layer fallback). The
         // seed matters: the first layer's volumetric E is
         // width × height × length, and the hardcoded 0.2 mm over-extruded the
-        // first layer ~2× whenever first_layer_height was 0.1 mm.
-        let mut last_height_delta: f32 = self.resolved_config.first_layer_height as f32;
+        // first layer ~2× whenever initial_layer_print_height was 0.1 mm.
+        let mut last_height_delta: f32 = self.resolved_config.initial_layer_print_height as f32;
         // Previous role for ;TYPE: emission
         let mut prev_role: Option<ExtrusionRole> = None;
 
@@ -778,7 +863,7 @@ impl DefaultGCodeEmitter {
                     // in `layer.tool_changes`; the layer-boundary one here is
                     // emitted via a separate path). See packet 58 tool-rotation
                     // scheduling contract follow-up (i).
-                    if self.resolved_config.wipe_tower_enabled {
+                    if self.resolved_config.enable_prime_tower {
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).
                             length: self.retract_length_for_tool(current_tool),
@@ -792,6 +877,9 @@ impl DefaultGCodeEmitter {
                         to: required_tool,
                     });
                     current_tool = required_tool;
+                    if let Some(pa_cmd) = self.pressure_advance_command_for_tool(required_tool) {
+                        commands.push(pa_cmd);
+                    }
                 }
             }
 
@@ -1057,9 +1145,9 @@ impl DefaultGCodeEmitter {
                     // module has not emitted purge geometry, and the bare ToolChange would
                     // produce bad output (NC1).
                     //
-                    // Guard is ONLY active when wipe_tower_enabled=true. Single-material
-                    // prints (wipe_tower_enabled=false, the default) skip the check entirely.
-                    if self.resolved_config.wipe_tower_enabled {
+                    // Guard is ONLY active when enable_prime_tower=true. Single-material
+                    // prints (enable_prime_tower=false, the default) skip the check entirely.
+                    if self.resolved_config.enable_prime_tower {
                         // Heuristic: verify the wipe-tower module inserted at least one
                         // ExtrusionRole::WipeTower entity in this layer. After cross-layer
                         // tool rotation (apply_cross_layer_tool_rotation), tool_change
@@ -1085,7 +1173,7 @@ impl DefaultGCodeEmitter {
                         // doesn't smear on travel. Until the SDK exposes a way to
                         // push a TravelRetract from a finalization-stage module, the
                         // host emitter owns this retract synthesis. Gated on
-                        // wipe_tower_enabled so single-material prints are untouched.
+                        // enable_prime_tower so single-material prints are untouched.
                         // (See packet 58 tool-rotation scheduling contract follow-up (i).)
                         commands.push(GCodeCommand::Retract {
                             // Retract the outgoing tool's filament (per-tool override).
@@ -1101,6 +1189,9 @@ impl DefaultGCodeEmitter {
                         to: tc.to_tool,
                     });
                     current_tool = tc.to_tool;
+                    if let Some(pa_cmd) = self.pressure_advance_command_for_tool(tc.to_tool) {
+                        commands.push(pa_cmd);
+                    }
                     // A tool change starts a new per-color extrusion fragment:
                     // force the next entity to re-emit its `;TYPE:` label even
                     // when its role equals the pre-change entity's role.

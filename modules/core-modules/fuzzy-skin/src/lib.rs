@@ -12,12 +12,11 @@
 //!
 //! Implements `LayerModule::run_wall_postprocess` for the `Layer::PerimetersPostProcess` stage.
 //! Selectively displaces outer wall perimeter points to create a rough textured surface.
-//! Inner walls are never perturbed. When `apply-to-all` is true, all outer wall segments
+//! Inner walls are never perturbed. When `apply_to_all` is true, all outer wall segments
 //! are perturbed regardless of per-vertex `fuzzy_skin` feature flags. Unflagged segments on
 //! mixed loops keep their original XY geometry.
 //!
-//! Core algorithm adapted from OrcaSlicerDocumented/src/libslic3r/Feature/FuzzySkin/FuzzySkin.cpp
-//! (fuzzy_polyline at line 85).
+//! Core algorithm adapted from canonical `fuzzy_polyline` (`FuzzySkin.cpp`).
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -40,9 +39,9 @@ use slicer_sdk::views::PerimeterRegionView;
 /// surface finish. Uses a seeded RNG for deterministic output.
 pub struct FuzzySkinModule {
     /// Displacement magnitude in mm.
-    thickness: f32,
+    fuzzy_skin_thickness: f32,
     /// Target distance between perturbation points in mm.
-    point_distance: f32,
+    fuzzy_skin_point_distance: f32,
     /// If true, perturb all outer walls regardless of feature flags.
     apply_to_all: bool,
 }
@@ -54,13 +53,13 @@ impl LayerModule for FuzzySkinModule {
         // a bound view, so an absent key is a contract violation, not a
         // configurable fallback (packet 06 fail-closed semantics; mirrors
         // arachne-perimeters).
-        let thickness = config.require_float("thickness")? as f32;
-        let point_distance = config.require_float("point_distance")? as f32;
+        let fuzzy_skin_thickness = config.require_float("fuzzy_skin_thickness")? as f32;
+        let fuzzy_skin_point_distance = config.require_float("fuzzy_skin_point_distance")? as f32;
         let apply_to_all = config.require_bool("apply_to_all")?;
 
         Ok(Self {
-            thickness,
-            point_distance,
+            fuzzy_skin_thickness,
+            fuzzy_skin_point_distance,
             apply_to_all,
         })
     }
@@ -102,8 +101,8 @@ impl LayerModule for FuzzySkinModule {
                     &wall.feature_flags,
                     &wall.width_profile,
                     self.apply_to_all,
-                    self.thickness,
-                    self.point_distance,
+                    self.fuzzy_skin_thickness,
+                    self.fuzzy_skin_point_distance,
                     layer_index,
                     wall_index as u32,
                 );
@@ -163,9 +162,9 @@ impl Rng {
 /// perpendicular XY-displaced subdivision points. Unflagged spans are copied
 /// through unchanged so mixed loops retain flat regions.
 ///
-/// Adapted from OrcaSlicer fuzzy_polyline (FuzzySkin.cpp line 85):
-/// - min_dist = point_distance * 3/4
-/// - range = point_distance / 2
+/// Adapted from canonical `fuzzy_polyline` (`FuzzySkin.cpp`):
+/// - min_dist = fuzzy_skin_point_distance * 3/4
+/// - range = fuzzy_skin_point_distance / 2
 /// - For determinism we use a fixed factor (1.0) for the distance jitter
 ///
 /// Returns (new_points, new_flags, new_widths) all with matching lengths.
@@ -175,17 +174,17 @@ fn apply_fuzzy_skin(
     feature_flags: &[WallFeatureFlags],
     width_profile: &WidthProfile,
     apply_to_all: bool,
-    thickness: f32,
-    point_distance: f32,
+    fuzzy_skin_thickness: f32,
+    fuzzy_skin_point_distance: f32,
     layer_index: u32,
     wall_index: u32,
 ) -> (Vec<Point3WithWidth>, Vec<WallFeatureFlags>, Vec<f32>) {
     let points = &path.points;
     if points.len() < 2
-        || !thickness.is_finite()
-        || !point_distance.is_finite()
-        || thickness <= 0.0
-        || point_distance <= 0.0
+        || !fuzzy_skin_thickness.is_finite()
+        || !fuzzy_skin_point_distance.is_finite()
+        || fuzzy_skin_thickness <= 0.0
+        || fuzzy_skin_point_distance <= 0.0
     {
         return (
             points.to_vec(),
@@ -201,8 +200,8 @@ fn apply_fuzzy_skin(
         .wrapping_add(1);
     let mut rng = Rng::new(seed);
 
-    let min_dist = point_distance * 0.75;
-    let range = point_distance * 0.5;
+    let min_dist = fuzzy_skin_point_distance * 0.75;
+    let range = fuzzy_skin_point_distance * 0.5;
 
     let mut out_points: Vec<Point3WithWidth> = vec![points[0]];
     let mut out_flags: Vec<WallFeatureFlags> = vec![flag_for_index(feature_flags, 0)];
@@ -239,7 +238,7 @@ fn apply_fuzzy_skin(
                     let base_x = p0.x + dx * t;
                     let base_y = p0.y + dy * t;
                     let base_z = p0.z + (p1.z - p0.z) * t;
-                    let displacement = rng.next_f32() * thickness;
+                    let displacement = rng.next_f32() * fuzzy_skin_thickness;
 
                     out_points.push(Point3WithWidth {
                         x: base_x + perp_x * displacement,
@@ -263,7 +262,7 @@ fn apply_fuzzy_skin(
                     let base_x = p0.x + dx * t;
                     let base_y = p0.y + dy * t;
                     let base_z = p0.z + (p1.z - p0.z) * t;
-                    let displacement = rng.next_f32() * thickness;
+                    let displacement = rng.next_f32() * fuzzy_skin_thickness;
 
                     out_points.push(Point3WithWidth {
                         x: base_x + perp_x * displacement,

@@ -194,8 +194,10 @@ fn plan_with_segments(segments: Vec<[Point2; 2]>) -> MemoryPlan {
 
 fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("infill_density", density)
-        .float("infill_speed", speed)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
+        .float("sparse_infill_speed", speed)
         // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
         // are contract-required reads (`require_abs_value` over the fixed
         // 0.4 mm nozzle base); a bound view always holds them at their
@@ -252,9 +254,11 @@ fn from_config_defaults() {
     values.insert("line_width".into(), ConfigValue::Float(0.45));
     // Declared keys (lightning-infill.toml) seeded at their manifest
     // defaults, mirroring the production `seed_registry_defaults` step.
-    values.insert("infill_density".into(), ConfigValue::Float(0.2));
-    values.insert("infill_angle".into(), ConfigValue::Float(45.0));
-    values.insert("infill_speed".into(), ConfigValue::Float(60.0));
+    // Canonical percent key: 20 = 20%.
+    values.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
+    // Contract-required float-or-percent widths (packet 06).
+    values.insert("bridge_line_width".into(), ConfigValue::Float(0.0));
+    values.insert("initial_layer_line_width".into(), ConfigValue::Float(0.0));
     let config = ConfigView::from_map(values);
     let module = LightningInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
@@ -404,7 +408,11 @@ fn samples_prepared_piece_raw_emit() {
         assert!((end.x - slicer_ir::units_to_mm(segment[1].x)).abs() < 0.001);
         assert!((end.y - slicer_ir::units_to_mm(segment[1].y)).abs() < 0.001);
         assert_eq!(path.role, ExtrusionRole::SparseInfill);
-        assert!((path.speed_factor - 1.6).abs() < 0.001);
+        // Wayfinder ticket 114: the module no longer divides the configured
+        // sparse_infill_speed against a private base (80 / 50 = 1.6 under the
+        // old contract); sparse paths carry the neutral factor 1.0 because the
+        // host FeedrateConfig owns the emitted role speed.
+        assert!((path.speed_factor - 1.0).abs() < 0.001);
     }
 }
 

@@ -119,14 +119,14 @@ fn has_retract_before_toolchange(text: &str) -> bool {
 ///   (2) G1 travel to tower XY before T1
 ///   (3) literal line `T1`
 ///   (4) `;TYPE:Prime tower` after T1 and before the next print-role extrusion
-///   (5) cumulative positive-E â‰¥ wipe_tower_purge_volume mm after T1
+///   (5) cumulative positive-E â‰¥ prime_volume mm after T1
 ///
 /// FAILS TODAY: production code emits no retract, no travel-to-tower, no prime,
 /// and emits `;TYPE:Wipe tower` (wrong spelling) instead of `;TYPE:Prime tower`.
 #[test]
 fn toolchange_emits_retract_prime_wipe() {
     // Layer: [entity0 (T0)] â†’ ToolChange(0â†’1) â†’ [wipe-tower entities (T1)]
-    // wipe_tower_purge_volume = 70.0 mmÂ³; line_width=0.4, layer_height=0.2
+    // prime_volume = 70.0 mmÂ³; line_width=0.4, layer_height=0.2
     // required path length â‰ˆ 70 / (0.4 * 0.2) = 875 mm
     // Use 1000 mm to be safely above threshold.
     let purge_len_mm: f32 = 1000.0;
@@ -227,14 +227,14 @@ fn toolchange_emits_retract_prime_wipe() {
 
     // `cum_e` is filament length (mm); convert to deposited volume via the
     // 1.75 mm filament cross-section (π·r² ≈ 2.405 mm²). The wipe block must
-    // deposit at least `wipe_tower_purge_volume` (70 mm³).
+    // deposit at least `prime_volume` (70 mm³).
     let filament_area: f32 = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
-    let purge_volume_mm3: f32 = 70.0; // wipe_tower_purge_volume default
+    let purge_volume_mm3: f32 = 70.0; // prime_volume default
     let deposited_volume_mm3 = cum_e * filament_area;
     assert!(
         deposited_volume_mm3 >= purge_volume_mm3,
         "AC1 FAIL: deposited purge volume after T1 ({:.3} mm³, from {:.3} mm E) is less than \
-         wipe_tower_purge_volume ({:.1} mm³). Prime+wipe block is missing or undersized.",
+         prime_volume ({:.1} mm³). Prime+wipe block is missing or undersized.",
         deposited_volume_mm3,
         cum_e,
         purge_volume_mm3
@@ -327,7 +327,7 @@ fn purge_volume_within_tolerance() {
 // â”€â”€ NC1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// NC1: a bare tool change (no surrounding retract/wipe entities) under
-/// `wipe_tower_enabled=true` must be rejected with an error that names
+/// `enable_prime_tower=true` must be rejected with an error that names
 /// "MissingToolchangePurge".
 ///
 /// STRATEGY: use format!("{:?}") inspection because PostpassError::MissingToolchangePurge
@@ -352,11 +352,11 @@ fn bare_toolchange_rejected() {
         ..Default::default()
     };
 
-    // Emitter must be configured with wipe_tower_enabled=true so the guard runs.
-    // The guard is intentionally disabled for single-material (wipe_tower_enabled=false)
+    // Emitter must be configured with enable_prime_tower=true so the guard runs.
+    // The guard is intentionally disabled for single-material (enable_prime_tower=false)
     // to avoid breaking pre-existing single-material emit tests.
     let cfg = ResolvedConfig {
-        wipe_tower_enabled: true,
+        enable_prime_tower: true,
         ..ResolvedConfig::default()
     };
     let emitter = DefaultGCodeEmitter::new("test".to_string()).with_resolved_config(cfg);
@@ -378,7 +378,7 @@ fn bare_toolchange_rejected() {
         Ok(_) => {
             panic!(
                 "NC1 FAIL: expected emit_gcode to return Err for a bare ToolChange \
-                 (no retract/wipe entities) with wipe_tower_enabled=true, but got Ok.\n\
+                 (no retract/wipe entities) with enable_prime_tower=true, but got Ok.\n\
                  Step 4 must add PostpassError::MissingToolchangePurge and the defensive guard."
             );
         }

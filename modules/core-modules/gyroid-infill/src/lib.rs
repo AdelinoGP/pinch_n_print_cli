@@ -45,9 +45,6 @@ use slicer_sdk::views::SliceRegionView;
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
-/// Default base speed used for normalizing speed factors (mm/s).
-const BASE_SPEED: f32 = 50.0;
-
 /// Density adjustment factor matching OrcaSlicer's DensityAdjust constant.
 /// This scales the effective density to produce correct fill weight percentage.
 // OrcaSlicer: DensityAdjust = 2.44
@@ -69,12 +66,11 @@ const PATTERN_TOLERANCE: f64 = 0.2;
 /// equation sin(x)cos(y) + sin(y)cos(z) + sin(z)cos(x) = 0.
 /// Wave patterns vary with layer Z, producing strong interlocking 3D structure.
 pub struct GyroidInfill {
-    /// Infill density (0.0 to 1.0).
+    /// Infill density (fraction 0.0 to 1.0; read from the canonical percent
+    /// key `sparse_infill_density` and divided by 100).
     density: f32,
     /// Base infill angle in degrees.
     base_angle: f32,
-    /// Infill print speed in mm/s.
-    infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
 }
@@ -106,15 +102,17 @@ impl GyroidInfill {
 #[slicer_module]
 impl LayerModule for GyroidInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Required reads: the registry seeds every declared key's default into
-        // a bound view, so an absent key is a contract violation, not a
-        // configurable fallback (packet 06 fail-closed semantics; mirrors
-        // arachne-perimeters).
-        let density = config.require_float("infill_density")? as f32;
+        // Canonical `sparse_infill_density` is coPercent (default 20 = 20%);
+        // resolve the literal percent against base 100 and divide by 100 to
+        // recover the density fraction. (Wayfinder ticket 107 standardised
+        // the key to Orca's name and percent representation.) The registry
+        // seeds every declared key's default into a bound view, so an absent
+        // key is a contract violation, not a configurable fallback (packet 06
+        // fail-closed semantics; mirrors arachne-perimeters).
+        let density = config.require_abs_value("sparse_infill_density", 100.0)? as f32 / 100.0;
 
-        let base_angle = config.require_float("infill_angle")? as f32;
-
-        let infill_speed = config.require_float("infill_speed")? as f32;
+        // Canonical `infill_direction` (Orca `coFloat`, default 45).
+        let base_angle = config.require_float("infill_direction")? as f32;
 
         let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
@@ -149,7 +147,6 @@ impl LayerModule for GyroidInfill {
         Ok(Self {
             density,
             base_angle,
-            infill_speed,
             line_width,
         })
     }
@@ -166,17 +163,24 @@ impl LayerModule for GyroidInfill {
             return Ok(());
         }
 
-        let speed_factor = self.infill_speed / BASE_SPEED;
+        // Sparse paths carry the neutral speed factor: the emitted feedrate is
+        // the host FeedrateConfig::sparse_infill_speed decision (the same raw
+        // `sparse_infill_speed` key this module used to divide against a
+        // private BASE_SPEED, which double-counted user-set values through the
+        // shared source). Wayfinder ticket 114 retired the module-side factor
+        // base; the host owns the role speed, matching rectilinear-infill.
+        let speed_factor = 1.0;
 
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
-        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // pre-partitions every region's wall-inset into five pairwise-disjoint
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
-        // `bottom_solid_fill`, `bridge_areas`) with precedence
-        // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick. Per-region
-        // `infill_density` / `line_width` overrides (packet 131 / TASK-256)
-        // are read through `slicer_sdk::config_resolution` and forwarded to
-        // each `fill_expolygon` call below.
+        // `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`) with
+        // precedence bridge > bottom > top > internal > sparse. Each role
+        // emits over its own polygon — zero polygon math, zero per-region
+        // role-pick. Per-region `sparse_infill_density` / `line_width`
+        // overrides (packet 131 / TASK-256) are read through
+        // `slicer_sdk::config_resolution` and forwarded to each
+        // `fill_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(
@@ -188,10 +192,12 @@ impl LayerModule for GyroidInfill {
 
             // Per-region config resolution (packet 131 / TASK-256):
             // fall back to module-global defaults when the per-region view
-            // is absent or the key is not declared.
-            let region_density = slicer_sdk::config_resolution::resolve_float(
+            // is absent or the key is not declared. The density key is the
+            // canonical percent `sparse_infill_density`; `resolve_percent_float`
+            // returns the fraction.
+            let region_density = slicer_sdk::config_resolution::resolve_percent_float(
                 region,
-                "infill_density",
+                "sparse_infill_density",
                 self.density,
             );
             let region_line_width =
@@ -251,6 +257,19 @@ impl LayerModule for GyroidInfill {
                     ExtrusionRole::BottomSolidInfill,
                 ),
                 ExtrusionRole::BottomSolidInfill,
+                true,
+                output,
+            );
+            emit_polys(
+                region.internal_solid_fill(),
+                // The internal bucket's role: the internal-solid label, at
+                // `internal_solid_infill_line_width` (resolve_role_width maps
+                // both solid-shell roles to it). Gated on the top-fill claim,
+                // which owns solid fill for this region — `should_emit` maps
+                // `InternalSolidInfill` to "always allowed", so naming it here
+                // would bypass claim gating.
+                ExtrusionRole::InternalSolidInfill,
+                ExtrusionRole::TopSolidInfill,
                 true,
                 output,
             );
@@ -315,7 +334,7 @@ impl GyroidInfill {
         let cy = (bb_w_min_y + bb_w_max_y) / 2.0;
 
         // Compute rotation angle (base + correction)
-        let infill_angle_rad = ((self.base_angle as f64) + CORRECTION_ANGLE_DEG).to_radians();
+        let infill_direction_rad = ((self.base_angle as f64) + CORRECTION_ANGLE_DEG).to_radians();
 
         // Scale factor: converts from normalized gyroid units to mm
         let scale_factor = spacing_mm;
@@ -335,7 +354,7 @@ impl GyroidInfill {
         // in the rotated frame. Using the bbox center as the pivot (not the
         // origin) ensures the back-rotation around the same center is an exact
         // inverse for off-center polygons.
-        let rotated_expoly = rotate_expolygon(expoly, -infill_angle_rad, cx, cy);
+        let rotated_expoly = rotate_expolygon(expoly, -infill_direction_rad, cx, cy);
 
         // Compute bbox of the rotated polygon in mm
         let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = {
@@ -436,8 +455,8 @@ impl GyroidInfill {
 
         // Convert wave polylines from gyroid units to mm in the rotated frame,
         // then rotate back to world space around the world bbox center.
-        let cos_a = infill_angle_rad.cos();
-        let sin_a = infill_angle_rad.sin();
+        let cos_a = infill_direction_rad.cos();
+        let sin_a = infill_direction_rad.sin();
 
         let mut result = Vec::new();
 
@@ -727,9 +746,9 @@ mod tests {
         values.insert("line_width".into(), ConfigValue::Float(0.45));
         // Declared keys (gyroid-infill.toml) seeded at their manifest
         // defaults, mirroring the production `seed_registry_defaults` step.
-        values.insert("infill_density".into(), ConfigValue::Float(0.2));
-        values.insert("infill_angle".into(), ConfigValue::Float(45.0));
-        values.insert("infill_speed".into(), ConfigValue::Float(60.0));
+        // `sparse_infill_density` is the canonical percent key (20 = 20%).
+        values.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
+        values.insert("infill_direction".into(), ConfigValue::Float(45.0));
         let config = ConfigView::from_map(values);
         let module = GyroidInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);

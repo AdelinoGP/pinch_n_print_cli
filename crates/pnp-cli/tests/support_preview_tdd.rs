@@ -196,14 +196,15 @@ fn preview_json_schema_and_nonempty_support() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["units"], "mm");
@@ -261,14 +262,15 @@ fn coordinates_are_mm_not_internal_units() {
     let tmp = TempDir::new().expect("tempdir");
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
 
     let ctx = prepared_context(true);
@@ -345,14 +347,15 @@ fn support_body_carries_actual_support_structures() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
 
@@ -445,7 +448,7 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
     let geometry = SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
     let global_layers: Vec<_> = (0..3)
@@ -558,7 +561,7 @@ fn interface_role_regions_land_in_support_interface() {
     let geometry = SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
     let global_layers: Vec<_> = (0..3)
@@ -739,7 +742,7 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
     let geometry = SupportGeometryIR {
         schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         support_layer_height_mm: 0.2,
-        support_top_z_distance_mm: 0.1,
+        support_top_z_distance: 0.1,
         entries,
     };
     let global_layers: Vec<_> = (0..3)
@@ -773,14 +776,15 @@ fn support_disabled_yields_empty_layers_exit_zero() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, false);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["layer_count"], 40);

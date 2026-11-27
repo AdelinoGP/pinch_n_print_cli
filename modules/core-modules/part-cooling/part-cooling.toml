@@ -25,14 +25,6 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
 [config.schema]
-[config.schema.fan_min_speed]
-type    = "int"
-default = 51
-min     = 0
-max     = 255
-display = "Fan Speed Min"
-group   = "Cooling"
-
 [config.schema.fan_max_speed]
 type    = "int"
 default = 255

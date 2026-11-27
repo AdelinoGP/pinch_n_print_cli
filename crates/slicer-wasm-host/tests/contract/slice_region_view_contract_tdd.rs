@@ -132,7 +132,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
     // at manifest defaults), so a partial view fails the typed call. This
     // fixture keeps its own `wall_count` / wall widths.
     let mut fields = HashMap::new();
-    fields.insert("wall_count".into(), ConfigValueStorage::Int(2));
+    fields.insert("wall_loops".into(), ConfigValueStorage::Int(2));
     fields.insert("line_width".into(), ConfigValueStorage::Float(0.4));
     fields.insert("nozzle_diameter".into(), ConfigValueStorage::Float(0.4));
     fields.insert("layer_height".into(), ConfigValueStorage::Float(0.2));
@@ -165,7 +165,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         ConfigValueStorage::Float(0.25),
     );
     fields.insert(
-        "smaller_perimeter_threshold_mm".into(),
+        "small_perimeter_threshold".into(),
         ConfigValueStorage::Float(0.8),
     );
     fields.insert(

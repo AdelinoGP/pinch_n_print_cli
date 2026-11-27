@@ -26,9 +26,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use slicer_ir::resolved_config::{MachineLimitPair, ResolvedFloatOrPercent};
+use slicer_ir::slice_ir::{InfillType, SupportType, WallGenerator};
 use slicer_ir::{
-    ConfigId, PaintSemantic, PaintValue, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
-    SemVer, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    ConfigId, ConfigValue, ModuleInvocation, PaintSemantic, PaintValue, RegionKey, RegionMapIR,
+    RegionPlan, ResolvedConfig, SemVer, StageId, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
 };
 
 /// The extension-carrier key read by
@@ -44,6 +46,247 @@ const FROZEN_FIXTURE_BYTES: &[u8] =
 /// frozen payload.
 const FROZEN_EXPECTED_JSON: &str =
     include_str!("fixtures/region_map_v3_0_0/region_map_v3_0_0.expected.json");
+
+// ── Frozen 3.0.0 layout shim ────────────────────────────────────────────────
+//
+// The frozen payload was recorded at revision `6ba38c34`, whose
+// `ResolvedConfig` predates this branch's field set (the percent
+// `sparse_infill_density`, the canonical key renames, and the machine-limit
+// pair). Postcard is positional, so the current struct cannot consume those
+// bytes directly; the payload is decoded through the exact recorded field
+// order and then lifted into the current shape. The byte-level oracle (field
+// count, order, no remainder) is therefore still tested against the archived
+// layout, and the lifted values are asserted against the hand-authored
+// companion below.
+
+#[derive(serde::Deserialize)]
+struct LegacyResolvedConfig {
+    layer_height: f64,
+    line_width: f64,
+    first_layer_height: f64,
+    initial_layer_line_width: ResolvedFloatOrPercent,
+    filament_diameter: f32,
+    wall_count: u32,
+    outer_wall_speed: f32,
+    inner_wall_speed: f32,
+    wall_generator: WallGenerator,
+    arachne_min_feature_size: Option<f32>,
+    infill_type: InfillType,
+    infill_density: f32,
+    infill_angle: f32,
+    infill_speed: f32,
+    solid_infill_speed: f32,
+    top_shell_layers: u32,
+    bottom_shell_layers: u32,
+    top_fill_holder: String,
+    bottom_fill_holder: String,
+    bridge_fill_holder: String,
+    sparse_fill_holder: String,
+    fill_authored_coloring: Vec<String>,
+    gcode_resolution: f32,
+    infill_resolution: f32,
+    infill_overlap: f32,
+    support_resolution: f32,
+    min_segment_length: f32,
+    gcode_xy_decimals: u32,
+    perimeter_arc_tolerance: f32,
+    slice_closing_radius: f32,
+    flat_bridge_closing_join: String,
+    support_enabled: bool,
+    disable_m73: bool,
+    support_type: SupportType,
+    support_threshold_angle: f32,
+    support_layer_height_mm: f32,
+    support_expansion: f32,
+    support_top_z_distance: f32,
+    support_bottom_z_distance: f32,
+    support_threshold_overlap: ResolvedFloatOrPercent,
+    support_line_width: ResolvedFloatOrPercent,
+    bridge_no_support: bool,
+    enforce_support_layers: u32,
+    support_critical_regions_only: bool,
+    support_remove_small_overhang: bool,
+    support_object_first_layer_gap: f32,
+    // Retired by wayfinder ticket 115 on this branch; the field must stay in
+    // the legacy layout so Postcard's positional decode stays aligned.
+    #[allow(dead_code)]
+    support_sharp_tails: bool,
+    nonplanar_max_angle_deg: Option<f32>,
+    nonplanar_shell_count: Option<u32>,
+    nonplanar_amplitude: Option<f32>,
+    smoothificator_target_height: Option<f32>,
+    smoothificator_adaptive: Option<bool>,
+    bed_shape: Vec<f64>,
+    retract_length: f32,
+    wipe_tower_enabled: bool,
+    mmu_segmented_region_max_width: f32,
+    mmu_segmented_region_interlocking_depth: f32,
+    mmu_segmented_region_interlocking_beam: bool,
+    machine_max_acceleration_extruding: Option<f32>,
+    machine_max_acceleration_travel: Option<f32>,
+    machine_max_speed_x: Option<f32>,
+    machine_max_speed_y: Option<f32>,
+    machine_max_speed_z: Option<f32>,
+    machine_max_speed_e: Option<f32>,
+    machine_max_jerk_x: Option<f32>,
+    machine_max_jerk_y: Option<f32>,
+    machine_max_jerk_z: Option<f32>,
+    machine_max_jerk_e: Option<f32>,
+    filament_density: Vec<f64>,
+    extensions: BTreeMap<String, ConfigValue>,
+}
+
+impl From<LegacyResolvedConfig> for ResolvedConfig {
+    fn from(legacy: LegacyResolvedConfig) -> Self {
+        ResolvedConfig {
+            layer_height: legacy.layer_height,
+            line_width: legacy.line_width,
+            initial_layer_print_height: legacy.first_layer_height,
+            initial_layer_line_width: legacy.initial_layer_line_width,
+            filament_diameter: legacy.filament_diameter,
+            wall_loops: legacy.wall_count,
+            outer_wall_speed: legacy.outer_wall_speed,
+            inner_wall_speed: legacy.inner_wall_speed,
+            wall_generator: legacy.wall_generator,
+            arachne_min_feature_size: legacy.arachne_min_feature_size,
+            infill_type: legacy.infill_type,
+            sparse_infill_density: legacy.infill_density * 100.0,
+            infill_direction: legacy.infill_angle,
+            sparse_infill_speed: legacy.infill_speed,
+            solid_infill_speed: legacy.solid_infill_speed,
+            top_shell_layers: legacy.top_shell_layers,
+            bottom_shell_layers: legacy.bottom_shell_layers,
+            top_fill_holder: legacy.top_fill_holder,
+            bottom_fill_holder: legacy.bottom_fill_holder,
+            bridge_fill_holder: legacy.bridge_fill_holder,
+            sparse_fill_holder: legacy.sparse_fill_holder,
+            fill_authored_coloring: legacy.fill_authored_coloring,
+            gcode_resolution: legacy.gcode_resolution,
+            infill_resolution: legacy.infill_resolution,
+            infill_overlap: legacy.infill_overlap,
+            support_resolution: legacy.support_resolution,
+            min_segment_length: legacy.min_segment_length,
+            gcode_xy_decimals: legacy.gcode_xy_decimals,
+            perimeter_arc_tolerance: legacy.perimeter_arc_tolerance,
+            slice_closing_radius: legacy.slice_closing_radius,
+            flat_bridge_closing_join: legacy.flat_bridge_closing_join,
+            support_enabled: legacy.support_enabled,
+            disable_m73: legacy.disable_m73,
+            support_type: legacy.support_type,
+            support_threshold_angle: legacy.support_threshold_angle,
+            support_layer_height_mm: legacy.support_layer_height_mm,
+            support_expansion: legacy.support_expansion,
+            support_top_z_distance: legacy.support_top_z_distance,
+            support_bottom_z_distance: legacy.support_bottom_z_distance,
+            support_threshold_overlap: legacy.support_threshold_overlap,
+            support_line_width: legacy.support_line_width,
+            bridge_no_support: legacy.bridge_no_support,
+            enforce_support_layers: legacy.enforce_support_layers,
+            support_critical_regions_only: legacy.support_critical_regions_only,
+            support_remove_small_overhang: legacy.support_remove_small_overhang,
+            support_object_first_layer_gap: legacy.support_object_first_layer_gap,
+            nonplanar_max_angle_deg: legacy.nonplanar_max_angle_deg,
+            nonplanar_shell_count: legacy.nonplanar_shell_count,
+            nonplanar_amplitude: legacy.nonplanar_amplitude,
+            smoothificator_target_height: legacy.smoothificator_target_height,
+            smoothificator_adaptive: legacy.smoothificator_adaptive,
+            printable_area: legacy.bed_shape,
+            retract_length: legacy.retract_length,
+            enable_prime_tower: legacy.wipe_tower_enabled,
+            mmu_segmented_region_max_width: legacy.mmu_segmented_region_max_width,
+            mmu_segmented_region_interlocking_depth: legacy.mmu_segmented_region_interlocking_depth,
+            mmu_segmented_region_interlocking_beam: legacy.mmu_segmented_region_interlocking_beam,
+            machine_max_acceleration_extruding: legacy.machine_max_acceleration_extruding.map(
+                |value| MachineLimitPair {
+                    normal: value,
+                    stealth: value,
+                },
+            ),
+            machine_max_acceleration_travel: legacy.machine_max_acceleration_travel.map(|value| {
+                MachineLimitPair {
+                    normal: value,
+                    stealth: value,
+                }
+            }),
+            machine_max_speed_x: legacy.machine_max_speed_x.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_speed_y: legacy.machine_max_speed_y.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_speed_z: legacy.machine_max_speed_z.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_speed_e: legacy.machine_max_speed_e.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_jerk_x: legacy.machine_max_jerk_x.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_jerk_y: legacy.machine_max_jerk_y.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_jerk_z: legacy.machine_max_jerk_z.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            machine_max_jerk_e: legacy.machine_max_jerk_e.map(|value| MachineLimitPair {
+                normal: value,
+                stealth: value,
+            }),
+            filament_density: legacy.filament_density,
+            extensions: legacy.extensions,
+            ..ResolvedConfig::default()
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyRegionPlan {
+    config: ConfigId,
+    stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
+    paint_overrides: BTreeMap<PaintSemantic, LegacyResolvedConfig>,
+}
+
+#[derive(serde::Deserialize)]
+struct LegacyRegionMapIR {
+    schema_version: SemVer,
+    entries: HashMap<RegionKey, LegacyRegionPlan>,
+    configs: Vec<LegacyResolvedConfig>,
+}
+
+impl From<LegacyRegionMapIR> for RegionMapIR {
+    fn from(legacy: LegacyRegionMapIR) -> Self {
+        RegionMapIR {
+            schema_version: legacy.schema_version,
+            entries: legacy
+                .entries
+                .into_iter()
+                .map(|(key, plan)| {
+                    (
+                        key,
+                        RegionPlan {
+                            config: plan.config,
+                            stage_modules: plan.stage_modules,
+                            paint_overrides: plan
+                                .paint_overrides
+                                .into_iter()
+                                .map(|(semantic, config)| (semantic, config.into()))
+                                .collect(),
+                        },
+                    )
+                })
+                .collect(),
+            configs: legacy.configs.into_iter().map(Into::into).collect(),
+        }
+    }
+}
 
 #[derive(serde::Deserialize)]
 struct ExpectedFixture {
@@ -229,8 +472,11 @@ fn frozen_region_map_3_0_0_fixture_decodes_unchanged_with_absent_extension_defau
 
     // The reverted packet-10 migration leaves the fixture's layout = the
     // current layout: the plain serde shape must consume all bytes.
-    let (decoded, remainder) = postcard::take_from_bytes::<RegionMapIR>(FROZEN_FIXTURE_BYTES)
-        .expect("frozen 3.0.0 Postcard fixture must decode through the current RegionMapIR shape");
+    let (legacy, remainder) = postcard::take_from_bytes::<LegacyRegionMapIR>(FROZEN_FIXTURE_BYTES)
+        .expect(
+            "frozen 3.0.0 Postcard fixture must decode through the archived ResolvedConfig layout",
+        );
+    let decoded: RegionMapIR = legacy.into();
     assert!(
         remainder.is_empty(),
         "the fixture must decode without remainder bytes; {} byte(s) left over",
@@ -286,10 +532,17 @@ fn frozen_region_map_3_0_0_fixture_decodes_unchanged_with_absent_extension_defau
             "the absent default must be +0.0, matching the companion's bit pattern"
         );
     }
+    // The archived pre-seed was the *then-current* `ResolvedConfig::default()`.
+    // One default has moved since: wayfinder ticket 114 raised
+    // `sparse_infill_speed` from 50 to the canonical 100. The lifted payload
+    // must reproduce the archived default exactly, not today's.
+    let archived_default = ResolvedConfig {
+        sparse_infill_speed: 50.0,
+        ..ResolvedConfig::default()
+    };
     assert_eq!(
-        decoded.configs[0],
-        ResolvedConfig::default(),
-        "expected-values companion records configs[0] as the RegionMapIR::default() pre-seed"
+        decoded.configs[0], archived_default,
+        "expected-values companion records configs[0] as the archived RegionMapIR::default() pre-seed"
     );
 
     assert_eq!(decoded.entries.len(), expected.entries.len());

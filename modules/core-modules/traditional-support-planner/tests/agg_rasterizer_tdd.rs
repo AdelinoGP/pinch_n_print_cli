@@ -683,7 +683,7 @@ fn seeded_defaults() -> ConfigView {
         "support_object_xy_distance".into(),
         ConfigValue::Float(0.35),
     );
-    values.insert("support_top_z_distance_mm".into(), ConfigValue::Float(0.2));
+    values.insert("support_top_z_distance".into(), ConfigValue::Float(0.2));
     values.insert("support_layer_height_mm".into(), ConfigValue::Float(0.0));
     values.insert(
         "support_base_pattern".into(),
@@ -723,7 +723,7 @@ fn rasterizer_config(value: &str) -> ConfigView {
         "support_object_xy_distance".into(),
         ConfigValue::Float(0.35),
     );
-    values.insert("support_top_z_distance_mm".into(), ConfigValue::Float(0.2));
+    values.insert("support_top_z_distance".into(), ConfigValue::Float(0.2));
     values.insert("support_layer_height_mm".into(), ConfigValue::Float(0.0));
     values.insert(
         "support_base_pattern".into(),

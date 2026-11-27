@@ -1272,6 +1272,16 @@ claims key on the full `(object, region, layer)` triple. Property `H-CLAIMS`
 delimiter-rich ids as a boundary case. This is validator-contract coverage: live
 per-region support uniqueness is enforced at host aggregation, not by this pass.
 
+Before execution, `validate_configured_claim_holders` in
+`crates/slicer-scheduler/src/validation.rs` checks each configured holder against
+the loaded manifests using the same `module_id_matches_holder` rule. A holder
+that matches no loaded module produces `SchedulerError::UnmatchedClaimHolder`;
+a holder that matches a loaded module but whose module does not declare the
+selected claim produces `SchedulerError::ClaimHolderDoesNotDeclareClaim`.
+Both diagnostics are fatal and include the claim, configured holder, and the
+loaded modules that declare the claim, so a bad selection cannot silently
+produce an empty fill role.
+
 The set is exposed across the WIT boundary via
 `slice-region-view.held-claims` and consumed by guest modules through
 `SliceRegionView::should_emit(role)`. An **empty held-claims list suppresses all
@@ -1494,7 +1504,7 @@ enumeration order must be a coordinated packet with explicit test-fixture update
 
 ### Configuration keys added by recent packets
 
-The following `[config.schema.<key>]` blocks document config keys introduced after the TPMS annotated example above. Keys follow the snake_case convention throughout (see CLAUDE.md).
+The following `[config.schema.<key>]` blocks document config keys introduced after the TPMS annotated example above. Keys follow the snake_case convention throughout (see CLAUDE.md), including the `_mm` PnP-provenance marker rule there.
 
 #### Packet 34 — retraction mode
 

@@ -50,7 +50,7 @@ fn per_object_outer_wall_line_width_override() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let start_config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", global_outer_w)
         .float("inner_wall_line_width", inner_w)
         .build();
@@ -59,7 +59,7 @@ fn per_object_outer_wall_line_width_override() {
 
     // Per-object override config: outer_wall_line_width bumped to 0.6.
     let override_config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", override_outer_w as f64)
         .float("inner_wall_line_width", inner_w)
         .build();
@@ -129,7 +129,7 @@ fn per_object_inner_wall_line_width_override() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let start_config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w)
         .float("inner_wall_line_width", global_inner_w)
         .build();
@@ -137,7 +137,7 @@ fn per_object_inner_wall_line_width_override() {
     let module = ClassicPerimeters::from_config(&start_config).unwrap();
 
     let override_config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .float("outer_wall_line_width", outer_w)
         .float("inner_wall_line_width", override_inner_w as f64)
         .build();

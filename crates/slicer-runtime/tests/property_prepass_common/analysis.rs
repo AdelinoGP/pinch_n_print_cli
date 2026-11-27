@@ -633,9 +633,11 @@ pub fn percent_clearance() -> Result<(), String> {
         .ok_or_else(|| String::from("clearance missing"))?
         .parse()
         .map_err(|_| String::from("clearance is not a number"))?;
-    // 50% of the 0.8 mm fallback line width.
-    if (clearance - 0.4).abs() > 1e-6 {
-        return Err(format!("percent clearance {clearance} != 0.4"));
+    // A percent `support_line_width` is of the nozzle diameter (canonical,
+    // `resolve_support_line_width_mm`), never of `line_width`: 50% of the
+    // 0.4 mm default nozzle, not of the 0.8 mm line width.
+    if (clearance - 0.2).abs() > 1e-6 {
+        return Err(format!("percent clearance {clearance} != 0.2"));
     }
     Ok(())
 }

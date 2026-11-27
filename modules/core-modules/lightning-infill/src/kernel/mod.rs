@@ -129,7 +129,9 @@ pub(crate) fn generate_lightning_trees(
                 .map_or(0.0, |spacing| spacing);
         let mut generator = Generator::new(
             outlines,
-            config.infill_density as f64,
+            // `sparse_infill_density` is the canonical percent (wayfinder
+            // ticket 107); the generator takes the density fraction.
+            f64::from(config.sparse_infill_density) / 100.0,
             mm_to_units(line_width_mm),
             1,
             mm_to_units(config.layer_height as f32),

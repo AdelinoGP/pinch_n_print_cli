@@ -1488,7 +1488,6 @@ impl ClipCase {
         GyroidInfill {
             density: self.density,
             base_angle: self.base_angle,
-            infill_speed: self.speed_factor * 50.0,
             line_width: self.stamped_width_mm,
         }
     }

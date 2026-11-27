@@ -856,6 +856,10 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
     // there would regress the resolved-binding contract.
     let run_src =
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/run.rs")).unwrap();
+    // A `core.autocrlf=true` checkout writes this file with CRLF while the
+    // multi-line pins below spell `\n`. Normalise first so the guard tests the
+    // call shape rather than the checkout's line endings.
+    let run_src = run_src.replace("\r\n", "\n");
     assert!(
         run_src.contains("load_live_modules_for_plan_with_config"),
         "run.rs must call the live config-aware module loader (load_live_modules_for_plan_with_config)"

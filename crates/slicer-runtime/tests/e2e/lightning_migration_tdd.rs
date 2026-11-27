@@ -2182,16 +2182,19 @@ fn case_options_with_config(
         "sparse_fill_holder".to_owned(),
         ConfigValue::String(case.config.sparse_fill_holder.clone()),
     );
+    // The baseline records its own vocabulary (`infill_density` as a fraction,
+    // `infill_angle`); the run is handed the canonical keys, `sparse_infill_density`
+    // in percent (wayfinder ticket 107) and `infill_direction` (ticket 105).
     config_overrides.insert(
-        "infill_density".to_owned(),
-        ConfigValue::Float(case.config.infill_density),
+        "sparse_infill_density".to_owned(),
+        ConfigValue::Float(case.config.infill_density * 100.0),
     );
     config_overrides.insert(
         "layer_height".to_owned(),
         ConfigValue::Float(case.config.layer_height),
     );
     config_overrides.insert(
-        "infill_angle".to_owned(),
+        "infill_direction".to_owned(),
         ConfigValue::Float(case.config.infill_angle),
     );
     config_overrides.insert(
@@ -2613,9 +2616,9 @@ fn inputs_digest(config: &HashMap<String, ConfigValue>, slices: &BTreeMap<u32, S
     sha256_canonical(&json!({
         "config": {
             "sparse_fill_holder": sparse_fill_holder,
-            "infill_density": float("infill_density"),
+            "infill_density": float("sparse_infill_density") / 100.0,
             "layer_height": float("layer_height"),
-            "infill_angle": float("infill_angle"),
+            "infill_angle": float("infill_direction"),
             "line_width": float("line_width"),
         },
         "layers": layers,
@@ -2882,8 +2885,8 @@ fn module_plan_matches_recorded_baseline() {
         // the self-referential-oracle failure AC-2 exists to prevent.
         let mut perturbed = observation.wasm.config.clone();
         perturbed.insert(
-            "infill_density".to_owned(),
-            ConfigValue::Float(case.config.infill_density + 0.01),
+            "sparse_infill_density".to_owned(),
+            ConfigValue::Float((case.config.infill_density + 0.01) * 100.0),
         );
         assert_ne!(
             inputs_digest(&perturbed, &captured_slices(&observation.wasm.capture)),
@@ -3970,8 +3973,8 @@ fn failed_or_malformed_plan_never_falls_back() {
         "the disagreement needs two objects"
     );
     mesh.objects[1].config.data.insert(
-        "infill_density".to_owned(),
-        ConfigValue::Float(case.config.infill_density * 2.0),
+        "sparse_infill_density".to_owned(),
+        ConfigValue::Float(case.config.infill_density * 2.0 * 100.0),
     );
     let trace = Arc::new(Trace::default());
     let options = case_options(&root, mesh, case, false);
@@ -4183,7 +4186,10 @@ fn selection_override_empty_and_foreign_owner() {
     // least one committed region always has a target, so the reachable
     // no-target print is one where the artifact is not selected at all. The
     // search roots therefore exclude lightning, and the print still emits real
-    // output through the remaining modules.
+    // output through the remaining modules. The configured sparse-fill holder
+    // must name a loaded module (`UnmatchedClaimHolder` is fatal at startup,
+    // `validate_startup_dag_with_configured_holders`), so the case's
+    // `lightning-infill` holder is redirected to the loaded rectilinear module.
     let trace = Arc::new(Trace::default());
     let options = case_options_with_config(
         &root,
@@ -4191,7 +4197,10 @@ fn selection_override_empty_and_foreign_owner() {
         case,
         false,
         native_module_dirs(&root),
-        &[],
+        &[(
+            "sparse_fill_holder",
+            ConfigValue::String("rectilinear-infill".to_owned()),
+        )],
     );
     let output = {
         note_invocation("run_slice_with_runtime_extensions");

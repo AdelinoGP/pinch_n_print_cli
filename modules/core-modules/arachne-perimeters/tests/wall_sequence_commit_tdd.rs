@@ -10,7 +10,7 @@ use slicer_sdk::views::SliceRegionView;
 fn config(mode: &str) -> ConfigView {
     ConfigViewBuilder::new()
         .float("resolution", 0.01)
-        .int("wall_count", 3)
+        .int("wall_loops", 3)
         .string("wall_sequence", mode)
         // Required-read baseline (packet 06 5c', item 11): the classified
         // reads in run_perimeters/arachne_params_from_config are now

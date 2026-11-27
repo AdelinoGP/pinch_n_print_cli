@@ -29,9 +29,11 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
 
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("infill_density", density)
-        .float("infill_angle", angle)
-        .float("infill_speed", speed)
+        // Canonical-percent key (wayfinder ticket 107): fractions in test
+        // intent convert to percent at the builder.
+        .float("sparse_infill_density", density * 100.0)
+        .float("infill_direction", angle)
+        .float("sparse_infill_speed", speed)
         .float("line_width", line_width)
         // Required-read baseline (packet 06 5c', item 11): the classified
         // reads in from_config are now require_*; the view must hold every
@@ -88,9 +90,24 @@ fn from_config_defaults() {
     values.insert("line_width".into(), slicer_ir::ConfigValue::Float(0.45));
     // Declared keys (gyroid-infill.toml) seeded at their manifest defaults,
     // mirroring the production `seed_registry_defaults` step.
-    values.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.2));
-    values.insert("infill_angle".into(), slicer_ir::ConfigValue::Float(45.0));
-    values.insert("infill_speed".into(), slicer_ir::ConfigValue::Float(60.0));
+    // Canonical percent key: 20 = 20%.
+    values.insert(
+        "sparse_infill_density".into(),
+        slicer_ir::ConfigValue::Float(20.0),
+    );
+    values.insert(
+        "infill_direction".into(),
+        slicer_ir::ConfigValue::Float(45.0),
+    );
+    // Contract-required float-or-percent widths (packet 06).
+    values.insert(
+        "bridge_line_width".into(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    values.insert(
+        "initial_layer_line_width".into(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
     let config = ConfigView::from_map(values);
     let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
@@ -106,6 +123,33 @@ fn from_config_custom() {
     let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.3).abs() < 0.001);
     assert!((module.line_width() - 0.5).abs() < 0.001);
+}
+
+/// Wayfinder ticket 114: sparse paths carry the neutral speed factor at any
+/// configured `sparse_infill_speed`. The emitter resolves the absolute
+/// feedrate from `FeedrateConfig::sparse_infill_speed` (the same raw key this
+/// module used to divide against a private BASE_SPEED, which double-counted
+/// user-set values through the shared source); the host owns the role speed.
+#[test]
+fn sparse_paths_carry_neutral_speed_factor() {
+    let config = make_config(0.2, 0.0, 200.0, 0.4);
+    let module = GyroidInfill::from_config(&config).unwrap();
+
+    let region = make_square_region(10.0, 0.3);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+        .unwrap();
+
+    assert!(!output.sparse_paths().is_empty());
+    for path in output.sparse_paths() {
+        assert!(
+            (path.speed_factor - 1.0).abs() < 0.001,
+            "speed_factor should be 1.0 (host-owned role speed), got {}",
+            path.speed_factor
+        );
+    }
 }
 
 /// Test 3: 10mm square at density=0.2 produces non-empty sparse paths.
@@ -432,8 +476,8 @@ fn square_10mm_z_0p2_emits_raw_waves() {
 /// (rotate-polygon-FIRST invariant: both are centered near (0,0) for a centered
 /// square polygon, within align_to_grid tolerance).
 ///
-/// The polygon is rotated by `-(infill_angle + CORRECTION_ANGLE_DEG)` before
-/// wave generation, so different infill angles produce different rotated-frame
+/// The polygon is rotated by `-(infill_direction + CORRECTION_ANGLE_DEG)` before
+/// wave generation, so different infill directions produce different rotated-frame
 /// Test 13: 45° rotated output, after inverse rotation, has approximately the same
 /// world-space bbox as the 0° output.
 ///
@@ -863,13 +907,14 @@ fn adjacent_layers_have_phase_coherent_bbox() {
     );
 }
 
-/// Test 18: per-region `infill_density` override (packet 131 / TASK-256) is
+/// Test 18: per-region `sparse_infill_density` override (packet 131 / TASK-256)
+/// is
 /// read through `slicer_sdk::config_resolution` and overrides the
 /// module-global default set in `from_config`.
 ///
 /// Two scenarios, same module, same module-global density (0.2):
 /// 1. region A — no per-region config — produces `spacing = line_width / (0.2 * 2.44)`
-/// 2. region B — per-region `infill_density = 0.8` — produces
+/// 2. region B — per-region `sparse_infill_density = 80` (80%) — produces
 ///    `spacing = line_width / (0.8 * 2.44)` (4× the period of A)
 ///    The wave bbox extent depends on `spacing` (via `10 × spacing_mm` expand),
 ///    so the two regions must produce materially different bboxes. A region
@@ -901,11 +946,15 @@ fn per_region_density_overrides_module_global() {
         });
     let width_a = extent_a.1 - extent_a.0;
 
-    // Region B: per-region infill_density = 0.8 (4× the module-global 0.2).
+    // Region B: per-region sparse_infill_density = 80 (80%; 4× the
+    // module-global 20%).
     // spacing_mm halves, expand halves, so the bbox should be ~half the width.
     let mut region_b = make_square_region(10.0, 0.2);
     let mut fields = HashMap::new();
-    fields.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.8));
+    fields.insert(
+        "sparse_infill_density".into(),
+        slicer_ir::ConfigValue::Float(80.0),
+    );
     region_b.set_config(ConfigView::from_map(fields));
 
     let mut output_b = InfillOutputBuilder::new();

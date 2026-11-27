@@ -3,7 +3,7 @@
 //! Our own extension — absent in OrcaSlicer's classic perimeter generator —
 //! for regions whose `nonplanar_surface` resolved to a `SurfaceGroup`
 //! (`crates/slicer-sdk/src/views.rs::SliceRegionView::surface_group`). Highest
-//! precedence in `run_perimeters`: overrides `wall_count`, skips thin-wall,
+//! precedence in `run_perimeters`: overrides `wall_loops`, skips thin-wall,
 //! gap-fill, extra_perimeters, and the narrow-island override entirely, and
 //! leaves `infill_areas` empty.
 
@@ -36,7 +36,7 @@ fn nonplanar_region_emits_shell_count_walls() {
     // auto-0 wall-width sentinels, or the spacing gate rejects the inset.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .build();
     let module = ClassicPerimeters::from_config(&config).unwrap();
 
@@ -87,7 +87,7 @@ fn nonplanar_skips_thin_wall_case() {
     // Bound-view baseline (packet 06 5c-prime): see nonplanar_region_emits_shell_count_walls.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .bool("detect_thin_wall", true)
         .build();
     let module = ClassicPerimeters::from_config(&config).unwrap();

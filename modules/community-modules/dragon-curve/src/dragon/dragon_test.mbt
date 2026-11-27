@@ -484,11 +484,11 @@ test "oblique_hole_is_excluded_under_independent_check" {
   }
 }
 
-// ------------------------------------------------------------ infill_angle
+// ------------------------------------------------------------ infill_direction
 
 ///|
-test "infill_angle_rotates_the_tiling" {
-  // The manifest advertises `infill_angle`; prove it is load-bearing rather
+test "infill_direction_rotates_the_tiling" {
+  // The manifest advertises `infill_direction`; prove it is load-bearing rather
   // than a decorative key.
   let region = Region::{ contour: square_ring(0L, 0L, 20L * mm), holes: [] }
   let flat = tile_dragon_curve_rotated(region, 1L * mm, 10, 0.0)
@@ -619,7 +619,7 @@ test "large_tiling_depth_is_honoured" {
 /// Void guard on the SHIPPED DEFAULT configuration.
 ///
 /// `tiling_leaves_no_large_voids` runs at angle 0, depth 12. The manifest
-/// defaults are `infill_angle = 45.0` and `tiling_depth = 10`, which take the
+/// defaults are `infill_direction = 45.0` and `tiling_depth = 10`, which take the
 /// float-rotated path - previously guarded only by a length ratio. That is the
 /// exact hole this module has already been bitten by once: a length check
 /// cannot see fill redistributed into stripes, and an early version scored a

@@ -173,7 +173,7 @@ fn no_spurious_diagnostics_on_happy_path() {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
     // reads need the full classic surface; the fixture's own keys override it.
     let config = crate::common::classic_perimeters_baseline()
-        .int("wall_count", 2)
+        .int("wall_loops", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("nozzle_diameter", nozzle_d as f64)

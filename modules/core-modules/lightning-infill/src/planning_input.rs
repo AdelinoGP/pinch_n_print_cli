@@ -29,18 +29,21 @@ pub(crate) const CONFIG_DISAGREEMENT_CODE: u32 = 57412;
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct PlannerScalars {
     line_width: f64,
-    infill_density: f32,
+    sparse_infill_density: f32,
     layer_height: f64,
-    infill_angle: f32,
+    infill_direction: f32,
 }
 
 impl PlannerScalars {
     fn read(view: &slicer_ir::ConfigView) -> Result<Self, ModuleError> {
         Ok(Self {
             line_width: view.require_float("line_width")?,
-            infill_density: view.require_float("infill_density")? as f32,
+            // Canonical `sparse_infill_density` is coPercent (20 = 20%); the
+            // typed `ResolvedConfig` field carries the percent, and the kernel
+            // divides by 100 (wayfinder ticket 107).
+            sparse_infill_density: view.require_abs_value("sparse_infill_density", 100.0)? as f32,
             layer_height: view.require_float("layer_height")?,
-            infill_angle: view.require_float("infill_angle")? as f32,
+            infill_direction: view.require_float("infill_direction")? as f32,
         })
     }
 
@@ -48,14 +51,14 @@ impl PlannerScalars {
         if self.line_width.to_bits() != other.line_width.to_bits() {
             return Err(disagreement("line_width"));
         }
-        if self.infill_density.to_bits() != other.infill_density.to_bits() {
-            return Err(disagreement("infill_density"));
+        if self.sparse_infill_density.to_bits() != other.sparse_infill_density.to_bits() {
+            return Err(disagreement("sparse_infill_density"));
         }
         if self.layer_height.to_bits() != other.layer_height.to_bits() {
             return Err(disagreement("layer_height"));
         }
-        if self.infill_angle.to_bits() != other.infill_angle.to_bits() {
-            return Err(disagreement("infill_angle"));
+        if self.infill_direction.to_bits() != other.infill_direction.to_bits() {
+            return Err(disagreement("infill_direction"));
         }
         Ok(())
     }
@@ -234,9 +237,9 @@ pub(crate) fn build_planner_inputs(
         ResolvedConfig {
             sparse_fill_holder: "lightning-infill".to_string(),
             line_width: scalars.line_width,
-            infill_density: scalars.infill_density,
+            sparse_infill_density: scalars.sparse_infill_density,
             layer_height: scalars.layer_height,
-            infill_angle: scalars.infill_angle,
+            infill_direction: scalars.infill_direction,
             ..Default::default()
         },
     ))
@@ -254,9 +257,12 @@ mod tests {
     fn planner_config(line_width: f64, layer_height: f64) -> slicer_ir::ConfigView {
         let mut values = HashMap::new();
         values.insert("line_width".to_string(), ConfigValue::Float(line_width));
-        values.insert("infill_density".to_string(), ConfigValue::Float(0.2));
+        values.insert(
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        );
         values.insert("layer_height".to_string(), ConfigValue::Float(layer_height));
-        values.insert("infill_angle".to_string(), ConfigValue::Float(45.0));
+        values.insert("infill_direction".to_string(), ConfigValue::Float(45.0));
         slicer_ir::ConfigView::from_map(values)
     }
 

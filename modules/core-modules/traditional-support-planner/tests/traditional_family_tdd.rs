@@ -140,7 +140,7 @@ fn planner_config_with(
         ConfigValue::String("rectilinear".into()),
     );
     values.insert(
-        "support_top_z_distance_mm".into(),
+        "support_top_z_distance".into(),
         ConfigValue::Float(top_distance_mm.into()),
     );
     values.insert(
@@ -163,6 +163,10 @@ fn planner_config_with(
         ConfigValue::Float(0.35),
     );
     values.insert("line_width".into(), ConfigValue::Float(0.4));
+    values.insert(
+        "support_base_pattern".into(),
+        ConfigValue::String("rectilinear".into()),
+    );
     values.insert(
         "support_base_pattern_spacing".into(),
         ConfigValue::Float(2.5),

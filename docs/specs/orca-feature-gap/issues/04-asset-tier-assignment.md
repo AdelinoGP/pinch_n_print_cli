@@ -52,9 +52,14 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
-ticket 03's ruling), and dead alternate spellings. 11 keys; the scoped
-target is now **407** (403 + ticket 07's two reclassified ironing keys +
-ticket 99's two fan-scale reclassifications).
+ticket 03's ruling), and dead alternate spellings. 11 keys at 04's closure;
+the scoped target earns its 12th at ticket 89 (`default_nozzle_volume_type`,
+preset-management) — see Tier counts and the `default_nozzle_volume_type`
+row; the arithmetic at HEAD is 403 + ticket 07's two reclassified ironing
+keys + ticket 99's two fan-scale reclassifications + ticket 46's three
+source-missing `*_filament_id` siblings − ticket 89's preset-management
+`default_nozzle_volume_type` − ticket 98's two already-live
+`mmu_segmented_region_*` keys = **407**.
 
 ### Special rulings
 
@@ -64,6 +69,21 @@ ticket 99's two fan-scale reclassifications).
   consumed at decision points, but are **not declared in any module
   manifest** — a contract violation. They are Tier A work: declare in the
   owning module's manifest + wire. (User ruling, ticket 04 session.)
+  **This ruling was right and the per-key tier table was wrong** — the table
+  filed the two `mmu_segmented_region_*` keys as Tier C new-module work
+  (P91) anyway. Ticket 98 re-derived them and corrected both rows to A.
+  **Amended by ticket 98 on where "declare" lands:** where the consumer is a
+  host built-in rather than a module (as it is for the two
+  `mmu_segmented_region_*` keys — `run_phase5_width_limit` in
+  `crates/slicer-core/src/algos/paint_segmentation/`), the declaration home is
+  `docs/config/host-keys.toml` `[resolved_config]`, whose stated purpose is
+  host-registered keys in no module manifest and whose
+  `host_keys_doc_lock_tdd.rs` lock test ties each documented default to the
+  live `ResolvedConfig::default()`. Declaring a host built-in's key on an
+  unrelated module manifest would be the map's "re-derive the owner" error
+  (old packet 96 planned exactly that, onto `mesh-segmentation`; it never
+  landed and should not). The remaining three keys in this list are
+  unadjudicated.
 - **Tie-breaker within a tier:** owning module — keeps each owner's diff
   local across the whole queue. (User ruling.)
 - **Decision-point detection:** mechanical proxy (sibling-key read) for the
@@ -84,11 +104,11 @@ ticket 99's two fan-scale reclassifications).
 | Tier | keys | meaning |
 |---:|---:|---|
 | A | 119 | plumbing into an existing decision point (incl. `support_ironing`, +1 from ticket 07) |
-| B | 226 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99) |
+| B | 228 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99; `top/bottom_surface_filament_id` + `inner_wall_filament_id` +3 from 46; − ticket 89's `default_nozzle_volume_type` to X) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
-| X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
-| **in scope** | **407** | |
+| X | 12 | out of scope (dead-in-canonical 6+2, preset-management 4 — 11 at 04's closure + ticket 89's `default_nozzle_volume_type`) |
+| **in scope** | **409** (410 at 04's closure − ticket 89) | |
 
 ## Owner map (verified + five times adversarially reviewed)
 
@@ -104,12 +124,12 @@ ticket 99's two fan-scale reclassifications).
 | Quality / Seam | A/B | **crates/slicer-gcode** (16) + seam-placer (1) | canonical `GCode::extrude_loop` clipping + `GCodeProcessor.cpp`; only `staggered_inner_seams` in SeamPlacer.cpp |
 | Quality / Ironing | A | top-surface-ironing + support-surface-ironing | canonical `Fill.cpp::Layer::make_ironing` |
 | Quality / Layer height | B | tool-ordering | canonical `ToolOrdering.cpp::apply_first_layer_order`; 2 keys out of scope (dead spellings) |
-| Quality / Walls and surfaces | B | crates/slicer-gcode (flow scaling, travel, ordering) + print/orchestration (`extruder`) | canonical `GCode::_extrude` mm3_per_mm scaling, `AvoidCrossingPerimeters.cpp`, `Print.cpp` per-object extruder |
+| Quality / Walls and surfaces | B | crates/slicer-gcode (flow scaling, travel, ordering) + ticket 124 (`extruder` — **P80 dissolved, folded into 124** by ticket 87, 2026-09-10: canonical's `extruder` assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config` + `normalize_fdm`, `PrintObject.cpp`; ticket 46's runtime seam already resolves those), so a standalone packet would be declaration-only (rule 1); the per-object identity the assignment needs is 124's sequential-printing feature) | canonical `GCode::_extrude` mm3_per_mm scaling, `AvoidCrossingPerimeters.cpp`, `Print.cpp` per-object extruder |
 | Quality / Wall generator — Arachne | A | arachne-perimeters | `min_feature_size` in Arachne/WallToolPaths.cpp |
 | Quality / Line width | B | support-planner | `support_line_width` in Flow.cpp / TreeSupport.cpp (support flow) |
 | Quality / Overhangs | B | slice-prepass | canonical `PrintObjectSlice.cpp::apply_conical_overhang` |
-| Quality / Bridging | B (split) | pattern keys (2) → infill modules; bridge-over-infill (3) → slicing stage; bridge-angle + flow (2) → perimeters/emitter; perimeter (1) → classic/arachne | canonical `Fill.cpp::Layer::make_fills`, `PrintObject.cpp::bridge_over_infill`, `GCode::_extrude`, `PerimeterGenerator::process_no_bridge`, `LayerRegion.cpp` |
-| Quality / Precision | C/B | new modules: elefant-foot (2), polyhole (3), contour-compensation (2); `enable_arc_fitting` → emitter; `precise_z_height` → layer-planner | canonical `PrintObject::slice` transforms; arc fitting is G2/G3 emission; z-height is layer-z generation |
+| Quality / Bridging | B (split) | pattern keys (2) → infill modules; bridge-over-infill (3) → host prepass qualification + InfillPostProcess construction seam; bridge-angle + flow (2) → perimeters/emitter; perimeter (1) → classic/arachne | canonical `Fill.cpp::Layer::make_fills`, `PrintObject.cpp::bridge_over_infill`, `GCode::_extrude`, `PerimeterGenerator::process_no_bridge`, `LayerRegion.cpp` |
+| Quality / Precision | C/B | new modules: elefant-foot (2), polyhole (3), contour-compensation (2); `enable_arc_fitting` → emitter; `precise_z_height` → layer-planner; `resolution` → emitter/generation-time (re-adjudicated in ticket 105) | canonical `PrintObject::slice` transforms; arc fitting is G2/G3 emission; z-height is layer-z generation |
 | Others / Fuzzy Skin | A | fuzzy-skin | canonical `Feature/FuzzySkin/FuzzySkin.cpp::apply_fuzzy_skin` |
 | Others / Brim, Skirt | A | skirt-brim | canonical `Brim.cpp::make_brim`, `Print.cpp::_make_skirt`, `GCode.cpp::generate_skirt` |
 | Cooling / Notes | A/B | part-cooling (17) + tool-ordering (1) + layer-planner (1) | canonical CoolingBuffer.cpp / GCode.cpp emission-time cooling; `max_layer_height` in ToolOrdering.cpp; `min_layer_height` in Slicing.cpp |
@@ -121,7 +141,7 @@ ticket 99's two fan-scale reclassifications).
 | Others / G-code output | B | crates/slicer-gcode (6) + host export orchestration (1) | canonical GCodeWriter.cpp, GCode.cpp, Print.cpp::output_filename; `gcode_add_line_number` is GUI post-processor → host export |
 | Others / Post-processing Scripts | B | host export orchestration (crates/slicer-runtime) | canonical GUI/PostProcessor.cpp::run_post_process_scripts |
 | Printer / Machine / Motion limits, Timing, Resonance, Bed mesh | B | crates/slicer-gcode | canonical `GCode::print_machine_envelope` (M201/M203), GCodeProcessor.cpp, GCode.cpp G29 |
-| Printer / Machine / Power / recovery | A | crates/slicer-gcode | `disable_m73` consumed in emit.rs; canonical GCodeWriter::set_m73 |
+| Printer / Machine / Power / recovery | A/B | crates/slicer-gcode | `disable_m73` consumed in emit.rs; canonical GCodeWriter::set_m73; envelope + recovery emission built by packet 267 (mixed A/B) |
 | Printer / Machine / Printer identity | A | crates/slicer-gcode | `printer_model`/`printer_structure` in GCode.cpp / GCodeProcessor.cpp; 3 keys out of scope (preset-management) |
 | Printer / Machine / Print volume | A/B | wipe-tower + crates/slicer-gcode + print/orchestration | `bed_shape` read by wipe-tower; `printable_height` in emitter; clearance keys in Print.cpp arrangement |
 | Extruder / Nozzle / Extruder geometry, Nozzle, Pressure advance | B | crates/slicer-gcode + config-resolution + tool-ordering + skirt-brim | canonical GCode.cpp toolchange, GCodeProcessor.cpp, AdaptivePAProcessor.cpp; `extruder_ams_count`/`nozzle_volume_type` in ToolOrdering.cpp; `default_nozzle_volume_type` in PresetBundle.cpp; `nozzle_height` in Print.cpp skirt check |
@@ -184,58 +204,58 @@ findings (the one flagged row was a stale-asset artifact).
 | `full_fan_speed_layer` | A | part-cooling (emission-time cooling) |
 | `internal_bridge_fan_speed` | A | part-cooling (emission-time cooling) |
 | `ironing_fan_speed` | A | part-cooling (emission-time cooling) |
-| `max_layer_height` | B | tool-ordering (ToolOrdering.cpp calc_max_layer_height) |
-| `min_layer_height` | B | layer-planner (Slicing.cpp min_layer_height_from_nozzle) |
+| `max_layer_height` | B | tool-ordering (ToolOrdering.cpp calc_max_layer_height) — **blocked, unimplemented** by ticket 69: per-extruder `coFloats` vector (`0` = auto → `0.75 × nozzle_diameter[i]`) whose every live consumer rides a missing subsystem — tower partitions (purge-only tower, no partitions/idle layers/marking; sequences after ticket 122), skirt intermediate marking (skirt emits first-N-layers by count), slicing min/max envelope (uniform layer steps, no variable profile; canonical's own adaptive switch commented out); `Print.cpp::object_skirt_offset` is a named non-borrow (offset never reaches skirt gen — ticket 32; its live caller is ticket 124's validator). No per-extruder vector model (`nozzle_diameter` is an `extensions` scalar); re-filed as ticket 141, blocked on 122 + 125 |
+| `min_layer_height` | B | layer-planner (Slicing.cpp min_layer_height_from_nozzle) — **blocked, unimplemented** by ticket 75: per-nozzle `coFloats` (default `{0.07}`) whose only live consumer is the `SlicingParameters` min/max envelope + adaptive profile clamp — the port's planner is uniform-only (no variable profile) and has no per-extruder vector model; re-filed as ticket 144, blocked on 06 + 125 (fold candidate with 141 at claim time — same envelope; kept separate now so it is not over-blocked behind 141's tower-body gate) |
 | `overhang_fan_threshold` | A | part-cooling (emission-time cooling) |
 | `reduce_fan_stop_start_freq` | A | part-cooling (emission-time cooling) |
 | `support_material_interface_fan_speed` | A | part-cooling (emission-time cooling) |
 
 ### Extruder / Nozzle / Extruder geometry / mapping
-| `extruder_ams_count` | B | tool-ordering (ToolOrdering.cpp calc_max_group_size) |
-| `extruder_colour` | B | crates/slicer-gcode (toolchange emission) |
-| `extruder_offset` | B | crates/slicer-gcode (toolchange emission) |
-| `extruder_type` | B | crates/slicer-gcode (toolchange emission) |
-| `extruder_variant_list` | B | config-resolution (Print.cpp get_config_index) |
-| `filament_extruder_variant` | B | config-resolution (Print.cpp get_config_index) |
-| `filament_self_index` | B | config-resolution (Print.cpp update_filament_self_index_cache) |
-| `master_extruder_id` | B | crates/slicer-gcode (toolchange emission) |
-| `physical_extruder_map` | B | crates/slicer-gcode (toolchange emission) |
-| `print_extruder_id` | B | config-resolution (Print.cpp get_config_index) |
-| `print_extruder_variant` | B | config-resolution (Print.cpp get_config_index) |
-| `printer_extruder_id` | B | crates/slicer-gcode (toolchange emission) |
-| `printer_extruder_variant` | B | crates/slicer-gcode (toolchange emission) |
+| `extruder_ams_count` | B | tool-ordering (ToolOrdering.cpp calc_max_group_size) — **blocked, unimplemented** by ticket 70: machine-inventory `coStrings` (per-extruder `"<slots>#<count>"` tokens, default `{}`) whose live reads all sit in `build_filament_group_context` (group-slot capacity + machine filament inventory, `has_filament_switcher` override) feeding the absent `FilamentGroup.cpp` grouping scorer (ticket-39 `master_extruder_id` subject); `Print.cpp` gate entry is invalidation bookkeeping, `PrintApply`/`PresetBundle` are GUI/preset plumbing; zero tree occurrences, no per-extruder vector model; re-filed as ticket 142, blocked on 06 + 125 |
+| `extruder_colour` | B | **covered** (ticket 39): canonical's only pipeline read is the CONFIG_BLOCK alias to `filament_colour` (`GCode::append_full_config`); the port emits the directive in HEADER_BLOCK + CONFIG_BLOCK with the authored palette when supplied |
+| `extruder_offset` | B | — **blocked, unimplemented** by ticket 39: per-extruder XY offsets at emission (`GCode::point_to_gcode`, `WipeTowerIntegration::post_process_wipe_tower_moves` toolchange bridge move); the port has no offset term and no per-extruder vector model; re-filed as ticket 136, blocked on ticket 125 |
+| `extruder_type` | B | — **blocked, unimplemented** by ticket 39: per-extruder bowden/direct feeding `ToolOrdering.cpp::build_filament_group_context` and `Print::update_filament_maps_to_config`; no such machinery in the tree; re-filed as ticket 136, blocked on ticket 125 |
+| `extruder_variant_list` | B | — **blocked, unimplemented** by ticket 88: per-extruder `coStrings` vector (default `{"Direct Drive Standard"}`, dynamic-only) gating variant grouping (`DynamicPrintConfig::support_different_extruders`, `PrintConfig.cpp`) + fallback slot (`get_index_for_extruder`); zero tree occurrences, no per-extruder vector model or variant index maps; re-filed as ticket 146, blocked on ticket 125 |
+| `filament_extruder_variant` | B | — **blocked, unimplemented** by ticket 88: per-filament-variant `coStrings` feeding `Print::get_filament_config_indx` + `Print::get_filament_unprintable_flow` (`Print.cpp`); zero tree occurrences; re-filed as ticket 146, blocked on ticket 125 |
+| `filament_self_index` | B | — **blocked, unimplemented** by ticket 88: per-filament-variant `coInts` (default `{1}`) loaded by `Print::update_filament_self_index_cache` and consumed by `get_filament_config_indx` + `get_filament_unprintable_flow`; zero tree occurrences; re-filed as ticket 146, blocked on ticket 125 |
+| `master_extruder_id` | B | — **blocked, unimplemented** by ticket 39: feeds the absent filament-grouping algorithm (`FilamentGroup.cpp`, `FilamentGroup::calc_group_by_kmedoids`); re-filed as ticket 136, blocked on ticket 125 |
+| `physical_extruder_map` | B | — **blocked, unimplemented** by ticket 39: internal→physical T-index map at emission (`GCode::_do_export` reorder, placeholder seeds, `WipeTower` M104/M109 targets); port emits plain runtime tool indices; re-filed as ticket 136, blocked on ticket 125 |
+| `print_extruder_id` | B | — **blocked, unimplemented** by ticket 88: per-process-variant `coInts` (default `{1}`) feeding `Print::get_nozzle_config_index` + `get_index_for_extruder` (`Print.cpp`); zero tree occurrences; re-filed as ticket 146, blocked on ticket 125 |
+| `print_extruder_variant` | B | — **blocked, unimplemented** by ticket 88: per-process-variant `coStrings` feeding `Print::get_nozzle_config_index` + `get_index_for_extruder`; zero tree occurrences; re-filed as ticket 146, blocked on ticket 125 |
+| `printer_extruder_id` | B | — **blocked, unimplemented** by ticket 39: shape key of per-extruder option arrays (`ParameterUtils.cpp::get_index_for_extruder_parameter`, `update_values_to_printer_extruders`); port has no per-extruder vector model; re-filed as ticket 136, blocked on ticket 125 |
+| `printer_extruder_variant` | B | — **blocked, unimplemented** by ticket 39: same variant-array machinery + `Print::get_filament_unprintable_flow`; re-filed as ticket 136, blocked on ticket 125 |
 
 ### Extruder / Nozzle / MMU Hardware
-| `cooling_tube_length` | B | wipe-tower |
-| `cooling_tube_retraction` | B | wipe-tower |
-| `extra_loading_move` | B | wipe-tower |
-| `grab_length` | B | crates/slicer-gcode (toolchange) |
-| `high_current_on_filament_swap` | B | wipe-tower |
-| `parking_pos_retraction` | B | wipe-tower |
-| `start_end_points` | B | crates/slicer-gcode (get_path_of_change_filament) |
+| `cooling_tube_length` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `cooling_tube_retraction` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `extra_loading_move` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `grab_length` | B | wipe-tower — **live** (ticket 40, direct implementation): declared on `wipe-tower.toml` (scalar float, default 0, min 0) and consumed by `WipeTower::purge_volume_for`, which subtracts `grab_length × 2.4` (canonical's `(diameter/2)^2*PI` cross-section) from the purge volume, clamped at 0 — canonical `GCode.cpp` toolchange path + `Print.cpp` wipe-tower planning. Scalar, not canonical's per-extruder `coFloats` (blocked on ticket 118); divergences in `DEV-170` |
+| `high_current_on_filament_swap` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `parking_pos_retraction` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload/Load`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |
+| `start_end_points` | B | — **blocked, unimplemented** by ticket 40: canonical's only read site is `get_path_of_change_filament` (`GCode.cpp`), which computes the `travel_point_*` placeholders for `change_filament_gcode` from `start_end_points` + `bed_exclude_area` + object bounding boxes — and returns the safe default path when `bed_exclude_area.size() != 4`. `bed_exclude_area` is packet 256's scope (authored, not implemented), so wiring this key alone would be declaration-only (Authoring rule 1); the path computation also needs object bounding boxes at a seam that reaches the postpass substitution (new `ResolvedConfig` fields or extensions + `travel_point_*` schema on `machine-gcode-emit`). Missing feature: the filament-change travel path. Re-file when packet 256's implementation lands |
 
 ### Extruder / Nozzle / Nozzle
-| `default_nozzle_volume_type` | B | config-resolution (PresetBundle.cpp) |
+| `default_nozzle_volume_type` | X | out of scope — preset-management (ticket 89): the printer-profile side of the default/current pair; every canonical read is `PresetBundle` seeding / GUI-plate volume-map composition (`load_selections`, `reset_default_nozzle_volume_type`, `get_default_nozzle_volume_types_for_filaments`), zero slicing-pipeline decision points (`default_bed_type` precedent) |
 | `nozzle_height` | B | skirt-brim (Print.cpp skirt/draft-shield height) |
-| `nozzle_hrc` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
-| `nozzle_type` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
-| `nozzle_volume` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
-| `nozzle_volume_type` | B | tool-ordering (ToolOrdering.cpp + MultiNozzleUtils.cpp) |
-| `required_nozzle_HRC` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
+| `nozzle_hrc` | B | — **blocked, unimplemented** by ticket 41: canonical's reads are all in `GCodeProcessor` (`apply_config` both overloads copy the scalar to every extruder; `update_slice_warnings` compares vs per-filament `required_nozzle_HRC` with the `Print::get_hrc_by_nozzle_type` fallback → non-fatal `NOZZLE_HRC_CHECKER` warning); the port has no warning-list seam and the comparison needs the per-tool axis; re-filed as ticket 137, blocked on ticket 125 |
+| `nozzle_type` | B | — **blocked, unimplemented** by ticket 41: `coEnums` per-extruder vector (default `{ntUndefine}`), canonical's only role is the fallback-HRC source on the same `update_slice_warnings` path; no tree decision point; re-filed as ticket 137, blocked on ticket 125 |
+| `nozzle_volume` | B | — **blocked, unimplemented** by ticket 41: `coFloats` per-extruder vector whose only behavioural effect is Elegoo-`M6211` flush attribution (`process_filaments` remaining-volume reset + `process_elegoo_M6211` statistics, ignored on non-Elegoo); no Elegoo seam and no per-tool ingestion in tree; re-filed as ticket 137, blocked on ticket 125 (vendor-scope ruling rides the re-file) |
+| `nozzle_volume_type` | B | — **blocked, unimplemented** by ticket 71: per-extruder `coEnums` machine-inventory key (default `nvtStandard`), every live slicing consumer inside the absent multi-nozzle grouping subject (`ToolOrdering.cpp::build_nozzle_groups` / `build_default_nozzle_list` nozzle list + `add_volume_type_limits` unprintable-volume marking, feeding the `FilamentGroup.cpp` scorer — same subject as tickets 136/142); no grouping engine, no `NozzleGroupInfo`/`NozzleInfo` model, no per-extruder vector model in tree; re-filed as ticket 143, blocked on 06 + 125 (fold candidate with 136/142; sibling `default_nozzle_volume_type` stays ticket 89/P82) |
+| `required_nozzle_HRC` | B | — **blocked, unimplemented** by ticket 41: `coInts` per-filament vector, the requirement side of canonical's `update_slice_warnings` HRC comparison; needs the per-tool axis (today `extract_float_or_first` keeps element 0); re-filed as ticket 137, blocked on ticket 125 |
 
 ### Extruder / Nozzle / Pressure advance
-| `adaptive_pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_bridges` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_model` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_overhangs` | B | crates/slicer-gcode (flavor.rs) |
-| `enable_pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
-| `pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
+| `adaptive_pressure_advance` | B | — **unimplemented** by ticket 42: needs the AdaptivePAProcessor-style per-feature prediction (per-tool interpolators over the `adaptive_pressure_advance_model` flow/accel triplets, `process_layer` G-code post-pass, bridge/overhang overrides); no tree decision point; returned to the queue with the missing feature named |
+| `adaptive_pressure_advance_bridges` | B | — **unimplemented** by ticket 42: static bridge override inside the same processor (`AdaptivePAProcessor.cpp` bridge branch, `coFloats` 0.0 max 2, 0 = follow walls); returned with the processor |
+| `adaptive_pressure_advance_model` | B | — **unimplemented** by ticket 42: per-tool calibration triplets (`coStrings` `"0,0,0\n0,0,0"`, parsed + validated per `Print.cpp`); returned with the processor |
+| `adaptive_pressure_advance_overhangs` | B | — **unimplemented** by ticket 42: in-feature flow-change arm of the same processor (`GCode.cpp` overhang branches); returned with the processor |
+| `enable_pressure_advance` | B | — **live** by ticket 42: host emitter gates the PA prefix on this (`coBools` false) at print start + after every toolchange |
+| `pressure_advance` | B | — **live** by ticket 42: host emitter emits the flavor-specific PA line for this value (`coFloats` 0.02 max 2) via `GcodeFlavor::set_pressure_advance`; per-tool values ride the existing `tool_config:<idx>:` axis, Orca vector ingest rides ticket 125 |
 
 ### Extruder / Nozzle / Retraction
 | `deretraction_speed` | B | crates/slicer-gcode (GCode::retract) |
-| `long_retractions_when_cut` | B | crates/slicer-gcode (GCode::retract) |
-| `long_retractions_when_ec` | B | crates/slicer-gcode (GCode::retract) |
-| `retract_before_wipe` | B | crates/slicer-gcode (GCode::retract) |
+| `long_retractions_when_cut` | B | machine-gcode-emit placeholder seam — **in packet 276** by ticket 43: canonical's only reads are the export flag + `update_placeholder_parser_with_variant_params` publication, so the port publishes it through the module's existing substitution with a key-specific `1`/`0` guarantee (ADR-0050); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
+| `long_retractions_when_ec` | B | — **returned to the queue, unimplemented** by ticket 43: `ConfigOptionBoolsNullable` with no geometric read site (placeholder publication only); the `_cut` wiring in packet 276 names its landing pattern when claimed |
+| `retract_before_wipe` | B | crates/slicer-gcode (GCode::retract) — **shed to P37** by ticket 43: partitions retraction around wipe moves this tree does not emit yet; wiring it in 276 would be declaration-only (rule 1) |
 | `retract_length_toolchange` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_lift_above` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_lift_below` | B | crates/slicer-gcode (GCode::retract) |
@@ -243,8 +263,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `retract_restart_extra` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_restart_extra_toolchange` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_when_changing_layer` | B | crates/slicer-gcode (GCode::retract) |
-| `retraction_distances_when_cut` | B | crates/slicer-gcode (GCode::retract) |
-| `retraction_distances_when_ec` | B | crates/slicer-gcode (GCode::retract) |
+| `retraction_distances_when_cut` | B | machine-gcode-emit placeholder seam — **in packet 277** by ticket 44: canonical's reads are `append_tcr` / `update_placeholder_parser_with_variant_params` publication plus the `do_export` long-retraction flag (no cut motion is generated), so the port publishes it through the module's existing substitution with float spelling (276 `_cut`-bool precedent); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
+| `retraction_distances_when_ec` | B | machine-gcode-emit placeholder seam — **in packet 277** by ticket 44: placeholder-only in canonical (`update_placeholder_parser_with_variant_params`; EC remains placeholder-only in `GCode.cpp`), published through the module's existing substitution with float spelling; canonical's null state is not represented (unset means default); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
 | `retraction_minimum_travel` | B | crates/slicer-gcode (GCode::retract) |
 | `travel_slope` | B | crates/slicer-gcode (GCode::travel) |
 | `use_firmware_retraction` | B | crates/slicer-gcode (GCodeWriter::retract) |
@@ -254,10 +274,10 @@ findings (the one flagged row was a stale-asset artifact).
 | `z_offset` | B | crates/slicer-gcode (GCode::travel) |
 
 ### Filament / Bed temperature
-| `bed_temperature_formula` | B | crates/slicer-gcode (bed-temp selection, global) |
+| `bed_temperature_formula` | B | — **blocked, unimplemented** by ticket 45: highest-vs-first-filament selector (`GCode::_print_first_layer_bed_temperature`, `GCode::process_layer`, `GCode::_do_export`) over per-filament `bed_temperature` vectors that do not exist in this tree (only PnP scalar `bed_temperature_initial_layer_single` in `machine-gcode-emit`); re-filed as ticket 138, blocked on ticket 125 |
 | `cool_plate_temp` | D | deferred (per-filament config model) |
 | `cool_plate_temp_initial_layer` | D | deferred (per-filament config model) |
-| `curr_bed_type` | B | crates/slicer-gcode (bed-type, global) |
+| `curr_bed_type` | B | — **blocked, unimplemented** by ticket 45: plate-type selector (`GCode::get_highest_bed_temperature`, `GCode::_print_first_layer_bed_temperature`, `GCode::process_layer`, `GCode::_do_export`) over six Tier D plate-temperature vector pairs with zero occurrences in tree; re-filed as ticket 138, blocked on ticket 125 |
 | `default_bed_type` | X | out of scope — no pipeline consumer (GUI Plater.cpp only, preset-management) |
 | `eng_plate_temp` | D | deferred (per-filament config model) |
 | `eng_plate_temp_initial_layer` | D | deferred (per-filament config model) |
@@ -266,7 +286,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `supertack_plate_temp` | D | deferred (per-filament config model) |
 | `supertack_plate_temp_initial_layer` | D | deferred (per-filament config model) |
 | `support_chamber_temp_control` | X | out of scope — no pipeline consumer (GUI only, dead-in-canonical) |
-| `support_multi_bed_types` | B | print/orchestration (Print.cpp validate) |
+| `support_multi_bed_types` | B | — **blocked, unimplemented** by ticket 85: gate over the absent plate-selection domain (`is_BBL_printer() \|\| support_multi_bed_types` on `Print::validate`'s filament-vs-plate arm, `get_bed_temp_key(curr_bed_type)` vector lookup over six Tier D plate pairs); folded into ticket 138 with P38's `curr_bed_type`, blocked on ticket 125 |
 | `textured_cool_plate_temp` | D | deferred (per-filament config model) |
 | `textured_cool_plate_temp_initial_layer` | D | deferred (per-filament config model) |
 | `textured_plate_temp` | D | deferred (per-filament config model) |
@@ -314,41 +334,44 @@ findings (the one flagged row was a stale-asset artifact).
 | `nozzle_temperature_range_low` | D | deferred (per-filament config model) |
 
 ### Multimaterial / Filament for Features
-| `filament_map` | B | config-resolution (Print.cpp get_filament_maps, print-level) |
-| `filament_map_mode` | B | config-resolution (Print.cpp get_filament_map_mode, global) |
-| `solid_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `sparse_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `wall_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `wipe_tower_filament` | B | wipe-tower (tower filament, global) |
+| `filament_map` | B | — **blocked, unimplemented** by ticket 90: the grouping engine's manual input *and* auto-mode write-back output (`Extruder::extruder_id`, `Print::get_extruder_id` / `get_filament_maps`, the `fmmManual` / `fmmNozzleManual` direct wraps + multi-nozzle verification throw in `ToolOrdering::get_recommended_filament_maps`); every live read resolves a filament slot onto a per-extruder / nozzle inventory this port lacks (scalar `nozzle_diameter`, no nozzle list, no grouping scorer, no result table); zero tree occurrences; re-filed as ticket 147, blocked on ticket 125 |
+| `filament_map_mode` | B | — **blocked, unimplemented** by ticket 90: the grouping dispatch (`Print::get_filament_map_mode` / `is_dynamic_group_reorder`, the static/dynamic branch + `map_mode < fmmManual` write-back gate, the Flush/Match/manual/nozzle-manual/TPU dispatch inside `ToolOrdering::get_recommended_filament_maps` — `coEnum` over `FilamentMapMode`, default `fmmAutoForFlush`); zero tree occurrences; re-filed as ticket 147, blocked on ticket 125 |
+| `solid_infill_filament` → `internal_solid_filament_id` | B | runtime entity assembly (`assemble_ordered_entities_with_support_identities`, `crates/slicer-runtime/src/layer_executor.rs`) — **live** (ticket 46, direct implementation): canonical coInt 0=Default/inherit adopted as the declared name; explicit 1..N rebased to 0-based and clamped to tool count, resolved per entity by role below all paint-derived tools |
+| `sparse_infill_filament` → `sparse_infill_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |
+| `wall_filament` → `outer_wall_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |
+| `top_surface_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued — absent from the gap source, the queue, and the tree; queue +1) |
+| `bottom_surface_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued; queue +1) |
+| `inner_wall_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued; queue +1) |
+| `wipe_tower_filament` | B | wipe-tower (tower filament, global) — **blocked, unimplemented** by ticket 29: a selector over the tower's *finish extrusions* (`ToolOrdering::insert_wipe_tower_extruder`, `WipeTower2::first_toolchange_to_nonsoluble_nonsupport`), and this port's tower is purge-only — no shell/brim/infill, no idle-layer body, every path stamped `tool_index = tc.to_tool`; folded into ticket 122 (prime tower body parity), which the user ruled in scope at full canonical parity |
 
 ### Multimaterial / Flush options
-| `filament_flush_temp` | B | crates/slicer-gcode (toolchange flush) |
-| `filament_flush_volumetric_speed` | B | crates/slicer-gcode (toolchange flush) |
-| `flush_into_infill` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_into_objects` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_into_support` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_multiplier` | B | wipe-tower |
-| `flush_volumes_matrix` | B | wipe-tower |
+| `filament_flush_temp` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation): scalar-global `ResolvedConfig` field (canonical default 0) + manifest row, published as-is through the module's generic `[key]` substitution into custom templates; per-tool via `tool_config:<idx>:` axis, Orca vector ingest rides 125. Owner re-derived from `crates/slicer-gcode` (ticket-27 hazard — canonical's reads are all `GCode.cpp` placeholder publication, and this tree's substitution lives in the module). Divergences in `DEV-171` (scalar not per-filament, 0 with no Tier D fallback, raw names not canonical's plural derived names) |
+| `filament_flush_volumetric_speed` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation, same seam): scalar-global `ResolvedConfig` field (canonical default 0.0, max 200) + manifest row; same owner note and `DEV-171` |
+| `flush_into_infill` | B | wipe-tower — **packet 294** (ticket 72): tier-table `tool-ordering` owner corrected — ordering ignores config and owns sequence only; the purge decision point is `WipeTower::purge_volume_for` |
+| `flush_into_objects` | B | wipe-tower — **packet 294** (ticket 72, same owner correction) |
+| `flush_into_support` | B | wipe-tower — **packet 294** (ticket 72, same owner correction) |
+| `flush_multiplier` | B | wipe-tower — **live** (ticket 30, direct implementation): scales `flush_volumes_matrix` entries in `WipeTower::purge_volume_for`. Scalar, not canonical's per-extruder `coFloats` (blocked on ticket 118); divergences in `DEV-169` |
+| `flush_volumes_matrix` | B | wipe-tower — **live** (ticket 30, direct implementation): flat row-major `N*N` per-pair purge volumes driving the purge-box depth and prime length in `WipeTower::generate_purge_paths`; falls back to `prime_volume` when unset; divergences in `DEV-169` |
 | `flush_volumes_vector` | X | out of scope — preset-management metadata (03 class) |
 | `wiping_volumes_extruders` | X | out of scope — dead in canonical |
 
 ### Multimaterial / Multimaterial advanced
-| `interface_shells` | B | classic-perimeters (shell planning, PrintObject.cpp) |
+| `interface_shells` | B | classic-perimeters (shell planning, PrintObject.cpp) — **in packet 301** by ticket 83 |
 | `interlocking_beam` | C | new interlocking module |
 | `interlocking_beam_layer_count` | C | new interlocking module |
 | `interlocking_beam_width` | C | new interlocking module |
 | `interlocking_boundary_avoidance` | C | new interlocking module |
 | `interlocking_depth` | C | new interlocking module |
 | `interlocking_orientation` | C | new interlocking module |
-| `mmu_segmented_region_interlocking_depth` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
-| `mmu_segmented_region_max_width` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
-| `support_object_skip_flush` | B | crates/slicer-gcode (exclude-object emission) |
+| `mmu_segmented_region_interlocking_depth` | A | **already live**, re-derived by ticket 98: host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`), not a module. This row contradicted this file's own "ResolvedConfig-only keys" special ruling, which was right. Declared in `docs/config/host-keys.toml` `[resolved_config]` by ticket 98; P91 dissolved |
+| `mmu_segmented_region_max_width` | A | **already live**, re-derived by ticket 98: host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`), not a module. Declared in `docs/config/host-keys.toml` `[resolved_config]` by ticket 98; P91 dissolved. Parity defect in the shipped pass filed as ticket 150 |
+| `support_object_skip_flush` | B | crates/slicer-gcode (exclude-object emission) — **returned to queue, unimplemented** by ticket 48: both canonical reads (`GCode.cpp` sequential-toolchange + by-layer extrusion loop) are gated on `m_enable_exclude_object` (BBL + non-calib + exclude) and emit `M624` label codes — none of which exists in this tree (P44 / ticket 51 scope); wiring alone would be declaration-only (rule 1). Sequences after (or folds into) P44 when ticket 51 lands |
 
 ### Multimaterial / Ooze prevention
-| `ooze_prevention` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `preheat_steps` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `preheat_time` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `standby_temperature_delta` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
+| `ooze_prevention` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: standby arms need per-filament nozzle-temp vectors (Tier D) the host cannot see (its only temp field is the unrelated `filament_flush_temp`); re-filed as ticket 139, blocked on ticket 125 |
+| `preheat_steps` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: `GCodeProcessor` backtrace injector has no port seam (no usage-block builder, no XL concept, no filament count); re-filed as ticket 139, blocked on ticket 125 |
+| `preheat_time` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: same backtrace injector gap as `preheat_steps`; re-filed as ticket 139, blocked on ticket 125 |
+| `standby_temperature_delta` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: same missing base-temp source as `ooze_prevention` (`idle_temperature` is Tier D); re-filed as ticket 139, blocked on ticket 125 |
 
 ### Multimaterial / Prime tower
 | `enable_filament_ramming` | A | wipe-tower |
@@ -359,7 +382,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `filament_tower_interface_print_temp` | A | wipe-tower |
 | `filament_tower_interface_purge_volume` | A | wipe-tower |
 | `filament_tower_ironing_area` | A | wipe-tower |
-| `manual_filament_change` | B | crates/slicer-gcode (toolchange emission) |
+| `manual_filament_change` | B | crates/slicer-gcode (toolchange emission) + machine-gcode-emit (first-`change_filament_gcode` skip) — **live** (ticket 50, direct implementation): `ResolvedConfig` bool (default false) + serializer `; MANUAL_TOOL_CHANGE T<n>` tag line + module `FilamentChange` skip at 1-based count 1; later toolchanges unaffected |
 | `prime_tower_brim_width` | A | wipe-tower |
 | `prime_tower_enable_framework` | A | wipe-tower |
 | `prime_tower_flat_ironing` | A | wipe-tower |
@@ -367,7 +390,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `prime_tower_skip_points` | A | wipe-tower |
 | `purge_in_prime_tower` | A | wipe-tower |
 | `single_extruder_multi_material` | A | wipe-tower |
-| `single_extruder_multi_material_priming` | B | crates/slicer-gcode (toolchange emission) |
+| `single_extruder_multi_material_priming` | B | crates/slicer-gcode (toolchange emission) — **returned to queue, unimplemented** by ticket 50: every canonical read sits in `WipeTowerType::Type2` priming-tower flows (`initial_extruder` selection, `has_single_extruder_multi_material_priming` placeholder, `set_extruder` skip, `m_wipe_tower->prime()`), none of which exists in this tree (purge-only tower, ticket 29 census); sequences after ticket 122 (prime tower body parity), the same seat as `wipe_tower_filament` |
 | `wipe_tower_bridging` | A | wipe-tower |
 | `wipe_tower_cone_angle` | A | wipe-tower |
 | `wipe_tower_extra_flow` | A | wipe-tower |
@@ -400,14 +423,14 @@ findings (the one flagged row was a stale-asset artifact).
 ### Others / G-code output
 | `exclude_object` | B | crates/slicer-gcode (flavor.rs) |
 | `filename_format` | B | crates/slicer-gcode (flavor.rs) |
-| `gcode_add_line_number` | B | host export orchestration (crates/slicer-runtime; GUI post-processor in canonical) |
+| `gcode_add_line_number` | B | host export orchestration (crates/slicer-runtime; GUI post-processor in canonical) — **landed directly, ticket 91** |
 | `gcode_comments` | B | crates/slicer-gcode (flavor.rs) |
 | `gcode_flavor` | B | crates/slicer-gcode (flavor.rs) |
 | `gcode_label_objects` | B | crates/slicer-gcode (flavor.rs) |
 | `reduce_infill_retraction` | B | crates/slicer-gcode (flavor.rs) |
 
 ### Others / Post-processing Scripts
-| `post_process` | B | host export orchestration (crates/slicer-runtime) |
+| `post_process` | B | host export orchestration (crates/slicer-runtime) — **landed directly, ticket 92** |
 
 ### Others / Skirt
 | `draft_shield` | A | skirt-brim |
@@ -445,24 +468,24 @@ findings (the one flagged row was a stale-asset artifact).
 | `machine_min_travel_rate` | B | crates/slicer-gcode (M201/M203 emission) |
 
 ### Printer / Machine / Power / recovery
-| `disable_m73` | A | crates/slicer-gcode (consumed in emit.rs) + declare in machine-gcode-emit manifest |
-| `emit_machine_limits_to_gcode` | A | crates/slicer-gcode (disable_m73 consumed) |
-| `enable_power_loss_recovery` | A | crates/slicer-gcode (disable_m73 consumed) |
-| `silent_mode` | A | crates/slicer-gcode (disable_m73 consumed) |
+| `disable_m73` | A | crates/slicer-gcode (consumed in emit.rs) + declare in machine-gcode-emit manifest | (packet 267: declared in machine-gcode-emit.toml; gate already live) |
+| `emit_machine_limits_to_gcode` | B | crates/slicer-gcode (envelope emission) | (packet 267 re-tier: new emitter logic — canonical `GCode::print_machine_envelope`) |
+| `enable_power_loss_recovery` | B | crates/slicer-gcode (recovery emission) | (packet 267 re-tier: new emitter logic — canonical `GCodeWriter::enable_power_loss_recovery`) |
+| `silent_mode` | B | crates/slicer-gcode (estimator variant selection) | **live** (ticket 117, direct implementation, 2026-09-11): `ResolvedConfig::silent_mode` (canonical default false) selects the stealth entry of every `machine_max_*` pair in `EstimatorLimits::from_config`; the ten fields are now `Option<MachineLimitPair>` keeping both stride-2 entries. Envelope keeps the normal entry (canonical parity; forward-dep on draft packet 267). Flavor-agnostic selection is DEV-207 (canonical gates on Marlin flavors). |
 
 ### Printer / Machine / Print volume
 | `bed_exclude_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `extruder_clearance_height_to_lid` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_clearance_height_to_rod` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_clearance_radius` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_printable_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `extruder_printable_height` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `printable_height` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
+| `extruder_clearance_height_to_lid` | B | — **folded into ticket 124** by ticket 86: validator input (`sequential_print_clearance_valid`, `Print.cpp`; canonical default 120, min 0), zero-occurrence in tree; the TimelapsePosPicker rod/radius reads are a separable non-borrow (no picker seam in this tree) |
+| `extruder_clearance_height_to_rod` | B | — **folded into ticket 124** by ticket 86: validator input (`sequential_print_clearance_valid`; canonical default 40, min 0), zero-occurrence in tree; the TimelapsePosPicker rod/radius reads are a separable non-borrow |
+| `extruder_clearance_radius` | B | — **folded into ticket 124** by ticket 86: validator input (horizontal hull-inflation arm + `extruder_clearance_max_radius` legacy alias; canonical default 40, min 0), zero-occurrence in tree; the TimelapsePosPicker radius read is a separable non-borrow |
+| `extruder_printable_area` | B | wipe-tower (multi-extruder shared print bed) — **returned to queue, unimplemented** by ticket 26: per-extruder polygon group, inert single-extruder; canonical's only behaviour path is `Print::get_extruder_shared_printable_polygon` → `WipeTower::set_shared_print_bed`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — `nozzle_diameter` is a scalar `f32` in `ResolvedConfig`, this port has no per-extruder vector model |
+| `extruder_printable_height` | B | wipe-tower (multi-extruder last-layer validity) — **returned to queue, unimplemented** by ticket 26: per-extruder float vector, inert single-extruder; canonical's only behaviour path is `WipeTower::is_valid_last_layer`, gated on `m_is_multi_extruder`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — no per-extruder vector model in this port |
+| `printable_height` | A | **implemented** by ticket 26 (2026-09-03): `ResolvedConfig::printable_height` → `validate_printable_height` (`crates/slicer-model-io/src/loader.rs`), called from `run_slice`; emitted from resolved config, shadowing the padding literal. Default 250.0 is a recorded deviation from canonical's 100.0 |
 
 ### Printer / Machine / Printer identity
 | `allow_mix_temp` | X | out of scope — dead in canonical |
-| `printer_model` | A | crates/slicer-gcode (printer_technology in serialize.rs) |
-| `printer_structure` | A | crates/slicer-gcode (printer_technology in serialize.rs) |
+| `printer_model` | A | crates/slicer-gcode — **closed by ticket 27, no code change**: already live through `serialize_config_block`'s `raw_config.contains_key` synthesis guard; canonical's other pipeline reads are vendor-proprietary (out-of-scope class) |
+| `printer_structure` | A | **owner corrected by ticket 27: machine-gcode-emit, not crates/slicer-gcode** — its only non-GUI canonical behaviour is the time-lapse injection gate in `GCode::process_layer`; implemented directly, divergences in `DEV-168` |
 | `printer_technology` | X | out of scope — preset-management (03 class) |
 | `printer_variant` | X | out of scope — preset-management (03 class; SLA-only metadata consumer in Format/SL1.cpp) |
 
@@ -478,15 +501,15 @@ findings (the one flagged row was a stale-asset artifact).
 | `time_cost` | B | crates/slicer-gcode (estimator.rs) |
 
 ### Quality / Bridging
-| `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) |
-| `bridge_density` | B | infill modules (bridge-fill holder) |
-| `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters |
-| `dont_filter_internal_bridges` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `enable_extra_bridge_layer` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `internal_bridge_angle` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `internal_bridge_density` | B | infill modules (bridge-fill holder) |
-| `internal_bridge_flow` | B | crates/slicer-gcode (emission flow scaling) |
-| `thick_internal_bridges` | B | infill modules (bridge-fill holder, Fill.cpp) |
+| `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) — **in packet 302** by ticket 84 |
+| `bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): divides bridge line spacing in `RectilinearInfill::run_infill` and `wave-overhangs`' fallback fill. `max` corrected 120→125 against the oracle. Not read by `gyroid-infill` (ticket 127); bare-number spelling misread (ticket 128) |
+| `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters — **in packet 302** by ticket 84 |
+| `dont_filter_internal_bridges` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: multiplier 3/1 + partial-gate bypass in `gate_internal_bridge_sites` + short-line filter in the construction arm; bool `false` = canonical `ibfDisabled`) |
+| `enable_extra_bridge_layer` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: carrier-free duplicate pass in `gate_internal_bridge_sites`; bool `false` = canonical `eblDisabled`) |
+| `internal_bridge_angle` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: `angle_override` into `determine_bridging_angle`; default 0.0 = canonical automatic; range [0, 180] matches) |
+| `internal_bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): internal-bridge twin of `bridge_density`, selected off `is_internal_bridge` in both bridge-fill holders. Not read by `gyroid-infill` (ticket 127) |
+| `internal_bridge_flow` | B | infill modules — **live** (ticket 57, no packet: already landed by ticket 34's direct implementation in both bridge-fill holders + host harvest; owner corrected from `crates/slicer-gcode` — the emitter must not scale, `flow_factor` already carries it) |
+| `thick_internal_bridges` | B | infill modules — **live** (ticket 34, direct implementation): selects `canonical_bridging_flow`'s round-thread spacing for internal bridges in both bridge-fill holders. Canonical's second read site (`Print::validate`'s `allow_thin_bridge_width`) is config-range validation, deferred to ticket 113 |
 
 ### Quality / Ironing
 | `ironing_angle` | A | top-surface-ironing + support-surface-ironing |
@@ -495,10 +518,10 @@ findings (the one flagged row was a stale-asset artifact).
 | `ironing_type` | B | top-surface-ironing + support-surface-ironing | (ticket 07 reclassification — enum modes unexpressible via the shared `ironing_enabled` bool; mode-selection logic) |
 
 ### Quality / Layer height
-| `first_layer_print_sequence` | B | tool-ordering (ToolOrdering.cpp) |
+| `first_layer_print_sequence` | B | `crates/slicer-gcode` (emission stage; packet 295) |
 | `first_layer_sequence_choice` | X | out of scope — dead alternate spelling |
-| `other_layers_print_sequence` | B | tool-ordering (ToolOrdering.cpp) |
-| `other_layers_print_sequence_nums` | B | tool-ordering (ToolOrdering.cpp) |
+| `other_layers_print_sequence` | B | `crates/slicer-gcode` (emission stage; packet 295) |
+| `other_layers_print_sequence_nums` | B | `crates/slicer-gcode` (emission stage; packet 295) |
 | `other_layers_sequence_choice` | X | out of scope — dead alternate spelling |
 
 ### Quality / Line width
@@ -516,7 +539,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `hole_to_polyhole` | C | new polyhole module |
 | `hole_to_polyhole_threshold` | C | new polyhole module |
 | `hole_to_polyhole_twisted` | C | new polyhole module |
-| `precise_z_height` | B | layer-planner (Slicing.cpp generate_object_layers) |
+| `precise_z_height` | B | layer-planner (Slicing.cpp generate_object_layers) — **blocked, unimplemented** by ticket 77: live coBool (default false, per-object) whose last-5-layer redistribution clamps every adjusted height to the min/max envelope the port lacks (no ticket-27 hazard — `layer-planner-default`'s `generate_object_layers` is the direct analog); user ruling (grilled 2026-09-09) waits for the real envelope rather than a substitute clamp; re-filed as ticket 145, blocked on 141 + 144 |
+| `resolution` | B | crates/slicer-gcode / generation-time simplify — re-adjudicated in ticket 105 (canonical `PerimeterGenerator.cpp` `ex.simplify_p`, `Brim.cpp`, `Fill.cpp`, `GCodeWriter.cpp` arc density; the host's emit-time per-role `gcode_resolution` is not the same decision point) |
 | `xy_contour_compensation` | C | new contour-compensation module |
 | `xy_hole_compensation` | C | new contour-compensation module |
 
@@ -543,69 +567,69 @@ findings (the one flagged row was a stale-asset artifact).
 | `min_feature_size` | A | arachne-perimeters |
 
 ### Quality / Walls and surfaces
-| `bottom_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `extruder` | B | print/orchestration (per-object extruder assignment) |
-| `first_layer_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `gap_fill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `inner_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `internal_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `is_infill_first` | B | crates/slicer-gcode (emission ordering) |
-| `max_travel_detour_distance` | B | crates/slicer-gcode (travel planning) |
-| `outer_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `overhang_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `print_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `reduce_crossing_wall` | B | crates/slicer-gcode (travel planning) |
-| `set_other_flow_ratios` | B | crates/slicer-gcode (emission flow scaling) |
-| `small_area_infill_flow_compensation` | B | crates/slicer-gcode (emission flow scaling) |
-| `small_area_infill_flow_compensation_model` | B | crates/slicer-gcode (emission flow scaling) |
-| `sparse_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `support_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `support_interface_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `top_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
+| `bottom_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `extruder` | B | — **P80 dissolved, folded into ticket 124** by ticket 87 (2026-09-10): canonical's `extruder` (coInt, 0 = inherit) assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config`, `PrintObject.cpp`, plus `normalize_fdm` / `auto_assign_extruders` / 3MF/Model bookkeeping); this port already resolves those six per entity at runtime (ticket 46) and carries per-object `extruder` metadata only as `ResolvedConfig.extensions` — a standalone packet would be declaration-only (rule 1); the per-object identity the assignment needs is 124's sequential-printing feature |
+| `first_layer_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `gap_fill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `inner_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `internal_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `is_infill_first` | B | — **returned to the queue, unimplemented** by ticket 61: per-region walls-vs-infill order (+ first-layer-always-walls exception) lives in runtime orchestration (`assemble_ordered_entities_with_support_identities`), not emission — the emitter preserves `ordered_entities` and must not reorder; wiring it in the emitter would be the wrong seam (ticket-27 hazard) |
+| `max_travel_detour_distance` | B | — **returned to the queue, unimplemented** by ticket 61: zero-disables detour cap over a perimeter-avoiding planner the port does not have (path-optimization emits direct inter-region travel; the emitter consumes precomputed travels) — a limit with no planner would be declaration-only (rule 1); missing feature: avoid-crossing-perimeters planner |
+| `outer_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `overhang_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 (overhang selection via point-level `overhang_quartile` marking, DEV-179(b) — the port has no `OverhangPerimeter` role) |
+| `print_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `reduce_crossing_wall` | B | — **returned to the queue, unimplemented** by ticket 62: the enable for perimeter-avoiding travel (`AvoidCrossingPerimeters::travel_to` + `init_layer`, `GCode.cpp`) over a planner the port does not have (path-optimization emits direct inter-region travel; the emitter consumes precomputed travels — ticket-61's detour precedent); wiring the bool alone would be declaration-only (rule 1); missing feature: avoid-crossing-perimeters planner (shared with `max_travel_detour_distance`) |
+| `set_other_flow_ratios` | B | crates/slicer-gcode (emission flow scaling) — **adopted into packet 287** by ticket 61 (split-boundary adjustment: the gate arms P54's ratios, so the decision lives in one place — P55 sheds it 9→8 with a backward dep) |
+| `small_area_infill_flow_compensation` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `small_area_infill_flow_compensation_model` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `sparse_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `support_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `support_interface_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `top_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
 
 ### Speed / Acceleration
-| `accel_to_decel_enable` | B | crates/slicer-gcode (estimator.rs) |
-| `accel_to_decel_factor` | B | crates/slicer-gcode (estimator.rs) |
-| `bridge_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `default_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `initial_layer_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `inner_wall_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `internal_solid_infill_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `outer_wall_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `sparse_infill_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `top_surface_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `travel_acceleration` | B | crates/slicer-gcode (estimator.rs) |
+| `accel_to_decel_enable` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `accel_to_decel_factor` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `bridge_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `default_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `initial_layer_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `inner_wall_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `internal_solid_infill_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `outer_wall_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `sparse_infill_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `top_surface_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `travel_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
 
 ### Speed / Advanced (Speed)
-| `extrusion_rate_smoothing_external_perimeter_only` | B | crates/slicer-gcode (estimator.rs) |
-| `max_volumetric_extrusion_rate_slope` | B | crates/slicer-gcode (estimator.rs) |
-| `max_volumetric_extrusion_rate_slope_segment_length` | B | crates/slicer-gcode (estimator.rs) |
+| `extrusion_rate_smoothing_external_perimeter_only` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
+| `max_volumetric_extrusion_rate_slope` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
+| `max_volumetric_extrusion_rate_slope_segment_length` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
 
 ### Speed / Initial layer speed
-| `slow_down_layers` | B | crates/slicer-gcode (feedrate.rs) |
+| `slow_down_layers` | B | crates/slicer-gcode (per-entity slow-down blend in emit.rs over the feedrate.rs table) — **in packet 291** by ticket 65 |
 
 ### Speed / Jerk (XY)
-| `default_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `default_junction_deviation` | B | crates/slicer-gcode (estimator.rs) |
-| `infill_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `initial_layer_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `inner_wall_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `outer_wall_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `top_surface_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `travel_jerk` | B | crates/slicer-gcode (estimator.rs) |
+| `default_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `default_junction_deviation` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `infill_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `initial_layer_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `inner_wall_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `outer_wall_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `top_surface_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `travel_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
 
 ### Speed / Other layers speed
-| `internal_solid_infill_speed` | B | crates/slicer-gcode (feedrate.rs) |
-| `small_perimeter_speed` | B | crates/slicer-gcode (feedrate.rs) |
+| `internal_solid_infill_speed` | B | crates/slicer-gcode (internal-solid reseat in `resolve_feedrate` over the feedrate.rs table) — **in packet 293** by ticket 67 |
+| `small_perimeter_speed` | B | crates/slicer-gcode (loop-length-gated small-loop `F` override at the per-entity site) — **in packet 293** by ticket 67 |
 
 ### Strength / Advanced (Strength)
 | `align_infill_direction_to_model` | B | infill modules |
 | `detect_narrow_internal_solid_infill` | B | infill modules |
-| `ensure_vertical_shell_thickness` | B | object-level solid-fill planning (PrintObject.cpp) |
-| `extra_solid_infills` | B | object-level solid-fill planning (PrintObject.cpp) |
-| `infill_combination` | B | object-level infill planning (PrintObject.cpp) |
-| `infill_combination_max_layer_height` | B | object-level infill planning (PrintObject.cpp) |
-| `minimum_sparse_infill_area` | B | infill modules |
+| `ensure_vertical_shell_thickness` | B | object-level solid-fill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `extra_solid_infills` | B | object-level solid-fill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `infill_combination` | B | object-level infill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `infill_combination_max_layer_height` | B | object-level infill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `minimum_sparse_infill_area` | B | infill modules — **live** (ticket 35, direct implementation): small sparse islands convert to internal solid fill in the host `PrePass::ShellClassification` prepass, measured pre-wall-inset (strictly conservative). Islands land in the dedicated `internal_solid_fill` bucket (five-way fill partition; emitted as `InternalSolidInfill` by the `claim:top-fill` holders) |
 
 ### Strength / Infill
 | `fill_multiline` | A | infill modules |
@@ -670,11 +694,11 @@ findings (the one flagged row was a stale-asset artifact).
 ### Support / Support filament
 | `support_filament` | B | support-planner |
 | `support_interface_filament` | B | support-planner |
-| `support_interface_not_for_body` | B | tool-ordering (ToolOrdering.cpp) |
+| `support_interface_not_for_body` | B | slicer-runtime entity assembly (`assemble_ordered_entities_with_support_identities` over `SupportToolSelection`) — **live** (ticket 74, direct implementation): tier-table `tool-ordering` owner corrected — no `ToolOrdering` module exists here; canonical's `ToolOrdering::collect_extruders` + `GCode::process_layer` fallback maps to the runtime's support/interface tool resolution (ticket-38 seam). Scalar coBool default true; `WipingExtrusions::mark_wiping_extrusions` arm named non-borrow (no port analogue) |
 
 ### Support / Support ironing
-| `support_air_filtration` | B | crates/slicer-gcode (air-filtration emission) |
-| `support_ironing_pattern` | A | support-surface-ironing |
+| `support_air_filtration` | B | machine-gcode-emit (printer-level master enable on packet 253's header/footer exhaust emission) — **folded into packet 253** by ticket 68 (ticket-35 precedent: operator on a decision another packet builds; owner corrected — canonical's reads are `_do_export` header/footer, not a host-emitter speed) |
+| `support_ironing_pattern` | ~~A~~ → **returned to queue, unimplemented** | support-surface-ironing (holder seam absent) | (ticket 22: algorithm-selecting enum over `InfillPattern` — canonical `Fill::new_from_type(support_params.ironing_pattern)`. Holder-only under Authoring rule 4 / grilling Q3(a), so it is never declared as an input key. This port has no support-ironing claim, no holder key, and no concentric filler; standing that seam up is Tier C, not the Tier A this row assumed. Missing feature: **support-ironing filler selection through a claim seam, shipping at least canonical's default `rectilinear` as a holder**. Scope it with packet `260b-support-interface-fill-claim-holders`.) |
 | `support_ironing` | A | support-surface-ironing | (ticket 07 reclassification — independent bool so support ironing no longer rides the shared `ironing_enabled`) |
 
 ### Support / Tree supports

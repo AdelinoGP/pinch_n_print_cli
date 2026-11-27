@@ -295,7 +295,7 @@ impl Fixture {
                 ConfigValue::String("PRB1".into()),
             ),
             ("layer_height".into(), ConfigValue::Float(0.2)),
-            ("first_layer_height".into(), ConfigValue::Float(0.2)),
+            ("initial_layer_print_height".into(), ConfigValue::Float(0.2)),
         ]);
         options
     }

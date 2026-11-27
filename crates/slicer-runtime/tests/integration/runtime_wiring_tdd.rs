@@ -18,13 +18,14 @@ use slicer_ir::{
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
     build_config_schema_json, build_execution_plan, build_wasm_instance_pool,
-    load_modules_from_roots, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
-    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitError,
-    GCodeEmitter, GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput,
-    LayerStageRunner, LoadDiagnostic, LoadedModuleBuilder, PostpassError, PostpassOutput,
-    PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
-    PrepassStageOutput, PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
+    load_modules_from_roots, manifest::CONFIG_SCHEMA_WIRE_VERSION, CompiledModule,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionModuleBinding,
+    ExecutionPlan, ExecutionPlanRequest, FinalizationError, FinalizationOutput,
+    FinalizationStageInput, FinalizationStageRunner, GCodeEmitError, GCodeEmitter, GCodeSerializer,
+    IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner, LoadDiagnostic,
+    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    SortedStageModules, WasmArtifactMetadata,
 };
 use tempfile::TempDir;
 
@@ -585,23 +586,30 @@ layer-parallel-safe = true
 
 #[test]
 fn config_schema_json_matches_documented_shape() {
+    // Per docs/05_module_sdk.md (`pnp_cli module config-schema`), the response shape is:
+    // {"schema_version": "1.1.0",
+    //  "schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}],
+    //  "host": [...]}
     // The wire version is owned by `CONFIG_SCHEMA_WIRE_VERSION`
     // (`crates/slicer-scheduler/src/manifest.rs`); 1.1.0 added the top-level
-    // `host` key array. Bumping rules live in
+    // `host` key array and the per-field `scope`. Bumping rules live in
     // docs/11_operational_governance_and_acceptance_gate.md. Compare against the
     // constant itself so this test can never lag a bump again (it did once:
     // a50bfc28 bumped 1.0.0 -> 1.1.0 and updated the emitter but not this test).
     let json = build_config_schema_json(&[]);
     assert_eq!(
         json["schema_version"].as_str(),
-        Some(slicer_scheduler::manifest::CONFIG_SCHEMA_WIRE_VERSION),
+        Some(CONFIG_SCHEMA_WIRE_VERSION),
         "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
     );
     assert!(
-        json.get("schema").is_some(),
-        "response must have 'schema' key"
+        json.get("schema").is_none() || json["schema"].is_array(),
+        "'schema' must be an array when present"
     );
-    assert!(json["schema"].is_array(), "'schema' must be an array");
+    assert!(
+        json.get("host").is_some(),
+        "wire 1.1.0 replies must carry the top-level 'host' array"
+    );
     assert_eq!(
         json["schema"].as_array().unwrap().len(),
         0,

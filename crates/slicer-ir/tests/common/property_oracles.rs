@@ -629,7 +629,7 @@ pub fn with_option(base: &ResolvedConfig, value: Option<f32>) -> ResolvedConfig 
 /// entries. Bounds the allocation to `len` elements.
 pub fn with_sequence(base: &ResolvedConfig, len: usize) -> ResolvedConfig {
     let mut out = base.clone();
-    out.bed_shape = (0..len).map(|index| index as f64 * 0.5).collect();
+    out.printable_area = (0..len).map(|index| index as f64 * 0.5).collect();
     out
 }
 
@@ -700,7 +700,7 @@ pub fn config_list_elements(config: &ResolvedConfig) -> usize {
         }
     }
     config.extensions.values().map(count_value).sum::<usize>()
-        + config.bed_shape.len()
+        + config.printable_area.len()
         + config.fill_authored_coloring.len()
 }
 

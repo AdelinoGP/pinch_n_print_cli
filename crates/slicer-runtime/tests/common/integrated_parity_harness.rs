@@ -94,7 +94,7 @@ fn newest_source_mtime(guest_root: &Path) -> SystemTime {
 fn layer_planning_objects_from_config(config: &ConfigView) -> Vec<LayerPlanningObject> {
     let layer_height = config.get_float("layer_height").unwrap_or(0.0);
     let first_layer_height = config
-        .get_float("first_layer_height")
+        .get_float("initial_layer_print_height")
         .unwrap_or(layer_height);
     let mut objects: Vec<LayerPlanningObject> = config
         .iter_entries()

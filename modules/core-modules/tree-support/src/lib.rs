@@ -25,7 +25,7 @@
 //!    `PaintRegionLayerView::support_plan_entries_for`, honouring paint
 //!    overrides through `SupportPaintPolicy`.
 //! 2. For each planned role region (`SupportBody` / `TopInterface` /
-//!    `BottomInterface`), render the polygon with `render_polygon`: `wall_count`
+//!    `BottomInterface`), render the polygon with `render_polygon`: `tree_support_wall_count`
 //!    inset perimeter passes plus a scan fill inset clear of them.
 //! 3. Derive body and interface pitches from canonical flow spacing helpers.
 //! 4. Stamp `ExtrusionRole::SupportInterface` on interface paths so
@@ -90,7 +90,7 @@ pub struct TreeSupport {
     /// Resolved interface flow ratio as a percentage.
     interface_flow_percent: f32,
     /// Number of perimeter passes used to represent a support body.
-    wall_count: usize,
+    wall_loops: usize,
     /// Configured top-interface line gap in millimeters (canonical
     /// `support_interface_spacing`). This is the *gap*, not the pitch.
     top_interface_spacing_mm: f32,
@@ -313,17 +313,25 @@ impl LayerModule for TreeSupport {
         // existing declarers), so absence is a contract violation, not a
         // fallback case.
         let nozzle_diameter = config.require_float("nozzle_diameter")?;
+        // Canonical auto rule (`Flow::support_material_flow`, `Flow.cpp`): a
+        // non-positive `support_line_width` falls back to `line_width`, and a
+        // non-positive `line_width` (Orca's auto `0`) to the nozzle diameter.
+        let line_width_fallback = match config.get("line_width") {
+            Some(ConfigValue::Float(w)) if *w > 0.0 => *w as f32,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => 0.4,
+        };
         // `support_line_width` is declared `float_or_percent` with
         // `base_key = "nozzle_diameter"` and an auto sentinel default of 0.0,
         // so the required read resolves its absolute width; a non-positive
-        // resolved value keeps the existing auto semantic (1.125 × nozzle
-        // diameter) as an explicit value check, not a silent None-fallback.
+        // resolved value keeps the existing auto semantic as an explicit value
+        // check, not a silent None-fallback.
         let resolved_line_width =
             config.require_abs_value("support_line_width", nozzle_diameter)?;
         let line_width = if resolved_line_width > 0.0 {
             resolved_line_width as f32
         } else {
-            (1.125 * nozzle_diameter) as f32
+            line_width_fallback
         };
         // `support_interface_flow` is declared `percent`: the registry seeds
         // `ConfigValue::Percent(100.0)` and ingestion delivers authored values
@@ -335,7 +343,7 @@ impl LayerModule for TreeSupport {
         // Declared `int` with the canonical `0 = auto` sentinel; the `.max(1)`
         // clamp is the consumption-site semantic from canonical
         // `generate_toolpaths`.
-        let wall_count = config.require_int("tree_support_wall_count")?.max(1) as usize;
+        let wall_loops = config.require_int("tree_support_wall_count")?.max(1) as usize;
 
         let top_interface_spacing_mm = config.require_float("support_interface_spacing")? as f32;
         let bottom_interface_spacing_mm =
@@ -347,7 +355,7 @@ impl LayerModule for TreeSupport {
             support_speed,
             line_width,
             interface_flow_percent,
-            wall_count,
+            wall_loops,
             top_interface_spacing_mm,
             bottom_interface_spacing_mm,
             base_pattern_spacing_mm,
@@ -537,7 +545,7 @@ impl LayerModule for TreeSupport {
                             speed_factor,
                             fill_spacing,
                             vertical,
-                            self.wall_count + extra_walls,
+                            self.wall_loops + extra_walls,
                         );
                         if matches!(
                             role,
@@ -661,7 +669,7 @@ impl TreeSupport {
     ///
     /// Each wall is inset half a line width past the previous one and the fill
     /// region is inset clear of all of them, so the passes do not overlap.
-    /// Before packet 224 this emitted `wall_count` copies of the *same* contour
+    /// Before packet 224 this emitted `tree_support_wall_count` copies of the *same* contour
     /// (coincident, no inset) and then scan-filled the full polygon at a
     /// `line_width` pitch — solid regardless of configured spacing — so a
     /// support body was extruded several times over.
@@ -683,7 +691,7 @@ impl TreeSupport {
             speed_factor,
             fill_spacing_mm,
             vertical,
-            self.wall_count,
+            self.wall_loops,
         )
     }
 
@@ -696,7 +704,7 @@ impl TreeSupport {
         speed_factor: f32,
         fill_spacing_mm: f32,
         vertical: bool,
-        wall_count: usize,
+        wall_loops: usize,
     ) -> Vec<ExtrusionPath3D> {
         let mut paths = Vec::new();
         if expoly.contour.points.len() < 3 {
@@ -705,7 +713,7 @@ impl TreeSupport {
         let line_width = self.line_width.max(f32::EPSILON);
         let source = [expoly.clone()];
 
-        for wall_index in 0..wall_count {
+        for wall_index in 0..wall_loops {
             let inset = -line_width * (wall_index as f32 + 0.5);
             let ring_set = host::offset_polygons(&source, inset, OffsetJoinType::Miter, 0.0);
             for ring_poly in &ring_set {
@@ -731,12 +739,12 @@ impl TreeSupport {
         }
 
         // Fill only the area the walls do not already cover.
-        let fill_regions = if wall_count == 0 {
+        let fill_regions = if wall_loops == 0 {
             source.to_vec()
         } else {
             host::offset_polygons(
                 &source,
-                -line_width * wall_count as f32,
+                -line_width * wall_loops as f32,
                 OffsetJoinType::Miter,
                 0.0,
             )
@@ -960,15 +968,51 @@ mod tests {
         let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
-        assert!((module.line_width - 0.45).abs() < 0.001);
+        // Canonical auto (`Flow::support_material_flow`): absent key falls back
+        // to `line_width`, whose in-module default is 0.4 — not the retired
+        // 1.125 × nozzle invention (0.45).
+        assert!((module.line_width - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn support_line_width_auto_falls_back_to_line_width_then_nozzle() {
+        // Every fixture starts from the bound-view seeds (the module's
+        // `require_*` reads), then overrides the keys under test.
+        // Explicit zero with a configured line width resolves to it.
+        let mut fields = seeded_config_map();
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.5).abs() < 0.001);
+        // "Key absent" is no longer expressible: the manifest default 0.0 is
+        // the migrated form of the old absent path (packet 06 fail-closed).
+        // Zero line width (Orca's auto `0`) resolves on to the nozzle diameter.
+        let mut fields = seeded_config_map();
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
+        // Percent form resolves against the nozzle diameter.
+        let mut fields = seeded_config_map();
+        fields.insert(
+            "support_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 150.0,
+                is_percent: true,
+            },
+        );
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
     }
 
     /// F-7: the tree renderer had no interface pitch at all — roofs and floors
     /// were scan-filled at the density-derived body pitch. Canonical is
     /// `support_interface_spacing + interface_flow.spacing()`. At defaults the
-    /// resolved support line width is 1.125 × 0.4 nozzle = 0.45 mm (238a auto
-    /// resolution), so `line_width_to_spacing(0.45, 0.2) = 0.4070796` and the
-    /// top pitch is 0.4 + 0.4070796 = 0.807 mm. With the key absent from the
+    /// support line width is the canonical auto (`Flow::support_material_flow`
+    /// falls back to `line_width`, 0.4 here), so
+    /// `line_width_to_spacing(0.4, 0.2) = 0.3570796` and the top pitch is
+    /// 0.4 + 0.3570796 = 0.757 mm — the same Orca-measured pitch the
+    /// traditional renderer pins. With the key absent from the
     /// raw config map (as here) the in-code fallback stays the legacy −1.0
     /// host-expanded default, so bottom == top; in production the manifest
     /// default 0.5 is host-injected and yields a 0.907 mm bottom
@@ -979,8 +1023,8 @@ mod tests {
         let module = TreeSupport::from_config(&config).unwrap();
         let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
-            (top - 0.807).abs() < 0.002,
-            "canonical interface pitch is 0.807 mm at defaults, got {top}"
+            (top - 0.757).abs() < 0.002,
+            "canonical interface pitch is 0.757 mm at defaults, got {top}"
         );
         assert_eq!(
             bottom, top,
@@ -996,7 +1040,7 @@ mod tests {
 
     #[test]
     fn walls_are_inset_and_fill_does_not_overlap_them() {
-        // Guards the packet-224 fix: `render_polygon` used to emit `wall_count`
+        // Guards the packet-224 fix: `render_polygon` used to emit `tree_support_wall_count`
         // coincident copies of the same contour and then scan-fill the whole
         // polygon at a `line_width` pitch, so a body was extruded several times
         // over the same area.
@@ -1021,7 +1065,11 @@ mod tests {
         let paths = module.render_polygon(&square, 1.0, 1.0, 2.5, false);
         let closed: Vec<&ExtrusionPath3D> =
             paths.iter().filter(|path| path.points.len() > 2).collect();
-        assert_eq!(closed.len(), 2, "expected exactly `wall_count` wall loops");
+        assert_eq!(
+            closed.len(),
+            2,
+            "expected exactly `tree_support_wall_count` wall loops"
+        );
 
         // Each wall must sit at its own inset, not on top of the previous one.
         let extent = |path: &ExtrusionPath3D| {
