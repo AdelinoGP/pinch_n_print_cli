@@ -633,7 +633,7 @@ jobs:
             @{ Name = 'helpers_cli'; Package = 'pnp-cli'; Test = 'helpers_cli'; Expected = 9 },
             @{ Name = 'cli_tdd'; Package = 'pnp-cli'; Test = 'cli_tdd'; Expected = 3 },
             @{ Name = 'model_loader_tdd'; Package = 'slicer-model-io'; Test = 'model_loader_tdd'; Expected = 44 },
-            @{ Name = 'bed_placement_tdd'; Package = 'slicer-model-io'; Test = 'bed_placement_tdd'; Expected = 8 })
+            @{ Name = 'bed_placement_tdd'; Package = 'slicer-model-io'; Test = 'bed_placement_tdd'; Expected = 12 })
           foreach ($case in $regressions) {
             cargo test -p $case.Package --test $case.Test 2>&1 |
               Tee-Object -FilePath target/test-output.log

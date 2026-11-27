@@ -24,7 +24,7 @@ use seam_placer::SeamPlacer;
 fn config_with_mode(mode: &str) -> ConfigView {
     let mut map = HashMap::new();
     map.insert(
-        "seam_mode".to_string(),
+        "seam_position".to_string(),
         ConfigValue::String(mode.to_string()),
     );
     ConfigView::from_map(map)
